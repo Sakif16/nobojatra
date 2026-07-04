@@ -38,7 +38,7 @@ export default function SignUpPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
             />
           </div>
 
@@ -57,7 +57,7 @@ export default function SignUpPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
             />
           </div>
 
@@ -95,7 +95,7 @@ export default function SignUpPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
             />
           </div>
 
