@@ -1,26 +1,42 @@
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose";
 
-const uri = process.env.MONGODB_URI as string;
-require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
+const MONGODB_URI = process.env.MONGODB_URI ?? "";
+const MONGODB_DB = process.env.MONGODB_DB ?? "nobojatra";
 
-if (!uri) {
-  throw new Error("Please define MONGODB_URI in .env file");
+if (!MONGODB_URI) {
+  throw new Error("Please define MONGODB_URI in your .env file");
 }
 
-// Global cache (prevents multiple connections in dev)
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+type MongooseCache = {
+  connection: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
 
 declare global {
-  // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
+  var mongooseCache: MongooseCache | undefined;
 }
 
-if (!global._mongoClientPromise) {
-  client = new MongoClient(uri);
-  global._mongoClientPromise = client.connect();
+const cache = global.mongooseCache ?? {
+  connection: null,
+  promise: null,
+};
+
+global.mongooseCache = cache;
+
+export default async function connectMongoDB() {
+  if (cache.connection) {
+    return cache.connection;
+  }
+
+  if (!cache.promise) {
+    cache.promise = mongoose
+      .connect(MONGODB_URI, { dbName: MONGODB_DB })
+      .catch((error) => {
+        cache.promise = null;
+        throw error;
+      });
+  }
+
+  cache.connection = await cache.promise;
+  return cache.connection;
 }
-
-clientPromise = global._mongoClientPromise;
-
-export default clientPromise;
