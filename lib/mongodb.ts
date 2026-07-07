@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
 
 const MONGODB_URI = process.env.MONGODB_URI ?? "";
 const MONGODB_DB = process.env.MONGODB_DB ?? "nobojatra";
