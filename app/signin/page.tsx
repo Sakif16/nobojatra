@@ -1,19 +1,25 @@
 "use client";
 
+import { authClient } from "@/lib/auth-client";
 import { useState } from "react";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
-
-    // TODO: Add your signin logic here
+    const { data, error } = await authClient.signIn.email({
+    email, // required
+    password, // required
+    rememberMe: true,
+    callbackURL: "/dashboard",
+});
+    
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-4">
+    <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md rounded-xl bg-purple-800 p-8 shadow-lg">
         <h1 className="mb-2 text-center text-3xl font-bold text-white">Welcome Back</h1>
         <p className="mb-6 text-center text-white">Sign in to continue</p>

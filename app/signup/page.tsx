@@ -30,13 +30,11 @@ export default function SignUpPage() {
             // display the error message
             alert(ctx.error.message);
         },
-});
-
-    // TODO: Add your signup logic here
+    });
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-4">
+    <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md rounded-xl bg-purple-800 p-8 shadow-lg">
         <h1 className="mb-2 text-center text-3xl font-bold">Create Account</h1>
         <p className="mb-6 text-center text-white">
