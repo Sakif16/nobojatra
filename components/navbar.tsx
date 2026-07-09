@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "./ui/button";
+import Logout from "./logout";
 
 
 export default function Navbar() {
@@ -16,7 +17,7 @@ export default function Navbar() {
           <Button variant='custom_primary'>
             <Link href="/signup">Sign Up</Link>
           </Button>
-          
+          <Logout/>
         </div>
       </div>
     </header>

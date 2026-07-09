@@ -1,20 +1,28 @@
 'use client'
 
+import { redirect } from "next/navigation";
 import { Button } from "./ui/button"
+import { authClient } from "@/lib/auth-client";
 
 
-const logout = () => {
+const Logout = () => {
 
     const handleLogout=async()=>{
-
+      await authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+        redirect("/signin") // redirect to login page
+    },
+  },
+});
     }
 
 
   return (
     <div>
-      <Button onClick={handleLogout}>Logout</Button>
+      <Button variant="destructive" onClick={handleLogout}>Logout</Button>
     </div>
   )
 }
 
-export default logout
+export default Logout
