@@ -20,15 +20,15 @@ export default function SignInPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl bg-purple-800 p-8 shadow-lg">
-        <h1 className="mb-2 text-center text-3xl font-bold text-white">Welcome Back</h1>
-        <p className="mb-6 text-center text-white">Sign in to continue</p>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 text-card-foreground shadow-lg">
+        <h1 className="mb-2 text-center text-3xl font-bold">Welcome Back</h1>
+        <p className="mb-6 text-center text-muted-foreground">Sign in to continue</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label
               htmlFor="email"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Email
             </label>
@@ -39,14 +39,14 @@ export default function SignInPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Password
             </label>
@@ -57,21 +57,21 @@ export default function SignInPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-yellow-500 py-2.5 font-medium text-white transition hover:bg-yellow-700"
+            className="w-full rounded-lg bg-primary py-2.5 font-medium text-primary-foreground transition hover:bg-primary/90"
           >
             Sign In
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-white">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <a href="/signup" className="font-medium text-yellow-600 hover:underline">
+          <a href="/signup" className="font-medium text-primary hover:underline">
             Sign up
           </a>
         </p>

@@ -35,9 +35,9 @@ export default function SignUpPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl bg-purple-800 p-8 shadow-lg">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 text-card-foreground shadow-lg">
         <h1 className="mb-2 text-center text-3xl font-bold">Create Account</h1>
-        <p className="mb-6 text-center text-white">
+        <p className="mb-6 text-center text-muted-foreground">
           Sign up to get started
         </p>
 
@@ -46,7 +46,7 @@ export default function SignUpPage() {
           <div>
             <label
               htmlFor="name"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Name
             </label>
@@ -57,7 +57,7 @@ export default function SignUpPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
@@ -65,7 +65,7 @@ export default function SignUpPage() {
           <div>
             <label
               htmlFor="email"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Email
             </label>
@@ -76,7 +76,7 @@ export default function SignUpPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
@@ -84,7 +84,7 @@ export default function SignUpPage() {
           <div>
             <label
               htmlFor="password"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Password
             </label>
@@ -95,7 +95,7 @@ export default function SignUpPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
@@ -103,7 +103,7 @@ export default function SignUpPage() {
           <div>
             <label
               htmlFor="confirmPassword"
-              className="mb-2 block text-sm font-medium text-white"
+              className="mb-2 block text-sm font-medium"
             >
               Confirm Password
             </label>
@@ -114,23 +114,23 @@ export default function SignUpPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-yellow-500 py-2.5 font-medium text-white transition hover:bg-yellow-700"
+            className="w-full rounded-lg bg-primary py-2.5 font-medium text-primary-foreground transition hover:bg-primary/90"
           >
             Sign Up
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-white">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <a
             href="/signin"
-            className="font-medium text-yellow-600 hover:underline"
+            className="font-medium text-primary hover:underline"
           >
             Login
           </a>
