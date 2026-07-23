@@ -1,7 +1,7 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function SignUpPage() {
@@ -24,7 +24,9 @@ export default function SignUpPage() {
         },
         onSuccess: (ctx) => {
             //redirect to the dashboard or sign in page
-            router.push('/dashboard')
+            router.refresh();
+            // router.push('/dashboard')
+            redirect("/dashboard")
         },
         onError: (ctx) => {
             // display the error message
