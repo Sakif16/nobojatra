@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import MapDashboardSection from "@/components/map/MapDashboardSection";
 
 
 const dashboard = async () => {
@@ -11,8 +12,13 @@ const dashboard = async () => {
     redirect('/signin')
   }else{
     return(
-      <div>
-        Welcome, {session.user.name}
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-8">
+        <h1 className="mb-6 text-xl font-semibold text-white">
+          Welcome, {session.user.name}
+        </h1>
+        <div className="rounded-2xl bg-white p-6 shadow-lg">
+          <MapDashboardSection />
+        </div>
       </div>
     )
   }
