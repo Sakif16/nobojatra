@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Minus, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, MapPin, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
@@ -11,8 +11,9 @@ export type RouteFormValues = {
   origin: PlaceResult;
   destination: PlaceResult;
   stops: PlaceResult[];
-  passengers: number;
-  scheduledTime: string | null; // null = "leave now"
+  passengerCount: number;
+  departureMode: "now" | "scheduled";
+  scheduledAt: string | null;
 };
 
 type StopField = { label: string; place: PlaceResult | null };
@@ -21,6 +22,27 @@ type Props = {
   onSubmit: (values: RouteFormValues) => void;
   loading?: boolean;
 };
+
+const MIN_PASSENGERS = 1;
+const MAX_PASSENGERS = 8;
+const MAX_STOPS = 6;
+const SCHEDULE_WINDOW_DAYS = 7;
+
+function formatDateTimeLocal(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
 
 export default function RouteFinderForm({ onSubmit, loading }: Props) {
   const [originLabel, setOriginLabel] = useState("");
@@ -35,23 +57,61 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
 
   const [stops, setStops] = useState<StopField[]>([]);
   const [locating, setLocating] = useState(false);
+  const [locationPrompt, setLocationPrompt] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [scheduleBounds] = useState(() => {
+    const now = Date.now();
+    const min = new Date(now + 60 * 1000);
+    const max = new Date(
+      now + SCHEDULE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    return {
+      min: formatDateTimeLocal(min),
+      max: formatDateTimeLocal(max),
+    };
+  });
 
   async function useCurrentLocation() {
-    if (!navigator.geolocation) return;
+    setLocationPrompt(null);
+    setFormError(null);
+
+    if (!navigator.geolocation) {
+      setLocationPrompt("Location is not available. Enter your origin manually.");
+      return;
+    }
+
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
-        const label = await reverseGeocode(latitude, longitude);
+        let label = "Current location";
+
+        try {
+          label = await reverseGeocode(latitude, longitude);
+        } catch {
+          setLocationPrompt(
+            "We found your coordinates, but could not name the address."
+          );
+        }
+
         setOrigin({ lat: latitude, lng: longitude, label });
         setOriginLabel(label);
         setLocating(false);
       },
-      () => setLocating(false)
+      () => {
+        setLocationPrompt(
+          "Location permission was denied. Enter your origin manually."
+        );
+        setLocating(false);
+      }
     );
   }
 
   function addStop() {
+    setFormError(null);
+    if (stops.length >= MAX_STOPS) return;
     setStops((s) => [...s, { label: "", place: null }]);
   }
 
@@ -60,7 +120,10 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
   }
 
   function updateStopLabel(index: number, label: string) {
-    setStops((s) => s.map((st, i) => (i === index ? { ...st, label } : st)));
+    setFormError(null);
+    setStops((s) =>
+      s.map((st, i) => (i === index ? { ...st, label, place: null } : st))
+    );
   }
 
   function selectStopPlace(index: number, place: PlaceResult) {
@@ -71,20 +134,59 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
     );
   }
 
+  function moveStop(index: number, direction: -1 | 1) {
+    setStops((currentStops) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= currentStops.length) {
+        return currentStops;
+      }
+
+      const nextStops = [...currentStops];
+      const stop = nextStops[index];
+      if (!stop) return currentStops;
+
+      nextStops.splice(index, 1);
+      nextStops.splice(nextIndex, 0, stop);
+      return nextStops;
+    });
+  }
+
   const validStops = stops
     .map((s) => s.place)
     .filter((p): p is PlaceResult => p !== null);
 
-  const canSubmit = origin !== null && destination !== null && !loading;
+  const hasIncompleteStops = stops.some((stop) => stop.place === null);
+  const canSubmit =
+    origin !== null &&
+    destination !== null &&
+    !loading &&
+    (mode === "now" || Boolean(scheduledTime));
 
   function handleSubmit() {
-    if (!origin || !destination) return;
+    setFormError(null);
+
+    if (!origin || !destination) {
+      setFormError("Choose both origin and destination from suggestions.");
+      return;
+    }
+
+    if (hasIncompleteStops) {
+      setFormError("Choose a place for every stop or remove empty stops.");
+      return;
+    }
+
+    if (mode === "schedule" && !scheduledTime) {
+      setFormError("Choose a scheduled departure time.");
+      return;
+    }
+
     onSubmit({
       origin,
       destination,
       stops: validStops,
-      passengers,
-      scheduledTime: mode === "schedule" && scheduledTime ? scheduledTime : null,
+      passengerCount: passengers,
+      departureMode: mode === "schedule" ? "scheduled" : "now",
+      scheduledAt: mode === "schedule" && scheduledTime ? scheduledTime : null,
     });
   }
 
@@ -94,6 +196,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
         placeholder="Origin - Search Place"
         value={originLabel}
         onChange={(v) => {
+          setFormError(null);
           setOriginLabel(v);
           setOrigin(null);
         }}
@@ -107,6 +210,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
         placeholder="Destination - Search Place"
         value={destinationLabel}
         onChange={(v) => {
+          setFormError(null);
           setDestinationLabel(v);
           setDestination(null);
         }}
@@ -125,14 +229,20 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
         <MapPin size={15} />
         {locating ? "Locating…" : "Use Current Location"}
       </button>
+      {locationPrompt && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          {locationPrompt}
+        </p>
+      )}
 
       <div className="flex items-center justify-between">
         <span className="text-sm text-gray-600">Passengers</span>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setPassengers((p) => Math.max(1, p - 1))}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300"
+            onClick={() => setPassengers((p) => Math.max(MIN_PASSENGERS, p - 1))}
+            disabled={passengers <= MIN_PASSENGERS}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Minus size={14} />
           </button>
@@ -141,8 +251,9 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           </span>
           <button
             type="button"
-            onClick={() => setPassengers((p) => p + 1)}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300"
+            onClick={() => setPassengers((p) => Math.min(MAX_PASSENGERS, p + 1))}
+            disabled={passengers >= MAX_PASSENGERS}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Plus size={14} />
           </button>
@@ -164,7 +275,10 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => setMode("schedule")}
+          onClick={() => {
+            setMode("schedule");
+            if (!scheduledTime) setScheduledTime(scheduleBounds.min);
+          }}
           className={cn(
             "flex-1 py-2.5 text-sm font-medium transition-colors",
             mode === "schedule"
@@ -181,6 +295,8 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           type="datetime-local"
           value={scheduledTime}
           onChange={(e) => setScheduledTime(e.target.value)}
+          min={scheduleBounds.min}
+          max={scheduleBounds.max}
           className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-purple-400"
         />
       )}
@@ -191,9 +307,10 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           <button
             type="button"
             onClick={addStop}
-            className="text-sm font-medium text-purple-600 hover:text-purple-700"
+            disabled={stops.length >= MAX_STOPS}
+            className="text-sm font-medium text-purple-600 hover:text-purple-700 disabled:cursor-not-allowed disabled:text-gray-400"
           >
-            + Add Stops
+            + Add Stops ({stops.length}/{MAX_STOPS})
           </button>
         </div>
 
@@ -222,10 +339,36 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
               >
                 <X size={16} />
               </button>
+              <div className="flex flex-shrink-0 flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => moveStop(i, -1)}
+                  disabled={i === 0}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  aria-label={`Move stop ${i + 1} up`}
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveStop(i, 1)}
+                  disabled={i === stops.length - 1}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  aria-label={`Move stop ${i + 1} down`}
+                >
+                  <ArrowDown size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {formError && (
+        <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">
+          {formError}
+        </p>
+      )}
 
       <button
         type="button"

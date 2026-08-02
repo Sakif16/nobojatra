@@ -22,15 +22,17 @@ export default function PlaceAutocomplete({
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (value.trim().length < 3) {
+    if (value.trim().length < 2) {
       debounceRef.current = setTimeout(() => {
         setResults([]);
+        setError(null);
         setOpen(false);
       }, 0);
       return () => {
@@ -40,16 +42,19 @@ export default function PlaceAutocomplete({
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      setError(null);
       try {
         const places = await searchPlaces(value);
         setResults(places);
         setOpen(true);
       } catch {
         setResults([]);
+        setError("Unable to load suggestions.");
+        setOpen(true);
       } finally {
         setLoading(false);
       }
-    }, 400);
+    }, 300);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -82,15 +87,19 @@ export default function PlaceAutocomplete({
           className
         )}
       />
-      {open && (results.length > 0 || loading) && (
+      {open && (results.length > 0 || loading || error) && (
         <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
           {loading && (
             <div className="px-4 py-3 text-sm text-gray-400">Searching…</div>
           )}
+          {!loading && error && (
+            <div className="px-4 py-3 text-sm text-rose-500">{error}</div>
+          )}
           {!loading &&
+            !error &&
             results.map((place, i) => (
               <button
-                key={`${place.lat}-${place.lng}-${i}`}
+                key={place.id ?? `${place.lat}-${place.lng}-${i}`}
                 type="button"
                 onClick={() => {
                   onSelect(place);

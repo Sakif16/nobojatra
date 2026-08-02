@@ -1,59 +1,58 @@
-// Place search via OpenStreetMap's Nominatim — free, no API key required.
-// Usage policy: max ~1 request/second, must send a descriptive User-Agent
-// (browsers can't set User-Agent, so we identify via a query param instead).
-
 export type PlaceResult = {
+  id?: string;
   label: string;
   lat: number;
   lng: number;
 };
 
+type ApiResponse<T> =
+  | {
+      success: true;
+      data: T;
+    }
+  | {
+      success: false;
+      message?: string;
+    };
+
 export async function searchPlaces(query: string): Promise<PlaceResult[]> {
-  if (!query || query.trim().length < 3) return [];
+  const normalizedQuery = query.trim();
 
-  const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("limit", "5");
-  url.searchParams.set("addressdetails", "0");
-  // Bias results toward Bangladesh since that's where this app is used.
-  url.searchParams.set("countrycodes", "bd");
+  if (normalizedQuery.length < 2) return [];
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      "Accept-Language": "en",
-    },
-  });
+  const url = new URL("/api/trip-input/autocomplete", window.location.origin);
+  url.searchParams.set("query", normalizedQuery);
+
+  const res = await fetch(url.toString());
 
   if (!res.ok) {
-    throw new Error("Place search failed");
+    throw new Error("Unable to fetch place suggestions.");
   }
 
-  const data: Array<{ display_name: string; lat: string; lon: string }> =
-    await res.json();
+  const payload = (await res.json()) as ApiResponse<PlaceResult[]>;
 
-  return data.map((item) => ({
-    label: item.display_name,
-    lat: parseFloat(item.lat),
-    lng: parseFloat(item.lon),
-  }));
+  if (!payload.success) {
+    throw new Error(payload.message ?? "Unable to fetch place suggestions.");
+  }
+
+  return payload.data;
 }
 
 export async function reverseGeocode(
   lat: number,
   lng: number
 ): Promise<string> {
-  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  const url = new URL("/api/trip-input/current-location", window.location.origin);
   url.searchParams.set("lat", String(lat));
-  url.searchParams.set("lon", String(lng));
-  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("lng", String(lng));
 
-  const res = await fetch(url.toString(), {
-    headers: { "Accept-Language": "en" },
-  });
+  const res = await fetch(url.toString());
 
   if (!res.ok) return "Current location";
 
-  const data = await res.json();
-  return data.display_name ?? "Current location";
+  const payload = (await res.json()) as ApiResponse<PlaceResult>;
+
+  if (!payload.success) return "Current location";
+
+  return payload.data.label;
 }
