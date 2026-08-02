@@ -68,16 +68,67 @@ This link expires in 1 hour. If you did not request this, you can ignore this em
   }
 }
 
+async function sendEmailVerificationEmail({
+  email,
+  name,
+  url,
+}: {
+  email: string;
+  name: string;
+  url: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL ?? "NoboJatra <onboarding@resend.dev>";
+
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not set");
+  }
+
+  const safeName = escapeHtml(name || "there");
+  const safeUrl = escapeHtml(url);
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: email,
+      subject: "Verify your NoboJatra email",
+      html: `
+        <p>Hi ${safeName},</p>
+        <p>Please verify this email address for your NoboJatra account.</p>
+        <p><a href="${safeUrl}">Verify email</a></p>
+        <p>If you did not request this, you can ignore this email.</p>
+      `,
+      text: `Hi ${name || "there"},
+
+Please verify this email address for your NoboJatra account.
+
+Verify email: ${url}
+
+If you did not request this, you can ignore this email.`,
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Failed to send email verification email: ${details}`);
+  }
+}
+
 const uri = process.env.MONGODB_URI;
 if (!uri) {
   throw new Error("MONGODB_URI is not set — check .env.local and restart the dev server");
 }
 
-const client = new MongoClient(uri);
-const db = client.db();
+export const authMongoClient = new MongoClient(uri);
+export const authDb = authMongoClient.db();
 
 export const auth = betterAuth({
-  database: mongodbAdapter(db, { client }),
+  database: mongodbAdapter(authDb, { client: authMongoClient }),
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
@@ -89,6 +140,23 @@ export const auth = betterAuth({
         name: user.name,
         url,
       });
+    },
+  },
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendEmailVerificationEmail({
+        email: user.email,
+        name: user.name,
+        url,
+      });
+    },
+  },
+  user: {
+    changeEmail: {
+      enabled: true,
+    },
+    deleteUser: {
+      enabled: true,
     },
   },
   hooks: {
