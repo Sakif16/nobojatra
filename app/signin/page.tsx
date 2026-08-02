@@ -1,20 +1,30 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
-import { useState } from "react";
+import Link from "next/link";
+import { type FormEvent, useState } from "react";
+
+const LOGIN_ERROR_MESSAGE = "Invalid email or password.";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const { data, error } = await authClient.signIn.email({
+    setErrorMessage("");
+
+    const { error } = await authClient.signIn.email({
     email, // required
     password, // required
     rememberMe: true,
     callbackURL: "/dashboard",
 });
+
+    if (error) {
+      setErrorMessage(LOGIN_ERROR_MESSAGE);
+    }
     
   };
 
@@ -59,6 +69,11 @@ export default function SignInPage() {
               required
               className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
+            <div className="mt-2 text-right">
+              <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <button
@@ -67,13 +82,15 @@ export default function SignInPage() {
           >
             Sign In
           </button>
+
+          {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <a href="/signup" className="font-medium text-primary hover:underline">
+          <Link href="/signup" className="font-medium text-primary hover:underline">
             Sign up
-          </a>
+          </Link>
         </p>
       </div>
     </main>

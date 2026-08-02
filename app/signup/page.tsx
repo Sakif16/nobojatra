@@ -1,32 +1,38 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
-import { redirect, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useState } from "react";
+
+const PASSWORD_PATTERN = "(?=.*\\d).{8,}";
+const PASSWORD_REQUIREMENT_MESSAGE =
+  "Password must be at least 8 characters and include at least one number.";
 
 export default function SignUpPage() {
-  const router = useRouter()
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const { data, error } = await authClient.signUp.email({
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    await authClient.signUp.email({
         name, // user display name
         email, // user email address
-        password, // user password -> min 8 characters by default
+        password, // server requires min 8 characters and at least one number
         callbackURL: "/dashboard" // A URL to redirect to after the user verifies their email (optional)
     }, {
-        onRequest: (ctx) => {
-            //show loading
-        },
-        onSuccess: (ctx) => {
+        onSuccess: () => {
             //redirect to the dashboard or sign in page
             router.refresh();
-            // router.push('/dashboard')
-            redirect("/dashboard")
+            router.push("/dashboard");
         },
         onError: (ctx) => {
             // display the error message
@@ -96,6 +102,9 @@ export default function SignUpPage() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              pattern={PASSWORD_PATTERN}
+              title={PASSWORD_REQUIREMENT_MESSAGE}
               required
               className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />
@@ -115,6 +124,9 @@ export default function SignUpPage() {
               placeholder="••••••••"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={8}
+              pattern={PASSWORD_PATTERN}
+              title={PASSWORD_REQUIREMENT_MESSAGE}
               required
               className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/50"
             />

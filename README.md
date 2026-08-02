@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NoboJatra
 
-## Getting Started
+NoboJatra is a Next.js travel planner app with Better Auth, MongoDB, route/traffic APIs, and password reset emails through Resend.
 
-First, run the development server:
+## Setup
+
+Install dependencies, then run the dev server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+If package managers are not available but `node_modules` already exists:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+./node_modules/.bin/next dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open `http://localhost:3000`.
 
-## Learn More
+## Environment
 
-To learn more about Next.js, take a look at the following resources:
+Create/update `.env` with:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+MONGODB_URI=your_mongodb_connection_string
+BETTER_AUTH_SECRET=your_auth_secret
+BETTER_AUTH_URL=http://localhost:3000
+RESEND_API_KEY=your_resend_api_key
+RESEND_FROM_EMAIL=NoboJatra <your_verified_sender@yourdomain.com>
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`RESEND_FROM_EMAIL` must be a sender/domain verified in Resend. For quick Resend sandbox testing, `NoboJatra <onboarding@resend.dev>` can work only with Resend's allowed test-recipient rules.
 
-## Deploy on Vercel
+## Testing Password Reset Email
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Start the app:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm dev
+```
+
+If package managers are not available but `node_modules` exists:
+
+```bash
+./node_modules/.bin/next dev
+```
+
+2. Open `http://localhost:3000/forgot-password`.
+3. Enter the email of an existing account.
+4. Check the inbox for the Resend email.
+5. Open the reset link and set a new password.
+
+The reset link expires after 1 hour. New passwords must be at least 8 characters and include at least one number.
+
+## Auth Features
+
+- Email/password signup and signin
+- Server-side duplicate email error
+- Password rule: at least 8 characters and at least one number
+- Forgot password flow at `/forgot-password`
+- Reset password flow at `/reset-password`
+- One-hour reset tokens
+- Existing sessions are revoked after password reset
+
+## Checks
+
+```bash
+./node_modules/.bin/eslint
+./node_modules/.bin/next build
+```
