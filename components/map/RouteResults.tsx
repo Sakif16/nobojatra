@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { RouteResult } from "@/lib/routing";
+import { ROUTE_COLORS, type RouteResult } from "@/lib/routing";
 
 type Props = {
   routes: RouteResult[];
@@ -16,7 +16,7 @@ export default function RouteResults({ routes, activeRouteId, onSelect }: Props)
   const isMultiStop = activeRoute.legs.length > 1;
 
   return (
-    <div className="w-full max-w-md space-y-3">
+    <div className="w-full space-y-3">
       {!isMultiStop &&
         routes.map((route) => {
           const active = route.id === (activeRouteId ?? routes[0].id);
@@ -28,25 +28,25 @@ export default function RouteResults({ routes, activeRouteId, onSelect }: Props)
               className={cn(
                 "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors",
                 active
-                  ? "border-purple-500 bg-purple-50"
-                  : "border-gray-200 bg-white hover:bg-gray-50"
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-card hover:bg-muted"
               )}
             >
               <div className="flex items-center gap-3">
                 <span
-                  className="h-3 w-3 rounded-full"
-                  style={{ background: route.legs[0]?.color ?? "#9333ea" }}
+                  className="size-3 rounded-full"
+                  style={{ background: route.legs[0]?.color ?? ROUTE_COLORS[0] }}
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-800">
+                  <p className="text-sm font-medium text-foreground">
                     Route {route.rank}
                     {route.rank === 1 && (
-                      <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                      <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
                         Best
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     {route.distanceKm} km · {route.durationMin} min
                   </p>
                 </div>
@@ -56,15 +56,18 @@ export default function RouteResults({ routes, activeRouteId, onSelect }: Props)
         })}
 
       {isMultiStop && (
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="mb-2 text-sm font-medium text-gray-800">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="mb-2 text-sm font-medium text-foreground">
             {activeRoute.distanceKm} km · {activeRoute.durationMin} min total
           </p>
           <div className="space-y-1.5">
             {activeRoute.legs.map((leg, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-gray-600">
+              <div
+                key={i}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
                 <span
-                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  className="size-2.5 flex-shrink-0 rounded-full"
                   style={{ background: leg.color }}
                 />
                 <span>

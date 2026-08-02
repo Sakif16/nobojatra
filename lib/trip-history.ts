@@ -25,6 +25,60 @@ function serializeRoute(route: RouteResult) {
   };
 }
 
+export type RecentTrip = {
+  id: string;
+  originLabel: string;
+  destinationLabel: string;
+  stopCount: number;
+  passengerCount: number;
+  distanceKm: number | null;
+  durationMin: number | null;
+  departureMode: "now" | "scheduled";
+  scheduledAt: string | null;
+  createdAt: string;
+};
+
+type StoredLocation = { label?: unknown };
+
+function getLocationLabel(location: unknown) {
+  const label = (location as StoredLocation | null)?.label;
+  return typeof label === "string" && label.trim() ? label : "Unknown place";
+}
+
+/**
+ * Home-page summary. Returns plain serializable values because these cross the
+ * server/client boundary as props.
+ */
+export async function getHomeTripSummary(userId: string, limit = 3) {
+  await dbConnect();
+
+  const [records, upcomingCount] = await Promise.all([
+    TripHistory.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean(),
+    TripHistory.countDocuments({
+      userId,
+      departureMode: "scheduled",
+      scheduledAt: { $gt: new Date() },
+    }),
+  ]);
+
+  const recentTrips: RecentTrip[] = records.map((record) => ({
+    id: String(record._id),
+    originLabel: getLocationLabel(record.origin),
+    destinationLabel: getLocationLabel(record.destination),
+    stopCount: Array.isArray(record.stops) ? record.stops.length : 0,
+    passengerCount: record.passengerCount ?? 1,
+    distanceKm: record.distanceKm ?? null,
+    durationMin: record.durationMin ?? null,
+    departureMode: record.departureMode === "scheduled" ? "scheduled" : "now",
+    scheduledAt: record.scheduledAt
+      ? new Date(record.scheduledAt).toISOString()
+      : null,
+    createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
+  }));
+
+  return { recentTrips, upcomingCount };
+}
+
 export async function createTripHistoryRecord({
   userId,
   trip,

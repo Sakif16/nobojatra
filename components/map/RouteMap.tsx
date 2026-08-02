@@ -9,7 +9,12 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
-import type { LatLng, RouteResult } from "@/lib/routing";
+import {
+  INACTIVE_ROUTE_COLOR,
+  MARKER_COLOR,
+  type LatLng,
+  type RouteResult,
+} from "@/lib/routing";
 
 // Leaflet's default marker icons reference image files that don't resolve
 // correctly under Next.js bundling — we build our own numbered markers instead.
@@ -107,7 +112,11 @@ export default function RouteMap({
             <Polyline
               key={r.id}
               positions={r.coords}
-              pathOptions={{ color: "#9ca3af", weight: 4, opacity: 0.5 }}
+              pathOptions={{
+                color: INACTIVE_ROUTE_COLOR,
+                weight: 4,
+                opacity: 0.5,
+              }}
               eventHandlers={{
                 click: () => onSelectRoute?.(r.id),
               }}
@@ -124,18 +133,18 @@ export default function RouteMap({
 
       <Marker
         position={[origin.lat, origin.lng]}
-        icon={numberedIcon("A", "#16a34a")}
+        icon={numberedIcon("A", MARKER_COLOR)}
       />
       {stops.map((s, i) => (
         <Marker
           key={`stop-${i}`}
           position={[s.lat, s.lng]}
-          icon={numberedIcon(i + 1, "#9333ea")}
+          icon={numberedIcon(i + 1, MARKER_COLOR)}
         />
       ))}
       <Marker
         position={[destination.lat, destination.lng]}
-        icon={numberedIcon("B", "#dc2626")}
+        icon={numberedIcon("B", MARKER_COLOR)}
       />
 
       <FitBounds
