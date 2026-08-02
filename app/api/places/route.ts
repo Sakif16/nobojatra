@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Place from "@/models/Place";
+require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
 
 export async function POST(req: Request) {
   try {
