@@ -29,9 +29,12 @@ BETTER_AUTH_SECRET=your_auth_secret
 BETTER_AUTH_URL=http://localhost:3000
 RESEND_API_KEY=your_resend_api_key
 RESEND_FROM_EMAIL=NoboJatra <your_verified_sender@yourdomain.com>
+ORS_API_KEY=your_openrouteservice_api_key
 ```
 
 `RESEND_FROM_EMAIL` must be a sender/domain verified in Resend. For quick Resend sandbox testing, `NoboJatra <onboarding@resend.dev>` can work only with Resend's allowed test-recipient rules.
+
+`ORS_API_KEY` is used only by backend route APIs. Do not expose it as `NEXT_PUBLIC_ORS_API_KEY`.
 
 ## Testing Password Reset Email
 

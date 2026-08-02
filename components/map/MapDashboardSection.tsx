@@ -4,7 +4,40 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import RouteResults from "./RouteResults";
-import { fetchRoutes, type RouteResult, type LatLng } from "@/lib/routing";
+import {
+  fetchRoutes,
+  updateTripHistorySelectedRoute,
+  type RouteResult,
+  type LatLng,
+} from "@/lib/routing";
+import type {
+  TripValidationErrors,
+  ValidatedTripInput,
+} from "@/lib/trip-input";
+
+type TripValidationResponse =
+  | {
+      success: true;
+      data: ValidatedTripInput;
+    }
+  | {
+      success: false;
+      errors: TripValidationErrors;
+    };
+
+function getFirstValidationError(errors: TripValidationErrors) {
+  const firstStopError = errors.stops?.find(Boolean);
+
+  return (
+    errors.origin ??
+    errors.destination ??
+    firstStopError ??
+    errors.passengerCount ??
+    errors.departureMode ??
+    errors.scheduledAt ??
+    "Please check your trip details."
+  );
+}
 
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
@@ -21,28 +54,82 @@ export default function MapDashboardSection() {
   const [stops, setStops] = useState<LatLng[]>([]);
   const [routes, setRoutes] = useState<RouteResult[]>([]);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
+  const [tripHistoryId, setTripHistoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleRouteSelect(routeId: string) {
+    setActiveRouteId(routeId);
+
+    if (!tripHistoryId) return;
+
+    try {
+      await updateTripHistorySelectedRoute(tripHistoryId, routeId);
+    } catch (err) {
+      console.warn("Unable to update selected route:", err);
+    }
+  }
 
   async function handleSubmit(values: RouteFormValues) {
     setLoading(true);
     setError(null);
 
     try {
-      const originPt: LatLng = { lat: values.origin.lat, lng: values.origin.lng };
-      const destPt: LatLng = { lat: values.destination.lat, lng: values.destination.lng };
-      const stopPts: LatLng[] = values.stops.map((s) => ({ lat: s.lat, lng: s.lng }));
+      const validationResponse = await fetch("/api/trip-input/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: values.origin,
+          destination: values.destination,
+          stops: values.stops,
+          passengerCount: values.passengerCount,
+          departureMode: values.departureMode,
+          scheduledAt: values.scheduledAt,
+        }),
+      });
 
-      const results = await fetchRoutes(originPt, destPt, stopPts);
+      const validation =
+        (await validationResponse.json()) as TripValidationResponse;
+
+      if (!validationResponse.ok || !validation.success) {
+        throw new Error(
+          validation.success
+            ? "Please check your trip details."
+            : getFirstValidationError(validation.errors)
+        );
+      }
+
+      const originPt: LatLng = {
+        lat: validation.data.origin.lat,
+        lng: validation.data.origin.lng,
+      };
+      const destPt: LatLng = {
+        lat: validation.data.destination.lat,
+        lng: validation.data.destination.lng,
+      };
+      const stopPts: LatLng[] = validation.data.stops.map((s) => ({
+        lat: s.lat,
+        lng: s.lng,
+      }));
+
+      const result = await fetchRoutes(originPt, destPt, stopPts, {
+        passengerCount: validation.data.passengerCount,
+        departureMode: validation.data.departureMode,
+        scheduledAt: validation.data.scheduledAt ?? null,
+      });
 
       setOrigin(originPt);
       setDestination(destPt);
       setStops(stopPts);
-      setRoutes(results);
-      setActiveRouteId(results[0]?.id ?? null);
+      setRoutes(result.routes);
+      setTripHistoryId(result.tripHistoryId);
+      setActiveRouteId(result.routes[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to find routes");
       setRoutes([]);
+      setTripHistoryId(null);
     } finally {
       setLoading(false);
     }
@@ -90,7 +177,7 @@ export default function MapDashboardSection() {
           <RouteResults
             routes={routes}
             activeRouteId={activeRouteId}
-            onSelect={setActiveRouteId}
+            onSelect={handleRouteSelect}
           />
         )}
       </div>
@@ -112,7 +199,7 @@ export default function MapDashboardSection() {
             stops={stops}
             routes={routes}
             activeRouteId={activeRouteId}
-            onSelectRoute={setActiveRouteId}
+            onSelectRoute={handleRouteSelect}
           />
         </div>
       )}
