@@ -10,6 +10,7 @@ type Props = {
   onChange: (label: string) => void;
   onSelect: (place: PlaceResult) => void;
   className?: string;
+  icon?: React.ReactNode;
 };
 
 export default function PlaceAutocomplete({
@@ -18,6 +19,7 @@ export default function PlaceAutocomplete({
   onChange,
   onSelect,
   className,
+  icon,
 }: Props) {
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [open, setOpen] = useState(false);
@@ -76,6 +78,11 @@ export default function PlaceAutocomplete({
 
   return (
     <div ref={containerRef} className="relative w-full">
+      {icon ? (
+        <span className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted-foreground">
+          {icon}
+        </span>
+      ) : null}
       <input
         type="text"
         placeholder={placeholder}
@@ -83,17 +90,20 @@ export default function PlaceAutocomplete({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => results.length > 0 && setOpen(true)}
         className={cn(
-          "w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 placeholder:text-gray-400 outline-none focus:border-purple-400 focus:bg-white transition-colors",
+          "w-full rounded-xl border border-input bg-secondary/60 px-4 py-3 text-sm text-foreground transition-colors outline-none placeholder:text-muted-foreground focus:border-ring focus:bg-secondary",
+          icon && "pl-11",
           className
         )}
       />
       {open && (results.length > 0 || loading || error) && (
-        <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
           {loading && (
-            <div className="px-4 py-3 text-sm text-gray-400">Searching…</div>
+            <div className="px-4 py-3 text-sm text-muted-foreground">
+              Searching…
+            </div>
           )}
           {!loading && error && (
-            <div className="px-4 py-3 text-sm text-rose-500">{error}</div>
+            <div className="px-4 py-3 text-sm text-destructive">{error}</div>
           )}
           {!loading &&
             !error &&
@@ -105,7 +115,7 @@ export default function PlaceAutocomplete({
                   onSelect(place);
                   setOpen(false);
                 }}
-                className="block w-full truncate px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-purple-50"
+                className="block w-full truncate px-4 py-2.5 text-left text-sm text-popover-foreground transition-colors hover:bg-muted"
               >
                 {place.label}
               </button>

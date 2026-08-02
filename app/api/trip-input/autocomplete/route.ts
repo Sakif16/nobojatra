@@ -1,9 +1,22 @@
 import {
+  createRateLimiter,
+  getClientIp,
+  getRateLimitHeaders,
+} from "@/lib/rate-limit";
+import {
   MAX_AUTOCOMPLETE_RESULTS,
   MIN_AUTOCOMPLETE_QUERY_LENGTH,
   NOMINATIM_DHAKA_VIEWBOX,
 } from "@/lib/trip-input";
 import { NextRequest, NextResponse } from "next/server";
+
+// This endpoint is unauthenticated so the landing-page hero can offer place
+// search before signup, which makes it a public proxy to Nominatim. Nominatim's
+// usage policy caps us at roughly 1 request/second for the whole server, and
+// going over it gets our outbound IP blocked — hence a per-IP limit plus a
+// global ceiling that protects the upstream regardless of how many callers hit us.
+const checkIpRateLimit = createRateLimiter({ windowMs: 60_000, max: 30 });
+const checkGlobalRateLimit = createRateLimiter({ windowMs: 60_000, max: 60 });
 
 type NominatimSearchResult = {
   place_id: number;
@@ -30,6 +43,27 @@ export async function GET(req: NextRequest) {
       success: true,
       data: [],
     });
+  }
+
+  const now = Date.now();
+  const ipRateLimit = checkIpRateLimit(getClientIp(req), now);
+  const globalRateLimit = checkGlobalRateLimit("global", now);
+  const rateLimit = ipRateLimit.allowed ? globalRateLimit : ipRateLimit;
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Too many place searches. Please wait a moment and try again.",
+      },
+      {
+        status: 429,
+        headers: {
+          ...getRateLimitHeaders(ipRateLimit),
+          "Retry-After": String(rateLimit.retryAfter),
+        },
+      },
+    );
   }
 
   const { baseUrl, userAgent } = getNominatimConfig();
@@ -82,10 +116,13 @@ export async function GET(req: NextRequest) {
       })
       .filter((result) => result !== null);
 
-    return NextResponse.json({
-      success: true,
-      data,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data,
+      },
+      { headers: getRateLimitHeaders(ipRateLimit) },
+    );
   } catch (error) {
     console.error("Nominatim autocomplete failed:", error);
 

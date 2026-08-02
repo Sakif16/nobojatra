@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, MapPin, Minus, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, LocateFixed, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
@@ -21,6 +21,12 @@ type StopField = { label: string; place: PlaceResult | null };
 type Props = {
   onSubmit: (values: RouteFormValues) => void;
   loading?: boolean;
+  submitLabel?: string;
+  loadingLabel?: string;
+  /** Comes from the signed-in user's saved travel defaults. */
+  defaultPassengerCount?: number;
+  /** Replays a trip an anonymous visitor started before signing up. */
+  initialValues?: RouteFormValues | null;
 };
 
 const MIN_PASSENGERS = 1;
@@ -44,18 +50,41 @@ function formatDateTimeLocal(date: Date) {
   ].join("");
 }
 
-export default function RouteFinderForm({ onSubmit, loading }: Props) {
-  const [originLabel, setOriginLabel] = useState("");
-  const [origin, setOrigin] = useState<PlaceResult | null>(null);
+export default function RouteFinderForm({
+  onSubmit,
+  loading,
+  submitLabel = "Find Best Route",
+  loadingLabel = "Finding routes…",
+  defaultPassengerCount = 2,
+  initialValues,
+}: Props) {
+  const [originLabel, setOriginLabel] = useState(
+    initialValues?.origin.label ?? ""
+  );
+  const [origin, setOrigin] = useState<PlaceResult | null>(
+    initialValues?.origin ?? null
+  );
 
-  const [destinationLabel, setDestinationLabel] = useState("");
-  const [destination, setDestination] = useState<PlaceResult | null>(null);
+  const [destinationLabel, setDestinationLabel] = useState(
+    initialValues?.destination.label ?? ""
+  );
+  const [destination, setDestination] = useState<PlaceResult | null>(
+    initialValues?.destination ?? null
+  );
 
-  const [passengers, setPassengers] = useState(2);
-  const [mode, setMode] = useState<"now" | "schedule">("now");
-  const [scheduledTime, setScheduledTime] = useState("");
+  const [passengers, setPassengers] = useState(
+    initialValues?.passengerCount ?? defaultPassengerCount
+  );
+  const [mode, setMode] = useState<"now" | "schedule">(
+    initialValues?.departureMode === "scheduled" ? "schedule" : "now"
+  );
+  const [scheduledTime, setScheduledTime] = useState(
+    initialValues?.scheduledAt ?? ""
+  );
 
-  const [stops, setStops] = useState<StopField[]>([]);
+  const [stops, setStops] = useState<StopField[]>(
+    initialValues?.stops.map((place) => ({ label: place.label, place })) ?? []
+  );
   const [locating, setLocating] = useState(false);
   const [locationPrompt, setLocationPrompt] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -63,9 +92,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
   const [scheduleBounds] = useState(() => {
     const now = Date.now();
     const min = new Date(now + 60 * 1000);
-    const max = new Date(
-      now + SCHEDULE_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    );
+    const max = new Date(now + SCHEDULE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
     return {
       min: formatDateTimeLocal(min),
@@ -128,9 +155,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
 
   function selectStopPlace(index: number, place: PlaceResult) {
     setStops((s) =>
-      s.map((st, i) =>
-        i === index ? { ...st, place, label: place.label } : st
-      )
+      s.map((st, i) => (i === index ? { ...st, place, label: place.label } : st))
     );
   }
 
@@ -191,87 +216,101 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
   }
 
   return (
-    <div className="w-full max-w-md space-y-4">
-      <PlaceAutocomplete
-        placeholder="Origin - Search Place"
-        value={originLabel}
-        onChange={(v) => {
-          setFormError(null);
-          setOriginLabel(v);
-          setOrigin(null);
-        }}
-        onSelect={(place) => {
-          setOrigin(place);
-          setOriginLabel(place.label);
-        }}
-      />
+    <div className="w-full space-y-4">
+      {/* Origin and destination sit on a shared rail, echoing a dot-to-square
+          pickup/dropoff pair. */}
+      <div className="relative space-y-2">
+        <span
+          aria-hidden
+          className="absolute top-6 bottom-6 left-[21px] w-px bg-border"
+        />
+        <PlaceAutocomplete
+          placeholder="Enter location"
+          value={originLabel}
+          icon={
+            <span className="block size-2.5 rounded-full border-2 border-foreground" />
+          }
+          onChange={(v) => {
+            setFormError(null);
+            setOriginLabel(v);
+            setOrigin(null);
+          }}
+          onSelect={(place) => {
+            setOrigin(place);
+            setOriginLabel(place.label);
+          }}
+        />
 
-      <PlaceAutocomplete
-        placeholder="Destination - Search Place"
-        value={destinationLabel}
-        onChange={(v) => {
-          setFormError(null);
-          setDestinationLabel(v);
-          setDestination(null);
-        }}
-        onSelect={(place) => {
-          setDestination(place);
-          setDestinationLabel(place.label);
-        }}
-      />
+        <PlaceAutocomplete
+          placeholder="Enter destination"
+          value={destinationLabel}
+          icon={<span className="block size-2.5 bg-foreground" />}
+          onChange={(v) => {
+            setFormError(null);
+            setDestinationLabel(v);
+            setDestination(null);
+          }}
+          onSelect={(place) => {
+            setDestination(place);
+            setDestinationLabel(place.label);
+          }}
+        />
+      </div>
 
       <button
         type="button"
         onClick={useCurrentLocation}
         disabled={locating}
-        className="flex items-center gap-1.5 text-sm font-medium text-purple-600 hover:text-purple-700 disabled:opacity-50"
+        className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
       >
-        <MapPin size={15} />
-        {locating ? "Locating…" : "Use Current Location"}
+        <LocateFixed size={15} />
+        {locating ? "Locating…" : "Use current location"}
       </button>
       {locationPrompt && (
-        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <p className="rounded-xl bg-accent px-3 py-2 text-sm text-accent-foreground">
           {locationPrompt}
         </p>
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-600">Passengers</span>
+        <span className="text-sm text-muted-foreground">Passengers</span>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setPassengers((p) => Math.max(MIN_PASSENGERS, p - 1))}
             disabled={passengers <= MIN_PASSENGERS}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label="Remove a passenger"
+            className="flex size-7 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Minus size={14} />
           </button>
-          <span className="w-4 text-center text-sm font-medium text-gray-800">
+          <span className="w-4 text-center text-sm font-medium text-foreground">
             {passengers}
           </span>
           <button
             type="button"
             onClick={() => setPassengers((p) => Math.min(MAX_PASSENGERS, p + 1))}
             disabled={passengers >= MAX_PASSENGERS}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label="Add a passenger"
+            className="flex size-7 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Plus size={14} />
           </button>
         </div>
       </div>
 
-      <div className="flex overflow-hidden rounded-xl">
+      <div className="flex overflow-hidden rounded-xl border border-input">
         <button
           type="button"
           onClick={() => setMode("now")}
           className={cn(
             "flex-1 py-2.5 text-sm font-medium transition-colors",
             mode === "now"
-              ? "bg-purple-600 text-white"
-              : "bg-gray-200 text-gray-600"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary/60 text-muted-foreground hover:bg-secondary"
           )}
         >
-          Leave Now
+          Leave now
         </button>
         <button
           type="button"
@@ -282,8 +321,8 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           className={cn(
             "flex-1 py-2.5 text-sm font-medium transition-colors",
             mode === "schedule"
-              ? "bg-purple-600 text-white"
-              : "bg-gray-200 text-gray-600"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary/60 text-muted-foreground hover:bg-secondary"
           )}
         >
           Schedule
@@ -297,20 +336,20 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           onChange={(e) => setScheduledTime(e.target.value)}
           min={scheduleBounds.min}
           max={scheduleBounds.max}
-          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-purple-400"
+          className="w-full rounded-xl border border-input bg-secondary/60 px-4 py-2.5 text-sm text-foreground outline-none focus:border-ring"
         />
       )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-800">Stops</span>
+          <span className="text-sm font-semibold text-foreground">Stops</span>
           <button
             type="button"
             onClick={addStop}
             disabled={stops.length >= MAX_STOPS}
-            className="text-sm font-medium text-purple-600 hover:text-purple-700 disabled:cursor-not-allowed disabled:text-gray-400"
+            className="text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:cursor-not-allowed disabled:text-muted-foreground"
           >
-            + Add Stops ({stops.length}/{MAX_STOPS})
+            + Add stop ({stops.length}/{MAX_STOPS})
           </button>
         </div>
 
@@ -318,9 +357,9 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
           {stops.map((stop, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"
+              className="flex items-center gap-2 rounded-xl border border-input bg-secondary/40 px-3 py-2"
             >
-              <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-300 text-xs font-medium text-gray-600">
+              <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
                 {i + 1}
               </span>
               <div className="flex-1">
@@ -335,7 +374,8 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
               <button
                 type="button"
                 onClick={() => removeStop(i)}
-                className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+                aria-label={`Remove stop ${i + 1}`}
+                className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X size={16} />
               </button>
@@ -344,7 +384,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
                   type="button"
                   onClick={() => moveStop(i, -1)}
                   disabled={i === 0}
-                  className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                   aria-label={`Move stop ${i + 1} up`}
                 >
                   <ArrowUp size={14} />
@@ -353,7 +393,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
                   type="button"
                   onClick={() => moveStop(i, 1)}
                   disabled={i === stops.length - 1}
-                  className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                   aria-label={`Move stop ${i + 1} down`}
                 >
                   <ArrowDown size={14} />
@@ -365,7 +405,7 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
       </div>
 
       {formError && (
-        <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">
+        <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {formError}
         </p>
       )}
@@ -374,9 +414,9 @@ export default function RouteFinderForm({ onSubmit, loading }: Props) {
         type="button"
         onClick={handleSubmit}
         disabled={!canSubmit}
-        className="w-full rounded-xl bg-purple-700 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-purple-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {loading ? "Finding routes…" : "Find Best Route"}
+        {loading ? loadingLabel : submitLabel}
       </button>
     </div>
   );
