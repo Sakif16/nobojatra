@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, LocateFixed, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
+import { SERVICE_AREA_NAME, isInsideServiceArea } from "@/lib/trip-input";
 import { cn } from "@/lib/utils";
 
 export type RouteFormValues = {
@@ -113,6 +114,17 @@ export default function RouteFinderForm({
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
+
+        // Catch this here rather than at submit: it saves a reverse-geocode
+        // call and tells the user why their location was not accepted.
+        if (!isInsideServiceArea({ lat: latitude, lng: longitude })) {
+          setLocationPrompt(
+            `You appear to be outside ${SERVICE_AREA_NAME}. Routes are only planned inside ${SERVICE_AREA_NAME} — enter your origin manually.`
+          );
+          setLocating(false);
+          return;
+        }
+
         let label = "Current location";
 
         try {

@@ -48,6 +48,53 @@ const RouteSnapshotSchema = new Schema(
   { _id: false },
 );
 
+/**
+ * Snapshot of the vehicle the user picked, with the fare range as estimated at
+ * the time. Stored by value rather than by reference so a later change to the
+ * rate table never rewrites what someone was shown.
+ */
+const SelectedVehicleSchema = new Schema(
+  {
+    vehicleRateId: {
+      type: Schema.Types.ObjectId,
+      ref: "VehicleRate",
+    },
+    provider: {
+      type: String,
+      required: true,
+    },
+    vehicleType: {
+      type: String,
+      required: true,
+    },
+    displayName: {
+      type: String,
+      required: true,
+    },
+    maxPassengers: {
+      type: Number,
+      required: true,
+    },
+    estimatedFareLow: {
+      type: Number,
+      required: true,
+    },
+    estimatedFareHigh: {
+      type: Number,
+      required: true,
+    },
+    estimatedDurationMin: {
+      type: Number,
+      default: null,
+    },
+    currency: {
+      type: String,
+      default: "BDT",
+    },
+  },
+  { _id: false },
+);
+
 const TripHistorySchema = new Schema(
   {
     userId: {
@@ -92,6 +139,10 @@ const TripHistorySchema = new Schema(
     },
     selectedRoute: {
       type: RouteSnapshotSchema,
+      default: null,
+    },
+    selectedVehicle: {
+      type: SelectedVehicleSchema,
       default: null,
     },
     distanceKm: {
