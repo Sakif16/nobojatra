@@ -73,6 +73,10 @@ export default function MapDashboardSection({
   const [routes, setRoutes] = useState<RouteResult[]>([]);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [tripHistoryId, setTripHistoryId] = useState<string | null>(null);
+  const [historyMessage, setHistoryMessage] = useState<string | null>(null);
+  const [routeSaveStatus, setRouteSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoredTrip, setRestoredTrip] = useState<RouteFormValues | null>(null);
@@ -82,16 +86,23 @@ export default function MapDashboardSection({
 
     if (!tripHistoryId) return;
 
+    setHistoryMessage(null);
+    setRouteSaveStatus("saving");
+
     try {
       await updateTripHistorySelectedRoute(tripHistoryId, routeId);
+      setRouteSaveStatus("saved");
     } catch (err) {
       console.warn("Unable to update selected route:", err);
+      setRouteSaveStatus("error");
     }
   }
 
   async function findRoutes(values: RouteFormValues) {
     setLoading(true);
     setError(null);
+    setHistoryMessage(null);
+    setRouteSaveStatus("idle");
 
     try {
       const validationResponse = await fetch("/api/trip-input/validate", {
@@ -138,11 +149,16 @@ export default function MapDashboardSection({
       setStops(stopPts);
       setRoutes(result.routes);
       setTripHistoryId(result.tripHistoryId);
+      setHistoryMessage(
+        result.tripHistoryId ? "Saved to trip history" : null
+      );
       setActiveRouteId(result.routes[0]?.id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to find routes");
       setRoutes([]);
       setTripHistoryId(null);
+      setHistoryMessage(null);
+      setRouteSaveStatus("idle");
     } finally {
       setLoading(false);
     }
@@ -206,11 +222,19 @@ export default function MapDashboardSection({
           </p>
         )}
 
+        {loading && (
+          <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+            Finding route options...
+          </p>
+        )}
+
         {hasResults && (
           <RouteResults
             routes={routes}
             activeRouteId={activeRouteId}
             onSelect={handleRouteSelect}
+            savedMessage={historyMessage}
+            routeSaveStatus={routeSaveStatus}
           />
         )}
       </div>

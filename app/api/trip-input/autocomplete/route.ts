@@ -6,7 +6,7 @@ import {
 import {
   MAX_AUTOCOMPLETE_RESULTS,
   MIN_AUTOCOMPLETE_QUERY_LENGTH,
-  NOMINATIM_DHAKA_VIEWBOX,
+  NOMINATIM_SERVICE_AREA_VIEWBOX,
 } from "@/lib/trip-input";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("q", query);
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("limit", String(MAX_AUTOCOMPLETE_RESULTS));
-  url.searchParams.set("viewbox", NOMINATIM_DHAKA_VIEWBOX);
+  url.searchParams.set("viewbox", NOMINATIM_SERVICE_AREA_VIEWBOX);
   url.searchParams.set("bounded", "1");
 
   try {

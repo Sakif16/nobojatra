@@ -1,15 +1,41 @@
-export const DHAKA_BOUNDS = {
-  west: 90.3,
-  south: 23.65,
-  east: 90.55,
-  north: 23.9,
+/**
+ * The service area: a bounding box covering all 13 districts of Dhaka Division
+ * — Dhaka, Gazipur, Kishoreganj, Manikganj, Munshiganj, Narayanganj, Narsingdi,
+ * Tangail, Faridpur, Gopalganj, Madaripur, Rajbari and Shariatpur.
+ *
+ * This one box drives three things: the Nominatim `viewbox` that restricts
+ * autocomplete results, the server-side check in validateTripInput, and the
+ * client-side guard on "Use Current Location". Changing it moves all three.
+ *
+ * It is deliberately a rectangle, not the division's true outline. Nominatim's
+ * viewbox only accepts a rectangle, and validating against a tighter polygon
+ * would let someone pick a suggestion that then failed to validate.
+ *
+ * Some spill into neighbouring divisions is unavoidable: Tangail reaches as far
+ * north as Mymensingh city, and Gopalganj as far south and west as Khulna, so
+ * no rectangle containing the division can exclude them. Mymensingh, Comilla,
+ * Brahmanbaria, Chandpur, Khulna, Magura and Narail all fall inside. Erring
+ * wide keeps autocomplete and validation consistent and never blocks a genuine
+ * in-division trip. Swap in a point-in-polygon test if that becomes a problem.
+ */
+export const SERVICE_AREA_BOUNDS = {
+  west: 89.3,
+  south: 22.8,
+  east: 91.2,
+  north: 24.8,
 } as const;
 
-export const NOMINATIM_DHAKA_VIEWBOX = [
-  DHAKA_BOUNDS.west,
-  DHAKA_BOUNDS.north,
-  DHAKA_BOUNDS.east,
-  DHAKA_BOUNDS.south,
+export const SERVICE_AREA_NAME = "Dhaka Division";
+
+export function outsideServiceAreaMessage(field: string) {
+  return `${field} must be inside the ${SERVICE_AREA_NAME} service area.`;
+}
+
+export const NOMINATIM_SERVICE_AREA_VIEWBOX = [
+  SERVICE_AREA_BOUNDS.west,
+  SERVICE_AREA_BOUNDS.north,
+  SERVICE_AREA_BOUNDS.east,
+  SERVICE_AREA_BOUNDS.south,
 ].join(",");
 
 export const MIN_AUTOCOMPLETE_QUERY_LENGTH = 2;
@@ -80,12 +106,14 @@ export function isValidLongitude(value: unknown) {
   return lng !== null && lng >= -180 && lng <= 180;
 }
 
-export function isInsideDhakaBounds(location: Pick<TripLocation, "lat" | "lng">) {
+export function isInsideServiceArea(
+  location: Pick<TripLocation, "lat" | "lng">,
+) {
   return (
-    location.lat >= DHAKA_BOUNDS.south &&
-    location.lat <= DHAKA_BOUNDS.north &&
-    location.lng >= DHAKA_BOUNDS.west &&
-    location.lng <= DHAKA_BOUNDS.east
+    location.lat >= SERVICE_AREA_BOUNDS.south &&
+    location.lat <= SERVICE_AREA_BOUNDS.north &&
+    location.lng >= SERVICE_AREA_BOUNDS.west &&
+    location.lng <= SERVICE_AREA_BOUNDS.east
   );
 }
 
@@ -146,10 +174,14 @@ export function validateTripInput(
 
   if (!origin) {
     errors.origin = "Origin is required.";
+  } else if (!isInsideServiceArea(origin)) {
+    errors.origin = outsideServiceAreaMessage("Origin");
   }
 
   if (!destination) {
     errors.destination = "Destination is required.";
+  } else if (!isInsideServiceArea(destination)) {
+    errors.destination = outsideServiceAreaMessage("Destination");
   }
 
   const stopsInput = Array.isArray(payload.stops) ? payload.stops : [];
@@ -163,6 +195,8 @@ export function validateTripInput(
     const normalizedStop = normalizeTripLocation(stop);
     if (!normalizedStop) {
       stopErrors[index] = "Stop is required.";
+    } else if (!isInsideServiceArea(normalizedStop)) {
+      stopErrors[index] = outsideServiceAreaMessage(`Stop ${index + 1}`);
     }
     return normalizedStop;
   });
@@ -210,7 +244,9 @@ export function validateTripInput(
 
   let distanceMeters = 0;
 
-  if (origin && destination) {
+  // Skip when either endpoint already failed, so a "same place" or "too short"
+  // message cannot overwrite the more specific service-area one.
+  if (origin && destination && !errors.origin && !errors.destination) {
     distanceMeters = calculateDistanceMeters(origin, destination);
 
     if (distanceMeters === 0) {
