@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
 import { getHomeTripSummary } from "@/lib/trip-history";
 import UserProfile from "@/models/UserProfile";
-// require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
+// require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]); // DNS fix for saki
 
 // One URL, two states: a marketing hero for visitors, the planner for members.
 export default async function Home() {
