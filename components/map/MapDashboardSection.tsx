@@ -80,6 +80,7 @@ export default function MapDashboardSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoredTrip, setRestoredTrip] = useState<RouteFormValues | null>(null);
+  const [passengerCount, setPassengerCount] = useState(defaultPassengerCount ?? 1);
 
   async function handleRouteSelect(routeId: string) {
     setActiveRouteId(routeId);
@@ -103,6 +104,7 @@ export default function MapDashboardSection({
     setError(null);
     setHistoryMessage(null);
     setRouteSaveStatus("idle");
+    setPassengerCount(values.passengerCount ?? 1);
 
     try {
       const validationResponse = await fetch("/api/trip-input/validate", {
@@ -131,9 +133,6 @@ export default function MapDashboardSection({
         );
       }
 
-      // Pass the validated locations through whole. Dropping the labels here
-      // makes the routes endpoint reject the trip, and leaves trip history with
-      // no place names to display.
       const originPt = validation.data.origin;
       const destPt = validation.data.destination;
       const stopPts = validation.data.stops;
@@ -174,16 +173,12 @@ export default function MapDashboardSection({
     void findRoutes(values);
   }
 
-  // Replay a trip started before signup. Reading also clears it, so a refresh
-  // does not re-run the search.
   useEffect(() => {
     if (variant !== "authed") return;
 
     const pending = takePendingTrip();
     if (!pending) return;
 
-    // The trip lives in sessionStorage, which the server render cannot see, so
-    // the form is filled and the search kicked off in an async continuation.
     void (async () => {
       setRestoredTrip(pending);
       await findRoutes(pending);
@@ -191,6 +186,22 @@ export default function MapDashboardSection({
   }, [variant]);
 
   const hasResults = origin !== null && destination !== null && routes.length > 0;
+
+  // Use the active route for fare params, falling back to the first route.
+  const fareRoute =
+    routes.find((r) => r.id === activeRouteId) ?? routes[0] ?? null;
+
+  function handleViewFares() {
+    if (!fareRoute || !origin || !destination) return;
+    const params = new URLSearchParams({
+      distance: fareRoute.distanceKm.toFixed(2),
+      duration: Math.round(fareRoute.durationMin).toString(),
+      passengers: passengerCount.toString(),
+      from: origin.label,
+      to: destination.label,
+    });
+    router.push(`/fares?${params.toString()}`);
+  }
 
   return (
     <div
@@ -229,13 +240,23 @@ export default function MapDashboardSection({
         )}
 
         {hasResults && (
-          <RouteResults
-            routes={routes}
-            activeRouteId={activeRouteId}
-            onSelect={handleRouteSelect}
-            savedMessage={historyMessage}
-            routeSaveStatus={routeSaveStatus}
-          />
+          <>
+            <RouteResults
+              routes={routes}
+              activeRouteId={activeRouteId}
+              onSelect={handleRouteSelect}
+              savedMessage={historyMessage}
+              routeSaveStatus={routeSaveStatus}
+            />
+
+            {/* Fare estimation — wired to the currently selected route */}
+            <button
+              onClick={handleViewFares}
+              className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 active:bg-violet-800"
+            >
+              View fare estimates →
+            </button>
+          </>
         )}
       </div>
 
