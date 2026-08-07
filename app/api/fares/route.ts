@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     let fareEstimate
 
-    // Use Pathao API for Pathao vehicles, hardcoded formula for others
+    // Using Pathao API for Pathao vehicles, hardcoded formula for others
     if (rate.provider === 'pathao') {
       const vehicle = rate.vehicleType === 'bike' ? 'bike' : 'car'
       const mid = await getPathaоEstimate(vehicle, distanceKm, durationMin)

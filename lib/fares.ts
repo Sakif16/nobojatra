@@ -1,18 +1,9 @@
 export const FARE_CURRENCY = "BDT";
 export const FARE_CURRENCY_SYMBOL = "৳";
 
-/**
- * These are estimates, never quotes. Providers price dynamically — surge,
- * promotions, tolls, waiting time — and none of that is visible to us, so a
- * single number would imply a precision we do not have.
- *
- * The band is deliberately asymmetric: real fares rarely land below the meter
- * rate, but congestion and surge push the top out a long way.
- */
 export const FARE_ESTIMATE_LOWER_MULTIPLIER = 0.9;
 export const FARE_ESTIMATE_UPPER_MULTIPLIER = 1.3;
 
-/** Fares are quoted in whole taka; rounding to 5 avoids false precision. */
 const FARE_ROUNDING_STEP = 5;
 
 export type VehicleRateInput = {
@@ -36,11 +27,6 @@ function roundToStep(value: number) {
   );
 }
 
-/**
- * Duration for a specific vehicle. The routing service only ever returns a
- * driving-car time, so each vehicle scales it — otherwise every option would
- * show the same ETA and a "fastest" sort would be meaningless.
- */
 export function estimateDurationMin(
   drivingDurationMin: number,
   speedFactor = 1,

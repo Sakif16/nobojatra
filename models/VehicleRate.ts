@@ -9,8 +9,6 @@ export const VEHICLE_TYPES = [
   'bike',
   'car',
   'auto',
-  // Eight-seat class (microbus / XL), so groups larger than a sedan can carry
-  // still get an estimate instead of an all-disabled list.
   'xl',
 ] as const
 
@@ -27,11 +25,7 @@ export interface IVehicleRate extends Document {
   minimumFare: number
   maxPassengers: number
   comfortScore: number // 1–5
-  /**
-   * Multiplier applied to the driving-car duration returned by the routing
-   * service. A bike filters through congestion (< 1), a CNG is slower (> 1).
-   * Approximate by nature — it exists so a "fastest" sort means something.
-   */
+
   speedFactor: number
   isActive: boolean
 }
