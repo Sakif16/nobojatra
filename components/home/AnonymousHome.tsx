@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarClock, MapPinned, Route } from "lucide-react";
 import MapDashboardSection from "@/components/map/MapDashboardSection";
+import { buttonVariants } from "@/components/ui/button";
 
 const features = [
   {
@@ -20,10 +21,10 @@ const features = [
   },
 ];
 
+// Fare comparison shipped — it lives on /fares now, so it is no longer "on the way".
 const upcoming = [
   "Live congestion levels",
   "Peak-hour insights",
-  "Uber, Pathao & CNG fare comparison",
   "Saved places",
 ];
 
@@ -71,13 +72,13 @@ export default function AnonymousHome() {
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Link
                     href="/signup"
-                    className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    className={buttonVariants({ size: "md" })}
                   >
                     Create account
                   </Link>
                   <Link
                     href="/signin"
-                    className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                    className={buttonVariants({ variant: "outline", size: "md" })}
                   >
                     Sign in
                   </Link>
@@ -115,7 +116,7 @@ export default function AnonymousHome() {
         </p>
         <Link
           href="/signup"
-          className="mt-6 inline-block rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          className={buttonVariants({ size: "md", className: "mt-6 px-6" })}
         >
           Create your account
         </Link>

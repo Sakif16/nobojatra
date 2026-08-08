@@ -4,6 +4,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import TextField from "@/components/auth/TextField";
+import { buttonVariants } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { isValidEmail } from "@/lib/password";
 
@@ -95,7 +96,7 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+          className={buttonVariants({ size: "form" })}
         >
           {isSubmitting ? (
             <>

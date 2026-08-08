@@ -6,6 +6,7 @@ import PlaceAutocomplete from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
 import { SERVICE_AREA_NAME, isInsideServiceArea } from "@/lib/trip-input";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type RouteFormValues = {
@@ -426,7 +427,7 @@ export default function RouteFinderForm({
         type="button"
         onClick={handleSubmit}
         disabled={!canSubmit}
-        className="w-full rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        className={buttonVariants({ size: "form" })}
       >
         {loading ? loadingLabel : submitLabel}
       </button>
