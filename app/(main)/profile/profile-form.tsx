@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
+import { buttonVariants } from "@/components/ui/button";
+import { fieldClassName } from "@/components/ui/field-styles";
 
 type TravelPriority = "time" | "cost" | "comfort";
 
@@ -106,13 +108,13 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Profile</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Profile</h1>
         <p className="mt-2 text-sm text-muted-foreground">Manage your account and travel defaults.</p>
       </div>
 
-      <form onSubmit={handleSave} className="rounded-lg border border-border bg-card p-6 shadow-sm">
+      <form onSubmit={handleSave} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <label htmlFor="name" className="mb-2 block text-sm font-medium">
@@ -124,7 +126,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
-              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/50"
+              className={fieldClassName()}
             />
           </div>
 
@@ -138,7 +140,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
-              className="w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/50"
+              className={fieldClassName()}
             />
             <p className="mt-2 text-xs text-muted-foreground">
               Status: {initialUser.emailVerified ? "Verified" : "Not verified"}
@@ -149,11 +151,12 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <div>
             <span className="mb-2 block text-sm font-medium">Default Travel Priority</span>
-            <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-input">
+            {/* Same segmented-control shape as the trip form's Leave now / Schedule toggle. */}
+            <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-input">
               {travelPriorities.map((priority) => (
                 <label
                   key={priority.value}
-                  className="flex h-10 cursor-pointer items-center justify-center border-r border-input text-sm last:border-r-0 has-[:checked]:bg-primary has-[:checked]:text-primary-foreground"
+                  className="flex h-11 cursor-pointer items-center justify-center bg-secondary/60 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground"
                 >
                   <input
                     type="radio"
@@ -177,7 +180,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               id="passengers"
               value={defaultPassengerCount}
               onChange={(event) => setDefaultPassengerCount(Number(event.target.value))}
-              className="h-10 w-full rounded-lg border border-input bg-background px-4 outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/50"
+              className={fieldClassName(false, "h-11 py-0")}
             >
               {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
                 <option key={count} value={count}>
@@ -188,7 +191,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </div>
         </div>
 
-        <div className="mt-6 rounded-lg border border-border bg-background p-4">
+        <div className="mt-6 rounded-xl border border-border bg-background p-4">
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Account Created</dt>
@@ -208,14 +211,14 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           <button
             type="submit"
             disabled={isSaving}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className={buttonVariants({ size: "md" })}
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
         </div>
       </form>
 
-      <section className="rounded-lg border border-destructive/40 bg-card p-6">
+      <section className="rounded-2xl border border-destructive/40 bg-card p-6">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Delete Account</h2>
@@ -226,7 +229,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           <button
             type="button"
             onClick={() => setIsDeleteOpen(true)}
-            className="rounded-lg bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/20"
+            className={buttonVariants({ variant: "destructive", size: "md" })}
           >
             Delete Account
           </button>
@@ -235,7 +238,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
 
       {isDeleteOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
             <h2 className="text-xl font-semibold text-foreground">Confirm Deletion</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Type DELETE to permanently remove your account and related data.
@@ -243,7 +246,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
             <input
               value={deleteConfirmation}
               onChange={(event) => setDeleteConfirmation(event.target.value)}
-              className="mt-5 w-full rounded-lg border border-input bg-background px-4 py-2 outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/50"
+              className={fieldClassName(false, "mt-5")}
             />
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -252,7 +255,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
                   setIsDeleteOpen(false);
                   setDeleteConfirmation("");
                 }}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted"
+                className={buttonVariants({ variant: "outline", size: "md" })}
               >
                 Cancel
               </button>
@@ -260,7 +263,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={deleteConfirmation !== "DELETE" || isDeleting}
-                className="rounded-lg bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className={buttonVariants({ variant: "destructive", size: "md" })}
               >
                 {isDeleting ? "Deleting..." : "Delete"}
               </button>

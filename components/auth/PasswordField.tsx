@@ -2,7 +2,7 @@
 
 import { Eye, EyeOff } from "lucide-react";
 import { useId, useState, type KeyboardEvent } from "react";
-import { fieldClassName } from "./field-styles";
+import { fieldClassName } from "@/components/ui/field-styles";
 
 type Props = {
   id: string;

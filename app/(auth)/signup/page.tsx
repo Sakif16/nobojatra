@@ -7,6 +7,7 @@ import { type FormEvent, useState } from "react";
 import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import TextField from "@/components/auth/TextField";
+import { buttonVariants } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import {
   PASSWORD_REQUIREMENT_MESSAGE,
@@ -186,7 +187,7 @@ export default function SignUpPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+          className={buttonVariants({ size: "form" })}
         >
           {isSubmitting ? (
             <>

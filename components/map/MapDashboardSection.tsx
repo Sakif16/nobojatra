@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import RouteResults from "./RouteResults";
+import { buttonVariants } from "@/components/ui/button";
 import {
   fetchRoutes,
   updateTripHistorySelectedRoute,
@@ -55,7 +57,7 @@ function getFirstValidationError(errors: TripValidationErrors) {
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-[24px] bg-muted text-sm text-muted-foreground">
+    <div className="flex h-full w-full items-center justify-center rounded-3xl bg-muted text-sm text-muted-foreground">
       Loading map…
     </div>
   ),
@@ -249,12 +251,19 @@ export default function MapDashboardSection({
               routeSaveStatus={routeSaveStatus}
             />
 
-            {/* Fare estimation — wired to the currently selected route */}
+            {/* Fare estimation — wired to the currently selected route. Outlined
+                rather than solid so it does not compete with the form's primary
+                submit sitting directly above it. */}
             <button
+              type="button"
               onClick={handleViewFares}
-              className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 active:bg-violet-800"
+              className={buttonVariants({
+                variant: "outline_primary",
+                size: "form",
+              })}
             >
-              View fare estimates →
+              View fare estimates
+              <ArrowRight />
             </button>
           </>
         )}

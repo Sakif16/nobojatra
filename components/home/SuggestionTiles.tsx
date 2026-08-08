@@ -16,9 +16,8 @@ type Suggestion = {
   soon?: boolean;
 };
 
-// Only the first three map to something that actually works today. The rest are
-// modelled in the database but have no UI yet, so they carry a "Soon" badge
-// rather than pretending to be live.
+// Everything here works today except the ones carrying a "Soon" badge, which are
+// modelled in the database but have no UI yet.
 const suggestions: Suggestion[] = [
   {
     label: "Multi-stop",
@@ -48,10 +47,11 @@ const suggestions: Suggestion[] = [
     soon: true,
   },
   {
+    // Live now, but /fares needs a route's distance and duration, so this stays
+    // a descriptive tile rather than a link that would bounce straight back.
     label: "Fare compare",
-    description: "Uber, Pathao and CNG estimates",
+    description: "Uber, Pathao and CNG estimates once you pick a route",
     icon: <Wallet className="size-6" />,
-    soon: true,
   },
 ];
 

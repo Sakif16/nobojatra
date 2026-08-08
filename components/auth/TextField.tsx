@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { fieldClassName } from "./field-styles";
+import { fieldClassName } from "@/components/ui/field-styles";
 
 type Props = {
   id: string;

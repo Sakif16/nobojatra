@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
+import { buttonVariants } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_REQUIREMENT_MESSAGE, isPasswordValid } from "@/lib/password";
 
@@ -146,7 +147,7 @@ export default function ResetPasswordForm({
         <button
           type="submit"
           disabled={isSubmitting || isDisabled}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className={buttonVariants({ size: "form" })}
         >
           {isSubmitting ? (
             <>

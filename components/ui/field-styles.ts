@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Shared input shape for the auth forms. Matches the trip form's inputs
- * (rounded-xl, secondary fill, generous padding) so the auth flow and the
- * product surface read as one design rather than two.
+ * The one input shape in the app — auth forms, the trip form and profile all
+ * use it (rounded-xl, secondary fill, generous padding) so every surface reads
+ * as one design rather than several. Its 44px height matches the `form` button
+ * size in ./button so submits line up with the fields above them.
  */
 export function fieldClassName(hasError?: boolean, extra?: string) {
   return cn(

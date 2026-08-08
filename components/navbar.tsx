@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "./ui/button";
+import { buttonVariants } from "./ui/button";
 import Logout from "./logout";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -17,12 +17,20 @@ export default async function Navbar() {
             NoboJatra
           </Link>
           <div className="flex items-center gap-3">
-            <Button variant="custom_secondary">
-              <Link href="/signin">Sign In</Link>
-            </Button>
-            <Button variant="custom_primary">
-              <Link href="/signup">Sign Up</Link>
-            </Button>
+            {/* buttonVariants on the Link itself: an <a> inside a <button> is
+                invalid nesting, and it leaves the padding outside the hit area. */}
+            <Link
+              href="/signin"
+              className={buttonVariants({ variant: "outline_primary", size: "md" })}
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/signup"
+              className={buttonVariants({ size: "md" })}
+            >
+              Sign Up
+            </Link>
           </div>
         </div>
       </header>
