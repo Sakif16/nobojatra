@@ -16,16 +16,7 @@ export type RouteResult = {
   legs: RouteLeg[];
 };
 
-/**
- * Route and leg colors. These have to work on two very different surfaces —
- * drawn as polylines over light OpenStreetMap tiles, and as small legend dots
- * on the dark card background — so they sit at a mid lightness rather than
- * tracking the theme tokens, which are tuned for one surface each.
- *
- * Amber leads because it echoes the theme's primary; the rest are spaced far
- * enough apart in hue to stay tellable apart at 5px on a busy map. Indexes 3
- * and 4 only appear on trips with four or more legs.
- */
+
 export const ROUTE_COLORS = [
   "#d97706", // amber
   "#0d9488", // teal
@@ -34,18 +25,34 @@ export const ROUTE_COLORS = [
   "#65a30d", // lime
 ];
 
-/**
- * Waypoint markers stay monochrome so the color channel belongs to the routes
- * alone. Position is carried by the label instead: A, numbered stops, then B.
- */
+
 export const MARKER_COLOR = "#1c1917";
 
-/** Non-selected alternatives, faded back behind the active route. */
+
 export const INACTIVE_ROUTE_COLOR = "#9ca3af";
 
 export type FetchRoutesResult = {
   routes: RouteResult[];
   tripHistoryId: string | null;
+};
+
+export type TrafficPoint = { lat: number; lng: number };
+export type TrafficLevel = "low" | "moderate" | "high" | "severe";
+export type TrafficLegResult = {
+  legIndex: number;
+  distanceMeters: number;
+  durationInTrafficSec: number;
+  baselineDurationSec: number;
+  congestionIndexPercent: number;
+  congestionLevel: TrafficLevel;
+};
+export type TripTrafficResult = {
+  departureTime: string;
+  isPeakHour: boolean;
+  legs: TrafficLegResult[];
+  totals: Omit<TrafficLegResult, "legIndex" | "distanceMeters"> & {
+    distanceMeters: number;
+  };
 };
 
 type RoutesApiResponse =
@@ -70,17 +77,44 @@ type FetchRoutesOptions = {
   scheduledAt?: string | null;
 };
 
-/**
- * The routes endpoint re-validates the trip server-side and stores it in trip
- * history, both of which require a label — so a bare lat/lng pair is rejected.
- */
+export async function fetchTripTraffic(
+  origin: TrafficPoint,
+  destination: TrafficPoint,
+  stops: TrafficPoint[] = [],
+  options: FetchRoutesOptions = {}
+): Promise<TripTrafficResult> {
+  const response = await fetch("/api/traffic/live", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      origin,
+      destination,
+      stops,
+      departureMode: options.departureMode ?? "now",
+      scheduledAt: options.scheduledAt ?? null,
+    }),
+  });
+  const payload = (await response.json()) as
+    | { success: true; data: TripTrafficResult }
+    | { success: false; message?: string };
+
+  if (!response.ok || !payload.success) {
+    throw new Error(
+      payload.success ? "Unable to fetch live traffic." : payload.message
+    );
+  }
+
+  return payload.data;
+}
+
+
 export type RoutePoint = {
   lat: number;
   lng: number;
   label: string;
 };
 
-/** Pulls the real reason out of a failed response instead of a generic string. */
+
 function getRoutesErrorMessage(payload: RoutesApiResponse) {
   if (payload.success) return "Unable to find routes.";
   if (payload.message) return payload.message;
