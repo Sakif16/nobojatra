@@ -30,11 +30,17 @@ BETTER_AUTH_URL=http://localhost:3000
 RESEND_API_KEY=your_resend_api_key
 RESEND_FROM_EMAIL=NoboJatra <your_verified_sender@yourdomain.com>
 ORS_API_KEY=your_openrouteservice_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+OPENWEATHER_BASE_URL=https://api.openweathermap.org/data/2.5
 ```
 
 `RESEND_FROM_EMAIL` must be a sender/domain verified in Resend. For quick Resend sandbox testing, `NoboJatra <onboarding@resend.dev>` can work only with Resend's allowed test-recipient rules.
 
 `ORS_API_KEY` is used only by backend route APIs. Do not expose it as `NEXT_PUBLIC_ORS_API_KEY`.
+
+`OPENWEATHER_API_KEY` is used only by backend weather/fare APIs. Do not expose it as `NEXT_PUBLIC_OPENWEATHER_API_KEY`.
+
+Weather data is an enhancement for fare restrictions. If OpenWeatherMap is unavailable or the key is missing, fare estimates should still render without weather restrictions.
 
 ## Testing Password Reset Email
 

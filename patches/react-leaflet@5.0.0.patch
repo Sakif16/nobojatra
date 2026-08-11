@@ -1,0 +1,27 @@
+diff --git a/lib/MapContainer.js b/lib/MapContainer.js
+index d19208dd3a60f9d001a71c32c858346914a7a196..a59ec6d1b92d08c63fdf865427e8800f3a245dcb 100644
+--- a/lib/MapContainer.js
++++ b/lib/MapContainer.js
+@@ -30,7 +30,21 @@ function MapContainerComponent({ bounds, boundsOptions, center, children, classN
+     }, []);
+     useEffect(()=>{
+         return ()=>{
+-            context?.map.remove();
++            const map = context?.map;
++            if (map == null) return;
++            // PATCH: React Strict Mode's remount simulation (and Fast Refresh)
++            // run this cleanup while leaving the container in the document and
++            // this component's refs intact. Destroying the map there strands
++            // `mapInstanceRef`, which is never cleared — so the ref callback
++            // above refuses to build a replacement for the re-attached node and
++            // the children add their layers to a removed map, crashing in
++            // TileLayer.onAdd with "cannot read properties of undefined
++            // (reading 'appendChild')". Dispose only once the container is
++            // genuinely detached, which is the case on a real unmount because
++            // React removes host nodes before running passive cleanups.
++            if (map.getContainer()?.isConnected) return;
++            map.remove();
++            mapInstanceRef.current = undefined;
+         };
+     }, [
+         context

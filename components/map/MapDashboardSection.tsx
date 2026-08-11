@@ -82,7 +82,6 @@ export default function MapDashboardSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoredTrip, setRestoredTrip] = useState<RouteFormValues | null>(null);
-  const [passengerCount, setPassengerCount] = useState(defaultPassengerCount ?? 1);
 
   async function handleRouteSelect(routeId: string) {
     setActiveRouteId(routeId);
@@ -106,7 +105,6 @@ export default function MapDashboardSection({
     setError(null);
     setHistoryMessage(null);
     setRouteSaveStatus("idle");
-    setPassengerCount(values.passengerCount ?? 1);
 
     try {
       const validationResponse = await fetch("/api/trip-input/validate", {
@@ -194,13 +192,10 @@ export default function MapDashboardSection({
     routes.find((r) => r.id === activeRouteId) ?? routes[0] ?? null;
 
   function handleViewFares() {
-    if (!fareRoute || !origin || !destination) return;
+    if (!fareRoute || !tripHistoryId) return;
     const params = new URLSearchParams({
-      distance: fareRoute.distanceKm.toFixed(2),
-      duration: Math.round(fareRoute.durationMin).toString(),
-      passengers: passengerCount.toString(),
-      from: origin.label,
-      to: destination.label,
+      tripHistoryId,
+      routeId: fareRoute.id,
     });
     router.push(`/fares?${params.toString()}`);
   }

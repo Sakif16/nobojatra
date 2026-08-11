@@ -6,3 +6,5 @@ ignoredBuiltDependencies:
   - unrs-resolver
 minimumReleaseAgeExclude:
   - '@types/leaflet@1.9.22'
+patchedDependencies:
+  react-leaflet@5.0.0: patches/react-leaflet@5.0.0.patch

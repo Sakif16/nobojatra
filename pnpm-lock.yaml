@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-leaflet@5.0.0: 789bac0df4c76196e93c9ecb70da0109a93920c846f099828d699a2a93a3dc1f
+
 importers:
 
   .:
@@ -46,7 +49,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       react-leaflet:
         specifier: ^5.0.0
-        version: 5.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 5.0.0(patch_hash=789bac0df4c76196e93c9ecb70da0109a93920c846f099828d699a2a93a3dc1f)(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       shadcn:
         specifier: ^4.13.0
         version: 4.16.1(supports-color@7.2.0)(typescript@5.9.3)
@@ -5852,7 +5855,7 @@ snapshots:
 
   react-is@16.13.1: {}
 
-  react-leaflet@5.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  react-leaflet@5.0.0(patch_hash=789bac0df4c76196e93c9ecb70da0109a93920c846f099828d699a2a93a3dc1f)(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@react-leaflet/core': 3.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       leaflet: 1.9.4
