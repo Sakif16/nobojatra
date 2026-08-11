@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -9,8 +9,10 @@ import RouteResults from "./RouteResults";
 import { buttonVariants } from "@/components/ui/button";
 import {
   fetchRoutes,
+  fetchTripTraffic,
   updateTripHistorySelectedRoute,
   type RouteResult,
+  type TripTrafficResult,
 } from "@/lib/routing";
 import { savePendingTrip, takePendingTrip } from "@/lib/pending-trip";
 import type {
@@ -18,6 +20,24 @@ import type {
   TripValidationErrors,
   ValidatedTripInput,
 } from "@/lib/trip-input";
+
+function getTrafficPointsForRoute(route: RouteResult) {
+  const sampleCount = Math.min(10, route.coords.length);
+  const points = Array.from({ length: sampleCount }, (_, index) => {
+    const coordinateIndex = Math.round(
+      (index * (route.coords.length - 1)) / Math.max(1, sampleCount - 1)
+    );
+    const coordinate = route.coords[coordinateIndex];
+    return coordinate ? { lat: coordinate[0], lng: coordinate[1] } : null;
+  }).filter((point): point is { lat: number; lng: number } => point !== null);
+
+  return points.length >= 2 ? points : null;
+}
+
+type TrafficDeparture = {
+  departureMode: "now" | "scheduled";
+  scheduledAt: string | null;
+};
 
 type TripValidationResponse =
   | {
@@ -73,6 +93,12 @@ export default function MapDashboardSection({
   const [destination, setDestination] = useState<TripLocation | null>(null);
   const [stops, setStops] = useState<TripLocation[]>([]);
   const [routes, setRoutes] = useState<RouteResult[]>([]);
+  const [traffic, setTraffic] = useState<TripTrafficResult | null>(null);
+  const [trafficLoading, setTrafficLoading] = useState(false);
+  const [trafficError, setTrafficError] = useState<string | null>(null);
+  const [trafficDeparture, setTrafficDeparture] =
+    useState<TrafficDeparture | null>(null);
+  const trafficRequestRef = useRef(0);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [tripHistoryId, setTripHistoryId] = useState<string | null>(null);
   const [historyMessage, setHistoryMessage] = useState<string | null>(null);
@@ -85,6 +111,11 @@ export default function MapDashboardSection({
 
   async function handleRouteSelect(routeId: string) {
     setActiveRouteId(routeId);
+
+    const selectedRoute = routes.find((route) => route.id === routeId);
+    if (selectedRoute && trafficDeparture) {
+      void loadRouteTraffic(selectedRoute, trafficDeparture);
+    }
 
     if (!tripHistoryId) return;
 
@@ -100,9 +131,53 @@ export default function MapDashboardSection({
     }
   }
 
+  async function loadRouteTraffic(
+    route: RouteResult,
+    departure: TrafficDeparture
+  ) {
+    const requestId = trafficRequestRef.current + 1;
+    trafficRequestRef.current = requestId;
+    setTraffic(null);
+    setTrafficError(null);
+    setTrafficLoading(true);
+
+    try {
+      const points = getTrafficPointsForRoute(route);
+      if (!points) {
+        throw new Error("Live traffic is unavailable for this route.");
+      }
+
+      const routeTraffic = await fetchTripTraffic(
+        points[0],
+        points[points.length - 1],
+        points.slice(1, -1),
+        departure
+      );
+
+      if (trafficRequestRef.current === requestId) {
+        setTraffic(routeTraffic);
+      }
+    } catch (trafficErr) {
+      if (trafficRequestRef.current === requestId) {
+        setTrafficError(
+          trafficErr instanceof Error
+            ? trafficErr.message
+            : "Live traffic is unavailable for this route."
+        );
+      }
+    } finally {
+      if (trafficRequestRef.current === requestId) {
+        setTrafficLoading(false);
+      }
+    }
+  }
+
   async function findRoutes(values: RouteFormValues) {
     setLoading(true);
     setError(null);
+    setTraffic(null);
+    setTrafficError(null);
+    setTrafficLoading(false);
     setHistoryMessage(null);
     setRouteSaveStatus("idle");
 
@@ -151,10 +226,21 @@ export default function MapDashboardSection({
       setHistoryMessage(
         result.tripHistoryId ? "Saved to trip history" : null
       );
-      setActiveRouteId(result.routes[0]?.id ?? null);
+      const firstRoute = result.routes[0] ?? null;
+      const departure = {
+        departureMode: validation.data.departureMode,
+        scheduledAt: validation.data.scheduledAt ?? null,
+      } satisfies TrafficDeparture;
+      setActiveRouteId(firstRoute?.id ?? null);
+      setTrafficDeparture(departure);
+      if (firstRoute) void loadRouteTraffic(firstRoute, departure);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to find routes");
       setRoutes([]);
+      setTraffic(null);
+      setTrafficLoading(false);
+      setTrafficError(null);
+      setTrafficDeparture(null);
       setTripHistoryId(null);
       setHistoryMessage(null);
       setRouteSaveStatus("idle");
@@ -244,11 +330,12 @@ export default function MapDashboardSection({
               onSelect={handleRouteSelect}
               savedMessage={historyMessage}
               routeSaveStatus={routeSaveStatus}
+              traffic={traffic}
+              trafficLoading={trafficLoading}
+              trafficError={trafficError}
             />
 
-            {/* Fare estimation — wired to the currently selected route. Outlined
-                rather than solid so it does not compete with the form's primary
-                submit sitting directly above it. */}
+
             <button
               type="button"
               onClick={handleViewFares}
