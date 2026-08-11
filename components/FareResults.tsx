@@ -40,6 +40,7 @@ interface FareTripSummary {
 
 interface FareWeather {
   source: 'route_midpoint' | 'dhaka_fallback'
+  temperatureCelsius: number
   precipitationMmPerHour: number
   windKmh: number
   visibilityMeters: number | null
@@ -85,6 +86,11 @@ const ICONS: Record<string, string> = {
 const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n)
 
 const WEATHER_STATS: { label: string; format: (weather: FareWeather) => string }[] = [
+  {
+    label: 'Temp',
+    format: (w) =>
+      Number.isFinite(w.temperatureCelsius) ? `${w.temperatureCelsius}°C` : '—',
+  },
   { label: 'Rain', format: (w) => `${w.precipitationMmPerHour} mm/h` },
   { label: 'Wind', format: (w) => `${w.windKmh} km/h` },
   {
@@ -321,7 +327,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                         form wrapped to three lines in this column. */}
                     {weather ? (
                       <>
-                        <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-2">
                           {WEATHER_STATS.map((stat) => (
                             <div key={stat.label}>
                               <dt className="opacity-70">{stat.label}</dt>

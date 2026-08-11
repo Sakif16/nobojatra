@@ -3,6 +3,7 @@ import "server-only";
 const DEFAULT_OPENWEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5";
 const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
 const WEATHER_COORDINATE_PRECISION = 3;
+const WEATHER_CACHE_SCHEMA_VERSION = 2;
 const OPENWEATHER_TIMEOUT_MS = 5_000;
 const METERS_PER_SECOND_TO_KMH = 3.6;
 
@@ -14,6 +15,7 @@ export type WeatherPoint = {
 };
 
 export type NormalizedWeather = {
+  temperatureCelsius: number;
   precipitationMmPerHour: number;
   windKmh: number;
   visibilityMeters: number | null;
@@ -35,6 +37,7 @@ export type WeatherVehicleRestriction = {
 };
 
 type WeatherCacheEntry = {
+  schemaVersion: number;
   expiresAt: number;
   data: NormalizedWeather;
 };
@@ -45,6 +48,9 @@ type OpenWeatherPrecipitation = {
 
 type OpenWeatherCurrentResponse = {
   dt?: unknown;
+  main?: {
+    temp?: unknown;
+  };
   visibility?: unknown;
   wind?: {
     speed?: unknown;
@@ -101,6 +107,16 @@ function cleanupWeatherCache(now: number) {
 
 function toFiniteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isCompleteNormalizedWeather(value: NormalizedWeather) {
+  return (
+    Number.isFinite(value.temperatureCelsius) &&
+    Number.isFinite(value.precipitationMmPerHour) &&
+    Number.isFinite(value.windKmh) &&
+    Number.isFinite(value.severityScore) &&
+    (value.visibilityMeters === null || Number.isFinite(value.visibilityMeters))
+  );
 }
 
 function getPrecipitationMmPerHour(value: OpenWeatherPrecipitation | undefined) {
@@ -213,14 +229,6 @@ export function getWeatherVehicleRestriction(
       };
     }
 
-    if (weather.severityBand === "severe") {
-      return {
-        weatherRestricted: true,
-        weatherBlocked: false,
-        restrictionReason: "Severe weather may affect CNG availability.",
-      };
-    }
-
     return noWeatherRestriction();
   }
 
@@ -240,14 +248,20 @@ function normalizeWeatherResponse(
   cachedAt: Date,
 ): NormalizedWeather {
   const windMetersPerSecond = toFiniteNumber(payload.wind?.speed);
+  const temperatureCelsius = toFiniteNumber(payload.main?.temp);
   const visibilityMeters = toFiniteNumber(payload.visibility);
   const observedUnixSeconds = toFiniteNumber(payload.dt);
+
+  if (temperatureCelsius === null) {
+    throw new WeatherServiceError("OpenWeatherMap response is missing temperature.");
+  }
 
   if (windMetersPerSecond === null) {
     throw new WeatherServiceError("OpenWeatherMap response is missing wind speed.");
   }
 
   const normalized = {
+    temperatureCelsius: Math.round(temperatureCelsius * 10) / 10,
     precipitationMmPerHour:
       getPrecipitationMmPerHour(payload.rain) +
       getPrecipitationMmPerHour(payload.snow),
@@ -279,7 +293,12 @@ export async function fetchWeatherForPoint(
   const cacheKey = getCacheKey(point);
   const cached = weatherCache.get(cacheKey);
 
-  if (cached && cached.expiresAt > now) {
+  if (
+    cached &&
+    cached.schemaVersion === WEATHER_CACHE_SCHEMA_VERSION &&
+    cached.expiresAt > now &&
+    isCompleteNormalizedWeather(cached.data)
+  ) {
     return cached.data;
   }
 
@@ -332,6 +351,7 @@ export async function fetchWeatherForPoint(
   const weather = normalizeWeatherResponse(payload, new Date(now));
 
   weatherCache.set(cacheKey, {
+    schemaVersion: WEATHER_CACHE_SCHEMA_VERSION,
     expiresAt: now + WEATHER_CACHE_TTL_MS,
     data: weather,
   });
