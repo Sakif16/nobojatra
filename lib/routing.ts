@@ -55,6 +55,42 @@ export type TripTrafficResult = {
   };
 };
 
+/** Matches the badge colors already used for the traffic summary panel
+ * (emerald/amber/orange/red), just as line-friendly hex values. */
+export const TRAFFIC_LEVEL_COLORS: Record<TrafficLevel, string> = {
+  low: "#059669",
+  moderate: "#d97706",
+  high: "#ea580c",
+  severe: "#dc2626",
+};
+
+export const TRAFFIC_LEVEL_LABELS: Record<TrafficLevel, string> = {
+  low: "Light traffic",
+  moderate: "Moderate traffic",
+  high: "Heavy traffic",
+  severe: "Severe traffic",
+};
+
+/**
+ * Picks the same evenly-spaced coordinate indices used to sample a route
+ * down to at most `maxSamples` points before sending it to the traffic
+ * service. Shared by the fetch side (which turns the indices into lat/lng
+ * points) and the map side (which slices route.coords at these same
+ * indices), so a TripTrafficResult's legs always line up with the polyline
+ * segments they describe.
+ */
+export function getTrafficSampleIndices(
+  route: Pick<RouteResult, "coords">,
+  maxSamples = 10
+): number[] {
+  const sampleCount = Math.min(maxSamples, route.coords.length);
+  if (sampleCount < 2) return [];
+
+  return Array.from({ length: sampleCount }, (_, index) =>
+    Math.round((index * (route.coords.length - 1)) / (sampleCount - 1))
+  );
+}
+
 type RoutesApiResponse =
   | {
       success: true;

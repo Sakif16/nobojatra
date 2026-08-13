@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   fetchRoutes,
   fetchTripTraffic,
+  getTrafficSampleIndices,
   updateTripHistorySelectedRoute,
   type RouteResult,
   type TripTrafficResult,
@@ -22,14 +23,13 @@ import type {
 } from "@/lib/trip-input";
 
 function getTrafficPointsForRoute(route: RouteResult) {
-  const sampleCount = Math.min(10, route.coords.length);
-  const points = Array.from({ length: sampleCount }, (_, index) => {
-    const coordinateIndex = Math.round(
-      (index * (route.coords.length - 1)) / Math.max(1, sampleCount - 1)
-    );
-    const coordinate = route.coords[coordinateIndex];
-    return coordinate ? { lat: coordinate[0], lng: coordinate[1] } : null;
-  }).filter((point): point is { lat: number; lng: number } => point !== null);
+  const indices = getTrafficSampleIndices(route);
+  const points = indices
+    .map((coordinateIndex) => {
+      const coordinate = route.coords[coordinateIndex];
+      return coordinate ? { lat: coordinate[0], lng: coordinate[1] } : null;
+    })
+    .filter((point): point is { lat: number; lng: number } => point !== null);
 
   return points.length >= 2 ? points : null;
 }
@@ -362,6 +362,8 @@ export default function MapDashboardSection({
             routes={routes}
             activeRouteId={activeRouteId}
             onSelectRoute={handleRouteSelect}
+            traffic={traffic}
+            trafficLoading={trafficLoading}
           />
         </div>
       )}
