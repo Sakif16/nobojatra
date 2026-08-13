@@ -1,5 +1,5 @@
 export const FARE_CURRENCY = "BDT";
-export const FARE_CURRENCY_SYMBOL = "৳";
+export const FARE_CURRENCY_SYMBOL = "$";
 
 export const FARE_ESTIMATE_LOWER_MULTIPLIER = 0.9;
 export const FARE_ESTIMATE_UPPER_MULTIPLIER = 1.3;

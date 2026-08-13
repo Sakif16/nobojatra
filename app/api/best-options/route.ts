@@ -1,0 +1,439 @@
+// app/api/best-options/route.ts
+// POST endpoint that powers the Route Comparison Display. Reuses the same
+// trip-lookup and fare-calculation pattern as app/api/fares/route.ts (kept
+// self-contained rather than importing from it, so this feature ships without
+// touching the working fares endpoint), pulls REAL live traffic from
+// lib/traffic-service.ts (TomTom), fetches weather, then runs the scoring
+// engine to produce the ranked top-3 cards.
+import { auth } from "@/lib/auth";
+import connectMongoDB from "@/lib/mongodb";
+import {
+  fetchWeatherForPoint,
+  getWeatherVehicleRestriction,
+  type NormalizedWeather,
+  type WeatherPoint,
+} from "@/lib/weather";
+import {
+  getTrafficForTrip,
+  TrafficServiceError,
+  type DepartureOptions,
+  type TrafficPoint,
+  type TripTrafficResult,
+} from "@/lib/traffic-service";
+import { rankRouteOptions, type ScorableOption } from "@/lib/route-scoring";
+import TripHistory from "@/models/TripHistory";
+import VehicleRate from "@/models/VehicleRate";
+import { Types } from "mongoose";
+import { NextRequest, NextResponse } from "next/server";
+
+const PATHAO_API = process.env.PATHAO_FARE_API;
+const BAND = 0.1; // ±10% fare band, same as the fares endpoint
+const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
+
+// ── Request body shape ──
+type BestOptionsRequestBody = {
+  tripHistoryId?: unknown;
+  routeId?: unknown;
+};
+
+// ── Stored document shapes (mirrors app/api/fares/route.ts, plus departure
+// fields which fares/route.ts doesn't need but this route does, to build the
+// TomTom departAt time) ──
+type StoredLocation = { label?: unknown; lat?: unknown; lng?: unknown };
+type StoredRoute = {
+  routeId?: unknown;
+  distanceKm?: unknown;
+  durationMin?: unknown;
+  coords?: unknown;
+  legs?: unknown;
+};
+type StoredTripHistory = {
+  origin?: StoredLocation;
+  destination?: StoredLocation;
+  stops?: StoredLocation[];
+  passengerCount?: unknown;
+  departureMode?: unknown;
+  scheduledAt?: unknown;
+  routeOptions?: StoredRoute[];
+  selectedRoute?: StoredRoute | null;
+};
+
+type MapPoint = { lat: number; lng: number; label: string };
+type RouteLeg = { startIndex: number; endIndex: number; color: string; distanceKm: number };
+type LatLngTuple = [number, number];
+
+type VehicleRateDocument = {
+  provider: string;
+  vehicleType: string;
+  displayName: string;
+  baseFare: number;
+  perKmRate: number;
+  perMinRate: number;
+  minimumFare: number;
+  maxPassengers: number;
+  comfortScore: number;
+};
+
+type WeatherSource = "route_midpoint" | "dhaka_fallback";
+type FareWeather = NormalizedWeather & { source: WeatherSource };
+
+// ── Helper functions — identical logic to app/api/fares/route.ts ──
+
+function applyBand(mid: number) {
+  const low = Math.round(mid * (1 - BAND));
+  const high = Math.round(mid * (1 + BAND));
+  return { low, mid: Math.round(mid), high };
+}
+
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isValidPassengerCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 8;
+}
+
+function getLocationLabel(location: StoredLocation | undefined) {
+  return typeof location?.label === "string" && location.label.trim()
+    ? location.label
+    : "Unknown place";
+}
+
+function toMapPoint(location: StoredLocation | undefined): MapPoint | null {
+  const lat = location?.lat;
+  const lng = location?.lng;
+  if (typeof lat !== "number" || !Number.isFinite(lat) || typeof lng !== "number" || !Number.isFinite(lng)) {
+    return null;
+  }
+  return { lat, lng, label: getLocationLabel(location) };
+}
+
+function normalizeRouteLegs(legs: unknown): RouteLeg[] {
+  if (!Array.isArray(legs)) return [];
+  return legs.filter((leg): leg is RouteLeg => {
+    if (!leg || typeof leg !== "object") return false;
+    const candidate = leg as Partial<RouteLeg>;
+    return (
+      typeof candidate.startIndex === "number" &&
+      typeof candidate.endIndex === "number" &&
+      typeof candidate.color === "string"
+    );
+  });
+}
+
+function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
+  if (!Array.isArray(coords)) return [];
+  return coords.filter((coord): coord is LatLngTuple => {
+    if (!Array.isArray(coord) || coord.length < 2) return false;
+    const [lat, lng] = coord;
+    return typeof lat === "number" && Number.isFinite(lat) && typeof lng === "number" && Number.isFinite(lng);
+  });
+}
+
+function distanceMeters(first: LatLngTuple, second: LatLngTuple) {
+  const earthRadiusMeters = 6_371_000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRadians(second[0] - first[0]);
+  const dLng = toRadians(second[1] - first[1]);
+  const lat1 = toRadians(first[0]);
+  const lat2 = toRadians(second[0]);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+}
+
+function getRouteMidpoint(coords: LatLngTuple[]) {
+  if (coords.length === 0) return null;
+  if (coords.length === 1) {
+    const [lat, lng] = coords[0];
+    return { lat, lng };
+  }
+  const segmentDistances = coords.slice(1).map((coord, index) => distanceMeters(coords[index], coord));
+  const totalDistance = segmentDistances.reduce((sum, distance) => sum + distance, 0);
+  if (totalDistance === 0) {
+    const middle = coords[Math.floor(coords.length / 2)];
+    return middle ? { lat: middle[0], lng: middle[1] } : null;
+  }
+  const targetDistance = totalDistance / 2;
+  let traversed = 0;
+  for (let index = 1; index < coords.length; index += 1) {
+    const segmentDistance = segmentDistances[index - 1] ?? 0;
+    if (traversed + segmentDistance < targetDistance) {
+      traversed += segmentDistance;
+      continue;
+    }
+    const previous = coords[index - 1];
+    const current = coords[index];
+    const ratio = segmentDistance === 0 ? 0 : (targetDistance - traversed) / segmentDistance;
+    return {
+      lat: previous[0] + (current[0] - previous[0]) * ratio,
+      lng: previous[1] + (current[1] - previous[1]) * ratio,
+    };
+  }
+  const last = coords[coords.length - 1];
+  return last ? { lat: last[0], lng: last[1] } : null;
+}
+
+async function getPathaoEstimate(vehicle: "bike" | "car" | "cng", distanceKm: number, durationMin: number) {
+  if (!PATHAO_API) throw new Error("PATHAO_FARE_API is not set");
+  const url = `${PATHAO_API}/estimate?vehicle=${vehicle}&city=dhaka&distance_km=${distanceKm}&duration_min=${durationMin}`;
+  const res = await fetch(url, { next: { revalidate: 0 } });
+  const data = (await res.json()) as { estimatedFare?: unknown };
+  if (!isFinitePositiveNumber(data.estimatedFare)) {
+    throw new Error("Pathao fare response is missing estimatedFare");
+  }
+  return data.estimatedFare;
+}
+
+async function getRouteWeather(routeMidpoint: WeatherPoint | null) {
+  const source: WeatherSource = routeMidpoint ? "route_midpoint" : "dhaka_fallback";
+  const point = routeMidpoint ?? DHAKA_WEATHER_FALLBACK;
+  try {
+    const weather = await fetchWeatherForPoint(point);
+    return { weather: { source, ...weather } satisfies FareWeather, weatherUnavailable: false };
+  } catch (error) {
+    console.warn("Weather lookup failed:", error);
+    return { weather: null, weatherUnavailable: true };
+  }
+}
+
+// Builds the DepartureOptions the traffic service expects, from whatever the
+// trip was originally saved with. Falls back to "now" if scheduledAt is
+// missing or invalid — matches the fallback style used everywhere else in
+// this route (weather falls back to Dhaka centre the same way).
+function getDepartureOptions(trip: StoredTripHistory): DepartureOptions {
+  if (trip.departureMode === "scheduled" && typeof trip.scheduledAt === "string") {
+    const parsed = new Date(trip.scheduledAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      return { mode: "scheduled", scheduledAt: parsed.toISOString() };
+    }
+  }
+  return { mode: "now" };
+}
+
+// Samples up to 10 evenly-spaced points along the route geometry to send to
+// the TomTom Matrix API as leg boundaries — identical sampling strategy to
+// getTrafficPointsForRoute() in MapDashboardSection.tsx, so the number this
+// page shows is computed the same way as the one on the dashboard.
+function sampleTrafficPoints(coords: LatLngTuple[]): TrafficPoint[] | null {
+  const sampleCount = Math.min(10, coords.length);
+  if (sampleCount < 2) return null;
+
+  const points: TrafficPoint[] = [];
+  for (let index = 0; index < sampleCount; index += 1) {
+    const coordinateIndex = Math.round((index * (coords.length - 1)) / Math.max(1, sampleCount - 1));
+    const coordinate = coords[coordinateIndex];
+    if (coordinate) points.push({ lat: coordinate[0], lng: coordinate[1] });
+  }
+
+  return points.length >= 2 ? points : null;
+}
+
+// Fetches real live traffic for the route. Non-blocking on failure — mirrors
+// how weather failures are handled — so a TomTom outage degrades to "no
+// traffic-based ranking adjustment" rather than a 500.
+async function getRouteTraffic(
+  coords: LatLngTuple[],
+  departure: DepartureOptions,
+): Promise<{ traffic: TripTrafficResult | null; trafficUnavailable: boolean }> {
+  const points = sampleTrafficPoints(coords);
+
+  if (!points) {
+    return { traffic: null, trafficUnavailable: true };
+  }
+
+  try {
+    const traffic = await getTrafficForTrip(points, departure);
+    return { traffic, trafficUnavailable: false };
+  } catch (error) {
+    if (error instanceof TrafficServiceError) {
+      console.warn("Traffic lookup failed:", error.message);
+    } else {
+      console.warn("Traffic lookup failed:", error);
+    }
+    return { traffic: null, trafficUnavailable: true };
+  }
+}
+
+// ── Main handler ──
+export async function POST(req: NextRequest) {
+  // Step 1: require a session — same guard as /api/fares
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ success: false, message: "Authentication required." }, { status: 401 });
+  }
+
+  // Step 2: parse and validate the request body
+  let body: BestOptionsRequestBody;
+  try {
+    body = (await req.json()) as BestOptionsRequestBody;
+  } catch {
+    return NextResponse.json({ success: false, message: "Request body must be valid JSON." }, { status: 400 });
+  }
+
+  const tripHistoryId = typeof body.tripHistoryId === "string" ? body.tripHistoryId.trim() : "";
+  const routeId = typeof body.routeId === "string" ? body.routeId.trim() : "";
+
+  if (!Types.ObjectId.isValid(tripHistoryId) || !routeId) {
+    return NextResponse.json(
+      { success: false, message: "A valid tripHistoryId and routeId are required." },
+      { status: 400 },
+    );
+  }
+
+  await connectMongoDB();
+
+  // Step 3: load the trip, scoped to this user — prevents reading someone else's trip
+  const trip = (await TripHistory.findOne({
+    _id: tripHistoryId,
+    userId: session.user.id,
+  }).lean()) as StoredTripHistory | null;
+
+  if (!trip) {
+    return NextResponse.json({ success: false, message: "Trip history was not found." }, { status: 404 });
+  }
+
+  // Step 4: find the specific route the user picked, inside that trip
+  const routeOptions = Array.isArray(trip.routeOptions) ? trip.routeOptions : [];
+  const selectedRoute =
+    routeOptions.find((route) => route.routeId === routeId) ??
+    (trip.selectedRoute?.routeId === routeId ? trip.selectedRoute : null);
+
+  if (!selectedRoute) {
+    return NextResponse.json({ success: false, message: "Route was not found for this trip." }, { status: 404 });
+  }
+
+  const distanceKm = selectedRoute.distanceKm;
+  const storedDurationMin = selectedRoute.durationMin; // ORS estimate — used only as a fallback
+  const passengers = trip.passengerCount;
+
+  if (!isFinitePositiveNumber(distanceKm) || !isFinitePositiveNumber(storedDurationMin) || !isValidPassengerCount(passengers)) {
+    return NextResponse.json(
+      { success: false, message: "Stored trip route is missing fare metrics." },
+      { status: 422 },
+    );
+  }
+
+  const routeCoords = normalizeRouteCoords(selectedRoute.coords);
+  const routeMidpoint = getRouteMidpoint(routeCoords);
+
+  // Step 5: fetch weather at the route's midpoint (same approach as fares)
+  const { weather, weatherUnavailable } = await getRouteWeather(routeMidpoint);
+
+  // Step 6: fetch REAL live traffic for this route from TomTom
+  const departure = getDepartureOptions(trip);
+  const { traffic, trafficUnavailable } = await getRouteTraffic(routeCoords, departure);
+
+  // The car-baseline duration used for scoring: live TomTom duration when
+  // available, otherwise the ORS estimate stored on the trip. This is the
+  // number every vehicle's adjustedDurationMin gets computed from.
+  const baseDurationMinForScoring = traffic
+    ? traffic.totals.durationInTrafficSec / 60
+    : storedDurationMin;
+
+  // Falls back to "low" only when traffic genuinely couldn't be read, so a
+  // TomTom outage doesn't silently inflate every option's risk score
+  const congestionLevel = traffic?.totals.congestionLevel ?? "low";
+
+  // Step 7: compute a fare + eligibility + weather-restriction entry for every
+  // active vehicle — same math as /api/fares
+  const rates = (await VehicleRate.find({ isActive: true }).lean()) as VehicleRateDocument[];
+  const scorable: ScorableOption[] = [];
+
+  for (const rate of rates) {
+    const eligible = passengers <= rate.maxPassengers;
+    let fareEstimate;
+
+    if (rate.provider === "pathao") {
+      const vehicle = rate.vehicleType === "bike" ? "bike" : "car";
+      try {
+        const mid = await getPathaoEstimate(vehicle, distanceKm, storedDurationMin);
+        fareEstimate = applyBand(mid);
+      } catch (error) {
+        // Isolates a Pathao failure to just this vehicle instead of failing
+        // the whole request (the fares endpoint doesn't do this yet — see
+        // gap #4 in the handover — but there's no reason to repeat that bug here)
+        console.warn(`Pathao estimate failed for ${rate.vehicleType}:`, error);
+        continue;
+      }
+    } else {
+      const mid = rate.baseFare + distanceKm * rate.perKmRate + storedDurationMin * rate.perMinRate;
+      const clamped = Math.max(mid, rate.minimumFare);
+      fareEstimate = applyBand(clamped);
+    }
+
+    const weatherRestriction = weather
+      ? getWeatherVehicleRestriction({ provider: rate.provider, vehicleType: rate.vehicleType }, weather)
+      : { weatherRestricted: false, weatherBlocked: false, restrictionReason: null };
+
+    scorable.push({
+      provider: rate.provider,
+      vehicleType: rate.vehicleType,
+      displayName: rate.displayName,
+      maxPassengers: rate.maxPassengers,
+      comfortScore: rate.comfortScore,
+      eligible,
+      weatherRestricted: weatherRestriction.weatherRestricted,
+      weatherBlocked: weatherRestriction.weatherBlocked,
+      restrictionReason: weatherRestriction.restrictionReason,
+      fare: fareEstimate,
+    });
+  }
+
+  // Step 8: run the scoring engine — the actual "AI Route Scoring Engine" the
+  // SRS describes, producing the ranked top 3. Bikes get hard-excluded above
+  // (via weatherBlocked) on severe weather; here they get rewarded relative
+  // to cars when congestionLevel is high/severe.
+  const rankedOptions = rankRouteOptions({
+    options: scorable,
+    baseDurationMin: baseDurationMinForScoring,
+    congestionLevel,
+    weatherBand: weather?.severityBand ?? null,
+  });
+
+  // Step 9: respond with everything the Route Comparison Display page needs —
+  // trip context, map geometry, weather (for the dismissible banner), the
+  // real traffic reading (for the risk badges + banner), and the ranked cards
+  return NextResponse.json({
+    success: true,
+    trip: {
+      tripHistoryId,
+      routeId,
+      originLabel: getLocationLabel(trip.origin),
+      destinationLabel: getLocationLabel(trip.destination),
+      distanceKm,
+      durationMin: storedDurationMin,
+      passengers,
+    },
+    map: {
+      origin: toMapPoint(trip.origin),
+      destination: toMapPoint(trip.destination),
+      stops: (Array.isArray(trip.stops) ? trip.stops : []).map(toMapPoint).filter((s): s is MapPoint => s !== null),
+      route: {
+        id: routeId,
+        coords: routeCoords,
+        legs: normalizeRouteLegs(selectedRoute.legs),
+        distanceKm,
+        durationMin: storedDurationMin,
+      },
+    },
+    weather,
+    weatherUnavailable,
+    // Flattened for the client — only the totals, not the per-leg breakdown,
+    // since the banner shows one trip-level reading, not a leg-by-leg table
+    congestion: traffic
+      ? {
+          congestionIndexPercent: traffic.totals.congestionIndexPercent,
+          congestionLevel: traffic.totals.congestionLevel,
+          isPeakHour: traffic.isPeakHour,
+          durationInTrafficMin: Math.round(traffic.totals.durationInTrafficSec / 60),
+          baselineDurationMin: Math.round(traffic.totals.baselineDurationSec / 60),
+        }
+      : null,
+    trafficUnavailable,
+    options: rankedOptions,
+    lastUpdated: new Date().toISOString(), // powers the "last updated" timestamp shown next to Refresh
+  });
+}
