@@ -1,6 +1,7 @@
 'use client'
 
-import { AlertTriangle, Cloud, CloudOff, CloudRain, Users } from 'lucide-react'
+import { AlertTriangle, Cloud, CloudOff, CloudRain, Sparkles, Users } from 'lucide-react'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
@@ -263,6 +264,19 @@ export default function FareResults({ tripHistoryId, routeId }: {
             <p className="mt-1 text-sm text-muted-foreground">
               {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers > 1 ? 's' : ''}
             </p>
+          )}
+          {/* Entry point into the Route Comparison Display. Reuses the same
+              tripHistoryId + routeId this page already received, so
+              /best-options can look up the exact same trip and route rather
+              than re-deriving anything from scratch. */}
+          {trip && (
+            <Link
+              href={`/best-options?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Sparkles className="size-4" />
+              Best Options →
+            </Link>
           )}
         </div>
 
