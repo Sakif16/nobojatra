@@ -5,6 +5,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import ProfileForm from "./profile-form";
 
+type SavedPlaceDoc = {
+  label: string;
+  place: { label: string; lat: number; lng: number };
+};
+
 export default async function ProfilePage() {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -28,6 +33,13 @@ export default async function ProfilePage() {
     { returnDocument: "after", upsert: true },
   );
 
+  const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile.savedPlaces)
+    ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
+        label: sp.label,
+        place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
+      }))
+    : [];
+
   return (
     <ProfileForm
       initialUser={{
@@ -39,6 +51,7 @@ export default async function ProfilePage() {
       initialProfile={{
         defaultTravelPriority: profile.defaultTravelPriority,
         defaultPassengerCount: profile.defaultPassengerCount,
+        savedPlaces,
       }}
     />
   );

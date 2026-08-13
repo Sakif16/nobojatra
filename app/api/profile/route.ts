@@ -13,6 +13,7 @@ type ProfileUpdateBody = {
   email?: unknown;
   defaultTravelPriority?: unknown;
   defaultPassengerCount?: unknown;
+  savedPlaces?: unknown;
 };
 
 type AuthUserDocument = {
@@ -22,17 +23,55 @@ type AuthUserDocument = {
   updatedAt?: Date;
 };
 
+// Shape a saved place takes once validated and stripped of anything extra
+type SavedPlace = {
+  label: string;
+  place: { label: string; lat: number; lng: number };
+};
+
+const MAX_SAVED_PLACES = 10;
+
 function isTravelPriority(value: unknown): value is TravelPriority {
   return typeof value === "string" && TRAVEL_PRIORITIES.includes(value as TravelPriority);
+}
+
+// Validates one entry from the incoming savedPlaces array. Rejects anything
+// missing a label or a finite lat/lng, and drops any extra fields the client
+// might have sent (e.g. a stray autocomplete "id") on the way through.
+function toValidSavedPlace(value: unknown): SavedPlace | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  if (!label || label.length > 40) return null;
+
+  const place = candidate.place;
+  if (!place || typeof place !== "object") return null;
+  const placeCandidate = place as Record<string, unknown>;
+
+  const placeLabel = typeof placeCandidate.label === "string" ? placeCandidate.label.trim() : "";
+  const lat = Number(placeCandidate.lat);
+  const lng = Number(placeCandidate.lng);
+
+  if (!placeLabel || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return { label, place: { label: placeLabel, lat, lng } };
 }
 
 function serializeProfile(profile: {
   defaultTravelPriority: TravelPriority;
   defaultPassengerCount: number;
+  savedPlaces?: SavedPlace[];
 }) {
   return {
     defaultTravelPriority: profile.defaultTravelPriority,
     defaultPassengerCount: profile.defaultPassengerCount,
+    savedPlaces: Array.isArray(profile.savedPlaces)
+      ? profile.savedPlaces.map((sp) => ({
+          label: sp.label,
+          place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
+        }))
+      : [],
   };
 }
 
@@ -94,7 +133,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = (await req.json()) as ProfileUpdateBody;
-  const updates: Record<string, TravelPriority | number> = {};
+  const updates: Record<string, TravelPriority | number | SavedPlace[]> = {};
   let emailVerificationSent = false;
 
   if (body.name !== undefined) {
@@ -160,6 +199,38 @@ export async function PATCH(req: NextRequest) {
     }
 
     updates.defaultPassengerCount = passengerCount;
+  }
+
+  // The client always sends the full desired list (not a delta), so this is a
+  // straight replace — same pattern as every other field on this endpoint.
+  if (body.savedPlaces !== undefined) {
+    if (!Array.isArray(body.savedPlaces)) {
+      return NextResponse.json(
+        { success: false, message: "savedPlaces must be an array." },
+        { status: 400 },
+      );
+    }
+
+    if (body.savedPlaces.length > MAX_SAVED_PLACES) {
+      return NextResponse.json(
+        { success: false, message: `You can save up to ${MAX_SAVED_PLACES} places.` },
+        { status: 400 },
+      );
+    }
+
+    const sanitized: SavedPlace[] = [];
+    for (const entry of body.savedPlaces) {
+      const valid = toValidSavedPlace(entry);
+      if (!valid) {
+        return NextResponse.json(
+          { success: false, message: "Each saved place needs a label and a valid location." },
+          { status: 400 },
+        );
+      }
+      sanitized.push(valid);
+    }
+
+    updates.savedPlaces = sanitized;
   }
 
   await dbConnect();

@@ -38,7 +38,7 @@ export type RecentTrip = {
   createdAt: string;
 };
 
-type StoredLocation = { label?: unknown };
+type StoredLocation = { label?: unknown; lat?: unknown; lng?: unknown };
 
 function getLocationLabel(location: unknown) {
   const label = (location as StoredLocation | null)?.label;
@@ -154,4 +154,96 @@ export async function updateSelectedTripRoute({
     id: String(record._id),
     selectedRoute,
   };
+}
+
+// ── Saved Places & Frequent Routes ──────────────────────────────────────
+
+export type FrequentTripSuggestion = {
+  origin: TripLocation;
+  destination: TripLocation;
+  passengerCount: number;
+  tripCount: number;
+};
+
+// Rounds to 4 decimal places (~11m precision) so two trips to the "same"
+// address don't get split into separate groups over GPS noise, while still
+// telling apart genuinely different nearby places.
+function roundCoord(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.round(value * 10_000) / 10_000
+    : null;
+}
+
+function toGroupableLocation(location: unknown): TripLocation | null {
+  const record = location as StoredLocation | null;
+  const lat = roundCoord(record?.lat);
+  const lng = roundCoord(record?.lng);
+  const label = typeof record?.label === "string" && record.label.trim() ? record.label : null;
+
+  if (lat === null || lng === null || !label) return null;
+
+  return { label, lat, lng };
+}
+
+/**
+ * Groups trip history from the last N days by origin+destination pair and
+ * returns the most-repeated ones, for the home screen's "Plan Again" cards.
+ * A pair must occur at least `minOccurrences` times to count as "frequent" —
+ * a one-off trip isn't a pattern worth surfacing.
+ */
+export async function getFrequentTrips(
+  userId: string,
+  options: { days?: number; limit?: number; minOccurrences?: number } = {},
+): Promise<FrequentTripSuggestion[]> {
+  await dbConnect();
+
+  const days = options.days ?? 30;
+  const limit = options.limit ?? 3;
+  const minOccurrences = options.minOccurrences ?? 2;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const records = await TripHistory.find({ userId, createdAt: { $gte: cutoff } })
+    .select("origin destination passengerCount createdAt")
+    .sort({ createdAt: -1 }) // newest first, so the first hit per group is the most recent passenger count
+    .lean();
+
+  type Group = {
+    origin: TripLocation;
+    destination: TripLocation;
+    passengerCount: number;
+    count: number;
+  };
+
+  const groups = new Map<string, Group>();
+
+  for (const record of records) {
+    const origin = toGroupableLocation(record.origin);
+    const destination = toGroupableLocation(record.destination);
+    if (!origin || !destination) continue;
+
+    const key = `${origin.lat},${origin.lng}=>${destination.lat},${destination.lng}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(key, {
+        origin,
+        destination,
+        passengerCount: record.passengerCount ?? 1,
+        count: 1,
+      });
+    }
+  }
+
+  return Array.from(groups.values())
+    .filter((group) => group.count >= minOccurrences)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+    .map((group) => ({
+      origin: group.origin,
+      destination: group.destination,
+      passengerCount: group.passengerCount,
+      tripCount: group.count,
+    }));
 }
