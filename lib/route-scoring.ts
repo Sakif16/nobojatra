@@ -5,6 +5,7 @@
 // weather risk, then produces a ranked top-3 with pros/cons and a "Best for"
 // tag — everything the Route Comparison Display card needs.
 import "server-only";
+import type { FareSource } from "@/lib/fare-providers";
 import type { CongestionLevel } from "@/lib/traffic-service";
 // CongestionLevel — reused directly from the real traffic service rather than
 // a locally-defined type, so this file can never drift out of sync with what
@@ -26,6 +27,10 @@ export interface ScorableOption {
   weatherBlocked: boolean;
   restrictionReason: string | null;
   fare: { low: number; mid: number; high: number };
+  // Where the fare came from — a live provider quote or the local rate card.
+  // Ranking ignores these; they ride along so the card can show provenance.
+  fareSource: FareSource;
+  fareSourceNote: string | null;
 }
 
 // Shape of one option going OUT — everything ScorableOption has, plus the

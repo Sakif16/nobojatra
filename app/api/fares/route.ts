@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
   fetchWeatherForPoint,
@@ -11,8 +12,6 @@ import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
-const PATHAO_API = process.env.PATHAO_FARE_API;
-const BAND = 0.1;
 const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
 
 type FareRequestBody = {
@@ -76,12 +75,6 @@ type WeatherSource = "route_midpoint" | "dhaka_fallback";
 type FareWeather = NormalizedWeather & {
   source: WeatherSource;
 };
-
-function applyBand(mid: number) {
-  const low = Math.round(mid * (1 - BAND));
-  const high = Math.round(mid * (1 + BAND));
-  return { low, mid: Math.round(mid), high };
-}
 
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -205,26 +198,6 @@ function getRouteMidpoint(coords: LatLngTuple[]) {
   return last ? { lat: last[0], lng: last[1] } : null;
 }
 
-async function getPathaoEstimate(
-  vehicle: "bike" | "car" | "cng",
-  distanceKm: number,
-  durationMin: number,
-) {
-  if (!PATHAO_API) {
-    throw new Error("PATHAO_FARE_API is not set");
-  }
-
-  const url = `${PATHAO_API}/estimate?vehicle=${vehicle}&city=dhaka&distance_km=${distanceKm}&duration_min=${durationMin}`;
-  const res = await fetch(url, { next: { revalidate: 0 } });
-  const data = (await res.json()) as { estimatedFare?: unknown };
-
-  if (!isFinitePositiveNumber(data.estimatedFare)) {
-    throw new Error("Pathao fare response is missing estimatedFare");
-  }
-
-  return data.estimatedFare;
-}
-
 async function getFareWeather(routeMidpoint: WeatherPoint | null) {
   const source: WeatherSource = routeMidpoint ? "route_midpoint" : "dhaka_fallback";
   const point = routeMidpoint ?? DHAKA_WEATHER_FALLBACK;
@@ -328,22 +301,16 @@ export async function POST(req: NextRequest) {
   const rates = (await VehicleRate.find({
     isActive: true,
   }).lean()) as VehicleRateDocument[];
+  // One shared calculator prices every rate. Live provider lookups run
+  // concurrently under a bound and each one is isolated, so a Pathao outage
+  // degrades those two cards to a rate-card estimate instead of taking down
+  // the Uber and CNG results with it.
+  const fareEstimates = await estimateFaresForRates(rates, { distanceKm, durationMin });
   const results = [];
 
-  for (const rate of rates) {
+  for (const [index, rate] of rates.entries()) {
     const eligible = passengers <= rate.maxPassengers;
-    let fareEstimate;
-
-    if (rate.provider === "pathao") {
-      const vehicle = rate.vehicleType === "bike" ? "bike" : "car";
-      const mid = await getPathaoEstimate(vehicle, distanceKm, durationMin);
-      fareEstimate = applyBand(mid);
-    } else {
-      const mid =
-        rate.baseFare + distanceKm * rate.perKmRate + durationMin * rate.perMinRate;
-      const clamped = Math.max(mid, rate.minimumFare);
-      fareEstimate = applyBand(clamped);
-    }
+    const fareEstimate = fareEstimates[index];
 
     const weatherRestriction = weather
       ? getWeatherVehicleRestriction(
@@ -369,7 +336,11 @@ export async function POST(req: NextRequest) {
       weatherRestricted: weatherRestriction.weatherRestricted,
       weatherBlocked: weatherRestriction.weatherBlocked,
       restrictionReason: weatherRestriction.restrictionReason,
-      fare: fareEstimate,
+      fare: fareEstimate.fare,
+      // Provenance travels with the estimate so the client can tell a live
+      // quote apart from a fallback one.
+      fareSource: fareEstimate.fareSource,
+      fareSourceNote: fareEstimate.fareSourceNote,
     });
   }
 

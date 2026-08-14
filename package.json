@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:rates": "node --env-file=.env scripts/seed-vehicle-rates.mts"
+    "seed:rates": "node --env-file=.env scripts/seed-vehicle-rates.mts",
+    "test:tomtom": "node --env-file=.env scripts/test-tomtom.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

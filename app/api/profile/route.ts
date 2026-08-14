@@ -132,10 +132,34 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const body = (await req.json()) as ProfileUpdateBody;
-  const updates: Record<string, TravelPriority | number | SavedPlace[]> = {};
-  let emailVerificationSent = false;
+  // Malformed JSON must not surface as an empty 500 — the client only ever
+  // reads `message`, so an unparseable body needs the same contract as any
+  // other bad input.
+  let body: ProfileUpdateBody;
+  try {
+    body = (await req.json()) as ProfileUpdateBody;
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Request body must be valid JSON." },
+      { status: 400 },
+    );
+  }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      { success: false, message: "Request body must be a JSON object." },
+      { status: 400 },
+    );
+  }
+
+  const updates: Record<string, TravelPriority | number | SavedPlace[]> = {};
+
+  // ── Phase 1: validate everything before writing anything ────────────────
+  // Every field is checked up front so a late validation failure (say, a bad
+  // passenger count) cannot leave an earlier field already committed. Nothing
+  // below this block touches the database.
+
+  let nextName: string | undefined;
   if (body.name !== undefined) {
     if (typeof body.name !== "string" || body.name.trim().length === 0) {
       return NextResponse.json(
@@ -144,17 +168,10 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    await authDb.collection<AuthUserDocument>("user").updateOne(
-      { _id: session.user.id },
-      {
-        $set: {
-          name: body.name.trim(),
-          updatedAt: new Date(),
-        },
-      },
-    );
+    nextName = body.name.trim();
   }
 
+  let nextEmail: string | undefined;
   if (body.email !== undefined) {
     if (typeof body.email !== "string" || !body.email.includes("@")) {
       return NextResponse.json(
@@ -164,16 +181,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     const normalizedEmail = body.email.trim().toLowerCase();
-
     if (normalizedEmail !== session.user.email.toLowerCase()) {
-      await auth.api.changeEmail({
-        headers: req.headers,
-        body: {
-          newEmail: normalizedEmail,
-          callbackURL: "/profile",
-        },
-      });
-      emailVerificationSent = true;
+      nextEmail = normalizedEmail;
     }
   }
 
@@ -233,6 +242,37 @@ export async function PATCH(req: NextRequest) {
     updates.savedPlaces = sanitized;
   }
 
+  // ── Phase 2: writes, ordered cheapest-and-most-reliable first ───────────
+  // The email change is last on purpose: it is the only step that calls an
+  // external mail provider, so it is the most likely to fail, and putting it
+  // last means a mail outage cannot roll back or block the local saves.
+
+  const committed = { name: false, profile: false, emailChangeRequested: false };
+
+  // Go through Better Auth rather than writing the `user` collection directly.
+  // The Mongo adapter stores `_id` as an ObjectId while the session exposes a
+  // string, so a raw `updateOne({ _id: session.user.id })` matches zero
+  // documents and silently succeeds — which is exactly what used to happen.
+  if (nextName !== undefined && nextName !== session.user.name) {
+    try {
+      await auth.api.updateUser({
+        headers: req.headers,
+        body: { name: nextName },
+      });
+      committed.name = true;
+    } catch (error) {
+      console.error("Profile name update failed:", error);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Could not update your display name. No changes were saved.",
+          data: { committed },
+        },
+        { status: 502 },
+      );
+    }
+  }
+
   await dbConnect();
 
   const profile = await UserProfile.findOneAndUpdate(
@@ -245,15 +285,43 @@ export async function PATCH(req: NextRequest) {
     },
     { returnDocument: "after", upsert: true },
   );
+  committed.profile = true;
+
+  if (nextEmail !== undefined) {
+    try {
+      await auth.api.changeEmail({
+        headers: req.headers,
+        body: {
+          newEmail: nextEmail,
+          callbackURL: "/profile",
+        },
+      });
+      committed.emailChangeRequested = true;
+    } catch (error) {
+      console.error("Profile email change failed:", error);
+      // Report precisely what did commit rather than a blanket failure — the
+      // name and travel defaults are already persisted at this point.
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Your name and travel defaults were saved, but the email change could not be started. Please try changing your email again.",
+          data: { profile: serializeProfile(profile), committed },
+        },
+        { status: 502 },
+      );
+    }
+  }
 
   return NextResponse.json({
     success: true,
-    message: emailVerificationSent
+    message: committed.emailChangeRequested
       ? "Profile saved. Check your new email address to verify the change."
       : "Profile saved.",
     data: {
       profile: serializeProfile(profile),
-      emailVerificationSent,
+      emailVerificationSent: committed.emailChangeRequested,
+      committed,
     },
   });
 }
@@ -268,9 +336,17 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  const body = (await req.json()) as { confirmation?: unknown };
+  let body: { confirmation?: unknown };
+  try {
+    body = (await req.json()) as { confirmation?: unknown };
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Request body must be valid JSON." },
+      { status: 400 },
+    );
+  }
 
-  if (body.confirmation !== "DELETE") {
+  if (!body || typeof body !== "object" || body.confirmation !== "DELETE") {
     return NextResponse.json(
       { success: false, message: "Type DELETE to confirm account deletion." },
       { status: 400 },

@@ -1,11 +1,11 @@
 // app/api/best-options/route.ts
 // POST endpoint that powers the Route Comparison Display. Reuses the same
-// trip-lookup and fare-calculation pattern as app/api/fares/route.ts (kept
-// self-contained rather than importing from it, so this feature ships without
-// touching the working fares endpoint), pulls REAL live traffic from
-// lib/traffic-service.ts (TomTom), fetches weather, then runs the scoring
-// engine to produce the ranked top-3 cards.
+// trip-lookup pattern as app/api/fares/route.ts and shares its fare maths
+// through lib/fare-providers.ts, so both pages quote identical prices. Pulls
+// REAL live traffic from lib/traffic-service.ts (TomTom), fetches weather,
+// then runs the scoring engine to produce the ranked top-3 cards.
 import { auth } from "@/lib/auth";
+import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
   fetchWeatherForPoint,
@@ -26,8 +26,6 @@ import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
-const PATHAO_API = process.env.PATHAO_FARE_API;
-const BAND = 0.1; // ±10% fare band, same as the fares endpoint
 const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
 
 // ── Request body shape ──
@@ -78,12 +76,6 @@ type WeatherSource = "route_midpoint" | "dhaka_fallback";
 type FareWeather = NormalizedWeather & { source: WeatherSource };
 
 // ── Helper functions — identical logic to app/api/fares/route.ts ──
-
-function applyBand(mid: number) {
-  const low = Math.round(mid * (1 - BAND));
-  const high = Math.round(mid * (1 + BAND));
-  return { low, mid: Math.round(mid), high };
-}
 
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -174,17 +166,6 @@ function getRouteMidpoint(coords: LatLngTuple[]) {
   }
   const last = coords[coords.length - 1];
   return last ? { lat: last[0], lng: last[1] } : null;
-}
-
-async function getPathaoEstimate(vehicle: "bike" | "car" | "cng", distanceKm: number, durationMin: number) {
-  if (!PATHAO_API) throw new Error("PATHAO_FARE_API is not set");
-  const url = `${PATHAO_API}/estimate?vehicle=${vehicle}&city=dhaka&distance_km=${distanceKm}&duration_min=${durationMin}`;
-  const res = await fetch(url, { next: { revalidate: 0 } });
-  const data = (await res.json()) as { estimatedFare?: unknown };
-  if (!isFinitePositiveNumber(data.estimatedFare)) {
-    throw new Error("Pathao fare response is missing estimatedFare");
-  }
-  return data.estimatedFare;
 }
 
 async function getRouteWeather(routeMidpoint: WeatherPoint | null) {
@@ -340,29 +321,19 @@ export async function POST(req: NextRequest) {
   // Step 7: compute a fare + eligibility + weather-restriction entry for every
   // active vehicle — same math as /api/fares
   const rates = (await VehicleRate.find({ isActive: true }).lean()) as VehicleRateDocument[];
+  // Same shared calculator /api/fares uses, so a vehicle costs the same on
+  // both pages. Provider failures fall back to the rate card rather than
+  // dropping the option, so the ranked set no longer shrinks during a Pathao
+  // outage while the fares page still lists those vehicles.
+  const fareEstimates = await estimateFaresForRates(rates, {
+    distanceKm,
+    durationMin: storedDurationMin,
+  });
   const scorable: ScorableOption[] = [];
 
-  for (const rate of rates) {
+  for (const [index, rate] of rates.entries()) {
     const eligible = passengers <= rate.maxPassengers;
-    let fareEstimate;
-
-    if (rate.provider === "pathao") {
-      const vehicle = rate.vehicleType === "bike" ? "bike" : "car";
-      try {
-        const mid = await getPathaoEstimate(vehicle, distanceKm, storedDurationMin);
-        fareEstimate = applyBand(mid);
-      } catch (error) {
-        // Isolates a Pathao failure to just this vehicle instead of failing
-        // the whole request (the fares endpoint doesn't do this yet — see
-        // gap #4 in the handover — but there's no reason to repeat that bug here)
-        console.warn(`Pathao estimate failed for ${rate.vehicleType}:`, error);
-        continue;
-      }
-    } else {
-      const mid = rate.baseFare + distanceKm * rate.perKmRate + storedDurationMin * rate.perMinRate;
-      const clamped = Math.max(mid, rate.minimumFare);
-      fareEstimate = applyBand(clamped);
-    }
+    const fareEstimate = fareEstimates[index];
 
     const weatherRestriction = weather
       ? getWeatherVehicleRestriction({ provider: rate.provider, vehicleType: rate.vehicleType }, weather)
@@ -378,7 +349,9 @@ export async function POST(req: NextRequest) {
       weatherRestricted: weatherRestriction.weatherRestricted,
       weatherBlocked: weatherRestriction.weatherBlocked,
       restrictionReason: weatherRestriction.restrictionReason,
-      fare: fareEstimate,
+      fare: fareEstimate.fare,
+      fareSource: fareEstimate.fareSource,
+      fareSourceNote: fareEstimate.fareSourceNote,
     });
   }
 

@@ -29,6 +29,10 @@ interface FareOption {
   weatherBlocked?: boolean
   restrictionReason?: string | null
   fare: { low: number; mid: number; high: number }
+  // 'rate_card' means the live provider quote was unavailable and this is a
+  // local estimate; fareSourceNote explains why.
+  fareSource?: 'pathao_api' | 'rate_card'
+  fareSourceNote?: string | null
 }
 
 interface FareTripSummary {
