@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -41,7 +41,6 @@ function numberedIcon(label: string | number, color: string) {
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-const TOMTOM_PUBLIC = process.env.NEXT_PUBLIC_TOMTOM_API_KEY;
 
 type Props = {
   origin: LatLng;
@@ -131,12 +130,12 @@ export default function RouteMap({
   const activeRoute =
     routes.find((r) => r.id === activeRouteId) ?? routes[0] ?? null;
 
-  const PROXY_TILE_URL = `/api/tiles/tomtom/{z}/{x}/{y}.png`;
+  // /api/tiles/tomtom/[z]/[x]/[y] proxies TomTom's traffic tiles server-side
+  // so the API key never reaches the browser — used whenever no Mapbox
+  // token (a token designed to be public) is configured.
   const trafficTileUrl = MAPBOX_TOKEN
     ? `https://api.mapbox.com/styles/v1/mapbox/traffic-day-v2/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
-    : TOMTOM_PUBLIC
-    ? `https://api.tomtom.com/map/1/tile/traffic/flow/512/{z}/{x}/{y}.png?key=${TOMTOM_PUBLIC}`
-    : PROXY_TILE_URL;
+    : `/api/tiles/tomtom/{z}/{x}/{y}`;
 
   const hasMultipleAlternatives = routes.length > 1 && (activeRoute?.legs.length ?? 0) <= 1;
 
@@ -213,33 +212,28 @@ export default function RouteMap({
             is loading, missing, or stale. */}
         {trafficSegments
           ? trafficSegments.map((segment) => (
-              <>
+              <Fragment key={segment.key}>
                 <Polyline
-                  key={`${segment.key}-outline`}
                   positions={segment.positions}
                   pathOptions={{ color: '#000', weight: 10, opacity: 0.25, lineJoin: 'round' }}
                 />
                 <Polyline
-                  key={segment.key}
                   positions={segment.positions}
                   pathOptions={{ color: segment.color, weight: 6, opacity: 0.98, lineJoin: 'round' }}
                 />
-                {/* directional arrows removed per user request */}
-              </>
+              </Fragment>
             ))
-          : activeRoute?.legs.map((leg, idx) => (
-              <>
+          : activeRoute?.legs.map((leg) => (
+              <Fragment key={`${activeRoute.id}-${leg.startIndex}-${leg.endIndex}`}>
                 <Polyline
-                  key={`${activeRoute.id}-${leg.startIndex}-${leg.endIndex}-outline`}
                   positions={activeRoute.coords.slice(leg.startIndex, leg.endIndex + 1)}
                   pathOptions={{ color: '#000', weight: 9, opacity: 0.18, lineJoin: 'round' }}
                 />
                 <Polyline
-                  key={`${activeRoute.id}-${leg.startIndex}-${leg.endIndex}`}
                   positions={activeRoute.coords.slice(leg.startIndex, leg.endIndex + 1)}
                   pathOptions={{ color: leg.color, weight: 5, opacity: 0.98, lineJoin: 'round' }}
                 />
-              </>
+              </Fragment>
             ))}
 
         <Marker
@@ -267,20 +261,13 @@ export default function RouteMap({
       </MapContainer>
 
       <div className="absolute left-3 top-3 z-[1000]">
-        {trafficTileUrl ? (
-          <button
-            type="button"
-            onClick={() => setShowTrafficTiles((s) => !s)}
-            className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm"
-          >
-            {showTrafficTiles ? "Hide map traffic" : "Show map traffic"}
-          </button>
-        ) : (
-          <div className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm">
-            Set NEXT_PUBLIC_MAPBOX_TOKEN or NEXT_PUBLIC_TOMTOM_API_KEY to enable client tiles, or implement a
-            server tile proxy at <code>/api/tiles/tomtom/&lt;z&gt;/&lt;x&gt;/&lt;y&gt;.png</code>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => setShowTrafficTiles((s) => !s)}
+          className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm"
+        >
+          {showTrafficTiles ? "Hide map traffic" : "Show map traffic"}
+        </button>
       </div>
       <TrafficLegend traffic={traffic} loading={trafficLoading} />
     </div>

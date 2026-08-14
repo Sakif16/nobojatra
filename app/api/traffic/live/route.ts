@@ -30,36 +30,6 @@ function isTrafficPoint(value: unknown): value is TrafficPoint {
   );
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { z: string; x: string; y: string } }
-) {
-  const { z, x, y } = params;
-  const key = process.env.TOMTOM_API_KEY;
-  if (!key) {
-    return NextResponse.json({ error: "TomTom key not configured" }, { status: 500 });
-  }
-
-  const url = `https://api.tomtom.com/map/1/tile/traffic/flow/512/${z}/${x}/${y}.png?key=${key}`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      return NextResponse.json({ error: "Upstream tile error", details: txt }, { status: res.status });
-    }
-    const buf = await res.arrayBuffer();
-    return new Response(buf, {
-      status: 200,
-      headers: {
-        "Content-Type": res.headers.get("content-type") ?? "image/png",
-        "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
-      },
-    });
-  } catch (err) {
-    return NextResponse.json({ error: "Tile proxy failed" }, { status: 502 });
-  }
-}
-
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
