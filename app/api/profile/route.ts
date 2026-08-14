@@ -1,10 +1,5 @@
-import { auth, authDb } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
-import Alert from "@/models/Alert";
-import Route from "@/models/Map_route";
-import Place from "@/models/Place";
-import TrafficData from "@/models/TrafficData";
-import TripHistory from "@/models/TripHistory";
 import UserProfile, { TRAVEL_PRIORITIES, type TravelPriority } from "@/models/UserProfile";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,13 +9,6 @@ type ProfileUpdateBody = {
   defaultTravelPriority?: unknown;
   defaultPassengerCount?: unknown;
   savedPlaces?: unknown;
-};
-
-type AuthUserDocument = {
-  _id: string;
-  id?: string;
-  name?: string;
-  updatedAt?: Date;
 };
 
 // Shape a saved place takes once validated and stripped of anything extra
@@ -77,6 +65,32 @@ function serializeProfile(profile: {
 
 async function getSession(headers: Headers) {
   return auth.api.getSession({ headers });
+}
+
+// Better Auth's error codes are stable; its messages are not always suitable
+// for this dialog. Map the ones a user can actually hit, and fall back to
+// whatever the upstream said rather than inventing a generic failure.
+const DELETE_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_PASSWORD: "That password is incorrect.",
+  CREDENTIAL_ACCOUNT_NOT_FOUND:
+    "This account has no password set, so it cannot be deleted this way.",
+  ACCOUNT_CLEANUP_FAILED:
+    "Your data could not be fully removed, so the account was not deleted. Please try again.",
+};
+
+async function getDeleteErrorMessage(response: Response) {
+  const payload = (await response
+    .json()
+    .catch(() => null)) as { code?: unknown; message?: unknown } | null;
+
+  const code = typeof payload?.code === "string" ? payload.code : "";
+
+  return (
+    DELETE_ERROR_MESSAGES[code] ??
+    (typeof payload?.message === "string" && payload.message
+      ? payload.message
+      : "Unable to delete account.")
+  );
 }
 
 async function getOrCreateProfile(userId: string) {
@@ -336,9 +350,9 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  let body: { confirmation?: unknown };
+  let body: { confirmation?: unknown; password?: unknown };
   try {
-    body = (await req.json()) as { confirmation?: unknown };
+    body = (await req.json()) as { confirmation?: unknown; password?: unknown };
   } catch {
     return NextResponse.json(
       { success: false, message: "Request body must be valid JSON." },
@@ -346,67 +360,57 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  if (!body || typeof body !== "object" || body.confirmation !== "DELETE") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      { success: false, message: "Request body must be a JSON object." },
+      { status: 400 },
+    );
+  }
+
+  if (body.confirmation !== "DELETE") {
     return NextResponse.json(
       { success: false, message: "Type DELETE to confirm account deletion." },
       { status: 400 },
     );
   }
 
-  await dbConnect();
+  // Deleting an account is irreversible, so it needs more than a live cookie.
+  // Better Auth verifies this against the stored credential hash.
+  if (typeof body.password !== "string" || body.password.length === 0) {
+    return NextResponse.json(
+      { success: false, message: "Enter your password to confirm account deletion." },
+      { status: 400 },
+    );
+  }
 
-  const routes = await Route.find({ userId: session.user.id }).select("_id");
-  const routeIds = routes.map((route) => route._id);
+  // Better Auth owns deletion end to end: it verifies the password, runs the
+  // application-data cascade in the `beforeDelete` hook (lib/auth.ts), then
+  // removes session, account, and user, and clears the session cookie. This
+  // route deliberately no longer touches the auth collections — the raw
+  // string-keyed deletes it used to run never matched the adapter's ObjectId
+  // keys, so it reported "Account deleted." over an account that still worked.
+  const authResponse = await auth.api.deleteUser({
+    headers: req.headers,
+    body: { password: body.password },
+    asResponse: true,
+  });
 
-  const [
-    alertResult,
-    trafficResult,
-    tripHistoryResult,
-    routeResult,
-    placeResult,
-    profileResult,
-  ] = await Promise.all([
-    Alert.deleteMany({ userId: session.user.id }),
-    routeIds.length > 0
-      ? TrafficData.deleteMany({ routeId: { $in: routeIds } })
-      : Promise.resolve({ deletedCount: 0 }),
-    TripHistory.deleteMany({
-      $or: [
-        { userId: session.user.id },
-        ...(routeIds.length > 0 ? [{ routeId: { $in: routeIds } }] : []),
-      ],
-    }),
-    Route.deleteMany({ userId: session.user.id }),
-    Place.deleteMany({ userId: session.user.id }),
-    UserProfile.deleteOne({ userId: session.user.id }),
-  ]);
+  if (!authResponse.ok) {
+    return NextResponse.json(
+      { success: false, message: await getDeleteErrorMessage(authResponse) },
+      { status: authResponse.status },
+    );
+  }
 
-  await Promise.all([
-    authDb.collection("verification").deleteMany({
-      $or: [
-        { value: session.user.id },
-        { identifier: { $regex: session.user.id } },
-      ],
-    }),
-    authDb.collection("session").deleteMany({ userId: session.user.id }),
-    authDb.collection("account").deleteMany({ userId: session.user.id }),
-    authDb.collection<AuthUserDocument>("user").deleteOne({
-      $or: [{ _id: session.user.id }, { id: session.user.id }],
-    }),
-  ]);
-
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     message: "Account deleted.",
-    data: {
-      deleted: {
-        alerts: alertResult.deletedCount,
-        trafficData: trafficResult.deletedCount,
-        tripHistory: tripHistoryResult.deletedCount,
-        routes: routeResult.deletedCount,
-        places: placeResult.deletedCount,
-        profile: profileResult.deletedCount,
-      },
-    },
   });
+
+  // Carry Better Auth's session-clearing cookie through to the browser.
+  for (const cookie of authResponse.headers.getSetCookie()) {
+    response.headers.append("set-cookie", cookie);
+  }
+
+  return response;
 }

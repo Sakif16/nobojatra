@@ -267,7 +267,7 @@ TypeScript strict, `@/*` path alias, double quotes and semicolons in most files 
 
 ## 8. State of play
 
-**Working end to end:** email/password auth with reset and verification; anonymous→signup trip handoff; place autocomplete; trip validation; route search with alternatives, de-duplication and multi-stop legs; map rendering; trip history with route selection; fare estimation with weather; profile editing and account deletion.
+**Working end to end:** email/password auth with reset and verification; anonymous→signup trip handoff; place autocomplete; trip validation; route search with alternatives, de-duplication and multi-stop legs; map rendering; trip history with route selection; fare estimation with weather; profile editing; and account deletion (rebuilt in P0-5 — one Better Auth-owned cascade in `lib/account-cleanup.ts`, password re-auth, fails closed).
 
 **Declared but not finished:** vehicle selection isn't persisted (`selectedVehicle` never written); `scheduledAt` is captured, validated and stored but never influences weather or fares — a trip scheduled for Thursday gets today's conditions; `Alert` has a model and a delete cascade but no producer; traffic/camera/places/saved-routes exist as unreachable endpoints only. The landing page lists "Live congestion levels", "Peak-hour insights" and "Saved places" as upcoming — those map to the orphaned APIs.
 

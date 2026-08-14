@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { MongoClient } from "mongodb";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { deleteAccountData } from "@/lib/account-cleanup";
 
 const PASSWORD_REQUIREMENT_MESSAGE =
   "Password must be at least 8 characters and include at least one number.";
@@ -157,6 +158,29 @@ export const auth = betterAuth({
     },
     deleteUser: {
       enabled: true,
+      // Better Auth is the single owner of account deletion. It removes
+      // `session`, `account`, and `user`; this hook removes everything else.
+      // Living here rather than in a route means the built-in
+      // `/api/auth/delete-user` endpoint cascades too, instead of orphaning
+      // every TripHistory, UserProfile, Place, Route, and Alert the user made.
+      beforeDelete: async (user) => {
+        try {
+          const summary = await deleteAccountData(user.id, authDb);
+          console.info(`Account cleanup for ${user.id}:`, summary);
+        } catch (error) {
+          console.error(`Account cleanup failed for ${user.id}:`, error);
+
+          // Fail closed. Throwing here stops Better Auth before it deletes the
+          // user, so a partially cleaned account stays reachable and the user
+          // can retry — the alternative is auth data gone and application data
+          // stranded with no owner to delete it.
+          throw new APIError("INTERNAL_SERVER_ERROR", {
+            code: "ACCOUNT_CLEANUP_FAILED",
+            message:
+              "Your data could not be fully removed, so the account was not deleted. Please try again.",
+          });
+        }
+      },
     },
   },
   hooks: {

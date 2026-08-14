@@ -77,6 +77,8 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Home and Work are always shown as fixed rows (label locked); everything
@@ -178,9 +180,17 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
     router.refresh();
   };
 
+  const closeDeleteDialog = () => {
+    setIsDeleteOpen(false);
+    setDeleteConfirmation("");
+    setDeletePassword("");
+    setDeleteError("");
+  };
+
   const handleDeleteAccount = async () => {
     setMessage("");
     setErrorMessage("");
+    setDeleteError("");
     setIsDeleting(true);
 
     const response = await fetch("/api/profile", {
@@ -190,6 +200,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
       },
       body: JSON.stringify({
         confirmation: deleteConfirmation,
+        password: deletePassword,
       }),
     });
     const result = (await response.json()) as { message?: string };
@@ -197,7 +208,10 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
     setIsDeleting(false);
 
     if (!response.ok) {
-      setErrorMessage(result.message || "Unable to delete account.");
+      // Shown inside the dialog rather than behind it, so a wrong password is
+      // visible next to the field that caused it and the dialog stays open.
+      setDeleteError(result.message || "Unable to delete account.");
+      setDeletePassword("");
       return;
     }
 
@@ -423,20 +437,36 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
             <h2 className="text-xl font-semibold text-foreground">Confirm Deletion</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Type DELETE to permanently remove your account and related data.
+              Type DELETE and enter your password to permanently remove your account and
+              related data. This cannot be undone.
             </p>
+            <label htmlFor="delete-confirmation" className="mt-5 mb-2 block text-sm font-medium">
+              Type DELETE
+            </label>
             <input
+              id="delete-confirmation"
               value={deleteConfirmation}
               onChange={(event) => setDeleteConfirmation(event.target.value)}
-              className={fieldClassName(false, "mt-5")}
+              className={fieldClassName(false)}
             />
+            <label htmlFor="delete-password" className="mt-4 mb-2 block text-sm font-medium">
+              Password
+            </label>
+            <input
+              id="delete-password"
+              type="password"
+              autoComplete="current-password"
+              value={deletePassword}
+              onChange={(event) => setDeletePassword(event.target.value)}
+              className={fieldClassName(Boolean(deleteError))}
+            />
+            {deleteError ? (
+              <p className="mt-2 text-sm text-destructive">{deleteError}</p>
+            ) : null}
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setIsDeleteOpen(false);
-                  setDeleteConfirmation("");
-                }}
+                onClick={closeDeleteDialog}
                 className={buttonVariants({ variant: "outline", size: "md" })}
               >
                 Cancel
@@ -444,7 +474,9 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               <button
                 type="button"
                 onClick={handleDeleteAccount}
-                disabled={deleteConfirmation !== "DELETE" || isDeleting}
+                disabled={
+                  deleteConfirmation !== "DELETE" || deletePassword.length === 0 || isDeleting
+                }
                 className={buttonVariants({ variant: "destructive", size: "md" })}
               >
                 {isDeleting ? "Deleting..." : "Delete"}

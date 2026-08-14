@@ -99,7 +99,7 @@ This separation is broadly sound: provider keys are intended to remain server-si
 | Profile defaults | **Partial** | Passenger default is used; values validated and persisted; name updates now go through Better Auth and PATCH validates before writing (P1-1 resolved) | Travel priority is persisted but still unused by scoring (P1-7) |
 | Saved places | **Partial** | Profile-owned allowlisted embedded values; planner shortcuts work | Editing can silently retain an old place; server accepts out-of-area coordinates/duplicate labels |
 | Frequent trips / Plan Again | **Partial** | 30-day grouping and replay cards exist | Repeated replays can fail to refill; grouping drops stops and schedule details |
-| Account deletion | **Broken** | App collections are enumerated for cleanup | Two competing paths; raw auth deletes do not coerce Better Auth ObjectIds |
+| Account deletion | **Implemented** | One Better Auth-owned cascade (P0-5), password re-auth, fails closed | Both entry points verified to leave zero residual documents |
 | Legacy map/place/camera APIs | **Unsafe / unused** | Mongoose schemas and basic CRUD exist | No caller, no auth, no ownership, raw errors returned |
 | Tests and delivery | **Missing** | Strict TypeScript and ESLint are configured | Both currently fail; no tests or CI |
 
@@ -125,7 +125,7 @@ These parts are worth preserving while remediating the repository:
 
 ### P0-1. A live TomTom API key is committed — PARTIALLY REMEDIATED
 
-> **Status:** source literal removed and secret scanning added (working tree, uncommitted). **Two items remain and neither can be done from the codebase:** the key has not yet been rotated in the TomTom console, and Git history has not been rewritten. Until both are done this finding stays open — see "Remaining work" below.
+> **Status:** source literal removed, secret scanning added, and a replacement key issued into `.env`. **Two items remain and neither can be done from the codebase:** the published key has not been revoked in the TomTom console — verified still live on 2026-08-14 — and Git history has not been rewritten. Until both are done this finding stays open — see "Remaining work" below.
 
 **Original finding.** `scripts/test-tomtom.js:3` contained a plaintext provider credential. The file is tracked, and was added in commit `2f57aca`, so deleting the current line does not remove the secret from Git history.
 
@@ -144,7 +144,17 @@ These parts are worth preserving while remediating the repository:
 
 #### Remaining work — cannot be done from the codebase
 
-1. **Rotate the key in the TomTom console.** Not yet done: the value in the local `.env` is still byte-identical to the published literal. Nothing in the repository can accomplish this, and until it happens the published key remains live.
+1. **Revoke the published key in the TomTom console.** **Still outstanding as of 2026-08-14, and re-measured — the leaked key is live.**
+
+   A new key has been issued and `.env` now holds it, so the local value is no longer byte-identical to the published literal. That is real progress, but issuing a replacement is not revocation: the old key was tested directly against TomTom and still works.
+
+   | Key | Tile endpoint | Geocode endpoint |
+   |---|---|---|
+   | Published literal from `2f57aca` | **200** | **200**, returned real results |
+   | Current `.env` key | 200 | — |
+   | Deliberately invalid key (control) | **401** | — |
+
+   The control rules out TomTom answering 200 for anything: bad keys are rejected. Until the old key is deleted in the console, every person who has read the repository still holds a working credential, and swapping the local `.env` has changed nothing about that.
 2. **Rewrite Git history across all three remote refs.** Deliberately not attempted here. This rewrites published history on `origin/main`, `origin/saved-places`, and `origin/traffic2`, requires a force-push, and breaks every existing clone — it needs an explicit decision and coordination with the other contributor, not an autonomous action. Note that it is also the *lower*-value of the two remaining items: once the key is rotated, the literal in history is inert. Rewriting is hygiene; rotation is the actual fix.
 
 **Acceptance:** ~~the script exits with a clear message when the environment variable is absent~~ **met**. Still outstanding: the old key returns an auth error from TomTom; no tracked revision on any remote ref contains an active key.
@@ -205,20 +215,42 @@ This was confirmed dynamically: anonymous requests created and read a disposable
 
 **Acceptance:** anonymous requests cannot read/write any user, route, traffic, or camera data; public production routes contain no DB diagnostic.
 
-### P0-5. Account deletion can report success while leaving auth data behind
+### P0-5. ~~Account deletion can report success while leaving auth data behind~~ — RESOLVED (working tree)
 
-There are two deletion systems:
+**Original finding.** There were two deletion systems:
 
-1. Better Auth's `/api/auth/delete-user`, enabled at [`lib/auth.ts:158`](lib/auth.ts#L158), deletes auth data but has no hook to delete Mongoose application data.
-2. `DELETE /api/profile` manually deletes app and raw auth collections ([profile route](app/api/profile/route.ts#L261)).
+1. Better Auth's `/api/auth/delete-user`, enabled at `lib/auth.ts:158`, deleted auth data but had no hook to delete Mongoose application data.
+2. `DELETE /api/profile` manually deleted app and raw auth collections.
 
-The installed Better Auth Mongo adapter stores IDs and referenced user IDs as Mongo `ObjectId`s while returning string IDs to the session. Raw driver queries such as `{ _id: session.user.id }` and `{ userId: session.user.id }` do not perform adapter coercion. Therefore the custom auth-collection deletes can match zero records, yet the endpoint always returns `success: true`. The built-in path has the opposite orphaning problem for `TripHistory`, `UserProfile`, and legacy collections.
+The installed Better Auth Mongo adapter stores IDs and referenced user IDs as Mongo `ObjectId`s while returning string IDs to the session. Raw driver queries such as `{ _id: session.user.id }` and `{ userId: session.user.id }` do not perform adapter coercion, so the custom auth-collection deletes matched zero records while the endpoint still returned `success: true`. The built-in path had the opposite orphaning problem for `TripHistory`, `UserProfile`, and legacy collections.
 
-The disposable-account test confirmed the exact failure mode. `DELETE /api/profile` returned 200 and correctly reported deletion of the test profile, two TripHistory records, one legacy route, one place, and its traffic record. However, the same session remained valid and signin with the same email/password still returned 200. Direct metadata inspection found the Better Auth user, account, and session documents still present as `ObjectId` references. They were removed afterward by exact disposable IDs.
+**Fix applied.** Better Auth is now the single deletion owner.
 
-**Required fix:** make Better Auth the single deletion owner. Put an idempotent application-data cascade in a `beforeDelete` hook, disable/remove the custom raw-auth deletion logic, require a fresh session or password confirmation, and fail closed if cleanup fails.
+- **[`lib/account-cleanup.ts`](lib/account-cleanup.ts)** is the one application-data cascade: `Alert`, `TrafficData` (via owned route ids, collected *before* the routes are deleted), `TripHistory`, `Map_route`, `Place`, `UserProfile`, and the auth `verification` rows Better Auth's own cascade skips.
+- **It runs from `deleteUser.beforeDelete`** in [`lib/auth.ts`](lib/auth.ts#L158), so both entry points cascade through the same code. `internalAdapter.deleteUser` then removes `session`, `account`, and `user` with correct ObjectId coercion.
+- **`DELETE /api/profile` no longer touches the auth collections at all.** It validates the confirmation and password, delegates to `auth.api.deleteUser`, and forwards Better Auth's session-clearing cookie.
+- **Re-authentication is required.** The endpoint now demands the account password in addition to typing `DELETE`, and Better Auth verifies it against the stored credential hash. The profile dialog gained a password field and shows the failure inline.
+- **It fails closed.** A cascade error throws out of `beforeDelete`, which aborts the deletion before any auth row is touched, leaving a working account rather than stranded data.
+- **Verification cleanup is exact.** Only `reset-password:*` and `delete-account-*` rows reference a user, and both store the id in `value`; email verification uses signed JWTs with no row. The previous `{ identifier: { $regex: session.user.id } }` was replaced with an exact `{ value: userId }` match.
 
-**Acceptance:** either supported delete entry point removes user, account, session, verification, profile, and trip data; repeat deletion is safe; integration test proves no orphan remains.
+**A collection with no owner was found while mapping the cascade.** `tripinputrequests` carries a `userId` but has no model, route, or script anywhere in the repository or its history — residue from code that no longer exists. It is still user data, so leaving it out would have reproduced the exact orphaning this finding is about. It is deleted by name, with a comment saying why, so the next person can drop the collection outright if it is confirmed dead.
+
+**Verified end-to-end** against a running server, with a disposable account seeded with one document in every affected collection (11 documents including the auth rows):
+
+| Case | Result |
+|---|---|
+| `DELETE /api/profile`, correct password | 200; **all 11 documents gone**; old session cookie → 401; signin → 401 |
+| `POST /api/auth/delete-user` (built-in path) | 200; **all 11 documents gone** — previously this orphaned every app record |
+| Wrong password | 400 `That password is incorrect.`; **all 11 documents intact**; session still 200 |
+| No password | 400 `Enter your password to confirm account deletion.`; nothing deleted |
+| Repeat deletion | first 200, second 401; safe |
+| Cleanup failure (app DB unreachable, auth DB fine) | **500**; **all 11 documents intact**; signin still 200 — failed closed |
+
+The last row is the one worth keeping: it was produced by starting the server with a deliberately invalid `MONGODB_DB` so Mongoose could not connect while Better Auth (which derives its database from the URI — see [P1-14](#p1-14-auth-and-app-data-can-silently-split-across-mongo-databases)) still worked. That configuration split is a real defect, but here it made the fail-closed path directly testable.
+
+All disposable accounts and seeded documents were removed afterwards; zero residual documents and zero orphaned sessions remain. One orphaned `account` document dated 2026-07-23 predates this work — it is evidence of the original bug, not test residue, and was left in place.
+
+**Acceptance:** ~~either supported delete entry point removes user, account, session, verification, profile, and trip data; repeat deletion is safe; integration test proves no orphan remains~~ — **met**, per the table above.
 
 ### P0-6. Production dependencies contain known high-severity advisories
 
@@ -272,7 +304,7 @@ Other changes:
 
 The disposable user, session, account, and profile were deleted afterwards by exact `_id`; zero documents remain for that address.
 
-**Not addressed here (separate findings):** `DELETE /api/profile` still deletes Better Auth collections with raw string-keyed queries and has the same ObjectId mismatch — that is [P0-5](#p0-5-account-deletion-can-report-success-while-leaving-auth-data-behind) and needs the Better Auth cascade hook, not a patch. Saved-place coordinate bounds remain unvalidated ([P1-11](#p1-11-saved-place-editing-can-silently-submit-the-previous-location)).
+**Not addressed here (separate findings):** `DELETE /api/profile` still deleted Better Auth collections with raw string-keyed queries and had the same ObjectId mismatch — that was P0-5, **since resolved**; the route no longer touches the auth collections at all. Saved-place coordinate bounds remain unvalidated ([P1-11](#p1-11-saved-place-editing-can-silently-submit-the-previous-location)).
 
 ### P1-2. ~~Pathao can take down all fares and is duplicated inconsistently~~ — RESOLVED (working tree)
 
@@ -299,7 +331,7 @@ So the divergence was real and observable: with one provider down, one page show
 
 **Failure modes exercised directly** against the module, all returning a full option set and never throwing: env var unset, unreachable host, DNS/connection refused, 404, 500, 200-with-HTML, 200 without `estimatedFare`, negative fare, fare sent as a string, a USD quote, and a hanging upstream.
 
-The disposable accounts, sessions, credential accounts, and trip documents created during verification were deleted afterwards; zero residual documents remain. (One orphaned `account` document dated 2026-07-23 predates this work and was left untouched — it is [P0-5](#p0-5-account-deletion-can-report-success-while-leaving-auth-data-behind) evidence, not test residue.)
+The disposable accounts, sessions, credential accounts, and trip documents created during verification were deleted afterwards; zero residual documents remain. (One orphaned `account` document dated 2026-07-23 predates this work and was left untouched — it is P0-5 evidence, not test residue.)
 
 **Not addressed here (separate findings):** `lib/fares.ts` is still a third, dead fare implementation and `speedFactor` is still unused — that is [P1-10](#p1-10-fare-logic-has-three-implementations-and-the-live-paths-ignore-speedfactor). `/api/best-options` still prices from the stored ORS duration rather than the traffic-adjusted one, and neither endpoint is rate-limited ([P1-6](#p1-6-rate-limiting-is-incomplete-process-local-and-internally-inconsistent)).
 
@@ -585,7 +617,7 @@ The six P0s differ by roughly an order of magnitude in cost, so they should not 
 
 The remaining two are genuine multi-day work and should be planned as such:
 
-5. **Consolidate account deletion through Better Auth hooks** (P0-5) — needs an ObjectId-coercion fix, a cascade hook, a re-auth step, and an integration test to prove no orphan remains.
+5. ~~**Consolidate account deletion through Better Auth hooks** (P0-5)~~ — **done.** `lib/account-cleanup.ts` runs from `deleteUser.beforeDelete`; password re-auth added; both entry points verified to leave zero residual documents.
 6. **Upgrade vulnerable dependencies** (P0-6) — but note that moving `shadcn` to `devDependencies` clears the Hono advisories from the production audit with no application-code change, so the residual Next/`sharp`/PostCSS/`nanoid` upgrade is smaller than the raw count of 19 suggests. Do the dependency reclassification first and re-audit before scoping the rest.
 
 ### Phase 1 — make provider-backed behavior reliable
@@ -627,7 +659,7 @@ The remaining two are genuine multi-day work and should be planned as such:
 - [ ] Production dependency audit has no high findings.
 - [ ] Deployed auth uses the current origin.
 - [ ] Anonymous legacy data reads/writes are removed or return 401/403.
-- [ ] Account deletion removes both auth and application records in an integration test.
+- [x] Account deletion removes both auth and application records in an integration test. *(P0-5; both entry points verified against a seeded disposable account — 11 documents in, zero out, and a cleanup failure deletes nothing)*
 - [x] Pathao outage still returns non-Pathao fares. *(P1-2; measured — `/api/fares` returns all 7 options with `PATHAO_FARE_API` pointed at a closed port, and the two Pathao rows degrade to `fareSource: "rate_card"`)*
 - [ ] Scheduled Dhaka time produces one consistent ISO instant across route, traffic, weather, and history.
 - [ ] Traffic API enforces owned geometry, point cap, service area, and quota.
@@ -676,7 +708,7 @@ All checks below used the then-current checkout and configured `.env`. Successfu
 | Malformed profile JSON | Returned 500 instead of a stable 400 contract — **fixed, see P1-1** |
 | Saved-place coordinate validation | Persisted impossible `999,999` coordinates with status 200 |
 | Password consistency | `/change-password` accepted a digit-free password and subsequent signin succeeded |
-| Account deletion | Reported success and deleted app data, but left the auth user/account/sessions usable |
+| Account deletion | Reported success and deleted app data, but left the auth user/account/sessions usable. **Fixed in P0-5** — re-tested end to end, both entry points now leave zero residual documents |
 | Legacy APIs | Anonymous create/read succeeded for places, routes, traffic, cameras, bounds, peak hours, and Mongo diagnostics |
 | Traffic scope | Authenticated traffic for points outside Bangladesh returned 200; no service-area restriction exists |
 | Traffic tile GET | `GET /api/traffic/live` returned 500; the URL used by the map returned 404 |
