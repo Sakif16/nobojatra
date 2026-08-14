@@ -167,7 +167,12 @@ function TrafficSummary({
 
   if (!traffic) return null;
 
-  const levelLabel = traffic.totals.congestionLevel.toUpperCase();
+  const levelLabel = {
+    low: "LOW",
+    moderate: "MODERATE",
+    high: "HIGH",
+    severe: "SEVERE",
+  }[traffic.totals.congestionLevel];
   const levelClass = {
     low: "bg-emerald-100 text-emerald-800",
     moderate: "bg-amber-100 text-amber-800",
