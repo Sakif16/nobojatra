@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { CalendarClock, History, User } from "lucide-react";
-import MapDashboardSection from "@/components/map/MapDashboardSection";
+import HomeContent from "./HomeContent";
 import RecentTrips from "./RecentTrips";
-import SuggestionTiles from "./SuggestionTiles";
+import type { FrequentTripCard } from "./PlanAgainCards";
+import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
 import type { RecentTrip } from "@/lib/trip-history";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   upcomingCount: number;
   recentTrips: RecentTrip[];
   defaultPassengerCount: number;
+  savedPlaces: SavedPlaceOption[];
+  frequentTrips: FrequentTripCard[];
 };
 
 export default function AuthedHome({
@@ -17,6 +20,8 @@ export default function AuthedHome({
   upcomingCount,
   recentTrips,
   defaultPassengerCount,
+  savedPlaces,
+  frequentTrips,
 }: Props) {
   const upcomingLabel =
     upcomingCount === 0
@@ -58,12 +63,11 @@ export default function AuthedHome({
           Plan a route
         </h1>
 
-        <div className="mt-8">
-          <MapDashboardSection
-            defaultPassengerCount={defaultPassengerCount}
-            aside={<SuggestionTiles />}
-          />
-        </div>
+        <HomeContent
+          defaultPassengerCount={defaultPassengerCount}
+          savedPlaces={savedPlaces}
+          frequentTrips={frequentTrips}
+        />
       </section>
 
       <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">

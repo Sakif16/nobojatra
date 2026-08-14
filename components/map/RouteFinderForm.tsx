@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, LocateFixed, Minus, Plus, X } from "lucide-react";
-import PlaceAutocomplete from "./PlaceAutocomplete";
+import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
 import { SERVICE_AREA_NAME, isInsideServiceArea } from "@/lib/trip-input";
@@ -29,6 +29,8 @@ type Props = {
   defaultPassengerCount?: number;
   /** Replays a trip an anonymous visitor started before signing up. */
   initialValues?: RouteFormValues | null;
+  /** Home/Work/custom shortcuts shown when origin or destination is empty. */
+  savedPlaces?: SavedPlaceOption[];
 };
 
 const MIN_PASSENGERS = 1;
@@ -59,6 +61,7 @@ export default function RouteFinderForm({
   loadingLabel = "Finding routes…",
   defaultPassengerCount = 2,
   initialValues,
+  savedPlaces,
 }: Props) {
   const [originLabel, setOriginLabel] = useState(
     initialValues?.origin.label ?? ""
@@ -243,6 +246,7 @@ export default function RouteFinderForm({
           icon={
             <span className="block size-2.5 rounded-full border-2 border-foreground" />
           }
+          savedPlaces={savedPlaces}
           onChange={(v) => {
             setFormError(null);
             setOriginLabel(v);
@@ -258,6 +262,7 @@ export default function RouteFinderForm({
           placeholder="Enter destination"
           value={destinationLabel}
           icon={<span className="block size-2.5 bg-foreground" />}
+          savedPlaces={savedPlaces}
           onChange={(v) => {
             setFormError(null);
             setDestinationLabel(v);

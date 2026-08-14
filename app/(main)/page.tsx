@@ -1,11 +1,21 @@
+// app/(main)/page.tsx
+// NOTE: reconstructed from what was shared earlier in this thread — diff
+// against your actual current file before applying, in case it has diverged
+// since (e.g. if the multi-path / group-travel or other features touched it).
 import { headers } from "next/headers";
 import AnonymousHome from "@/components/home/AnonymousHome";
 import AuthedHome from "@/components/home/AuthedHome";
 import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
-import { getHomeTripSummary } from "@/lib/trip-history";
+import { getFrequentTrips, getHomeTripSummary } from "@/lib/trip-history";
 import UserProfile from "@/models/UserProfile";
-require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]); // DNS fix for saki
+require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
+
+
+type SavedPlaceDoc = {
+  label: string;
+  place: { label: string; lat: number; lng: number };
+};
 
 // One URL, two states: a marketing hero for visitors, the planner for members.
 export default async function Home() {
@@ -19,10 +29,18 @@ export default async function Home() {
 
   await dbConnect();
 
-  const [{ recentTrips, upcomingCount }, profile] = await Promise.all([
+  const [{ recentTrips, upcomingCount }, profile, frequentTrips] = await Promise.all([
     getHomeTripSummary(session.user.id),
     UserProfile.findOne({ userId: session.user.id }).lean(),
+    getFrequentTrips(session.user.id),
   ]);
+
+  const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile?.savedPlaces)
+    ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
+        label: sp.label,
+        place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
+      }))
+    : [];
 
   return (
     <AuthedHome
@@ -30,6 +48,8 @@ export default async function Home() {
       upcomingCount={upcomingCount}
       recentTrips={recentTrips}
       defaultPassengerCount={profile?.defaultPassengerCount ?? 1}
+      savedPlaces={savedPlaces}
+      frequentTrips={frequentTrips}
     />
   );
 }

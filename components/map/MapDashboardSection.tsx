@@ -7,6 +7,7 @@ import { ArrowRight } from "lucide-react";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import RouteResults from "./RouteResults";
 import { buttonVariants } from "@/components/ui/button";
+import type { SavedPlaceOption } from "./PlaceAutocomplete";
 import {
   fetchRoutes,
   fetchTripTraffic,
@@ -58,6 +59,16 @@ type Props = {
   defaultPassengerCount?: number;
   /** Rendered beside the form until there are results to show a map for. */
   aside?: React.ReactNode;
+  /** Home/Work/custom shortcuts shown when origin or destination is empty. */
+  savedPlaces?: SavedPlaceOption[];
+  /**
+   * Set by a "Plan Again" card to replay a frequent trip. A new object
+   * reference (even for the same trip) re-triggers the effect below — the
+   * parent is expected to reset this to null via onPlanAgainHandled after
+   * each use so a second click on the same card still fires.
+   */
+  planAgainTrip?: RouteFormValues | null;
+  onPlanAgainHandled?: () => void;
 };
 
 function getFirstValidationError(errors: TripValidationErrors) {
@@ -87,6 +98,9 @@ export default function MapDashboardSection({
   variant = "authed",
   defaultPassengerCount,
   aside,
+  savedPlaces,
+  planAgainTrip,
+  onPlanAgainHandled,
 }: Props) {
   const router = useRouter();
   const [origin, setOrigin] = useState<TripLocation | null>(null);
@@ -271,6 +285,19 @@ export default function MapDashboardSection({
     })();
   }, [variant]);
 
+  // "Plan Again" — a frequent-trip card sets this from the home screen. Any
+  // new non-null value (even for a repeat click on the same trip) re-fills
+  // the form and re-runs the search, then hands control back to the parent
+  // so the trigger can be armed again for the next click.
+  useEffect(() => {
+    if (!planAgainTrip) return;
+
+    setRestoredTrip(planAgainTrip);
+    void findRoutes(planAgainTrip);
+    onPlanAgainHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planAgainTrip]);
+
   const hasResults = origin !== null && destination !== null && routes.length > 0;
 
   // Use the active route for fare params, falling back to the first route.
@@ -308,6 +335,7 @@ export default function MapDashboardSection({
           defaultPassengerCount={defaultPassengerCount}
           initialValues={restoredTrip}
           submitLabel="Find best route"
+          savedPlaces={savedPlaces}
         />
 
         {error && (
