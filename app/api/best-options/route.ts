@@ -1,9 +1,3 @@
-// app/api/best-options/route.ts
-// POST endpoint that powers the Route Comparison Display. Reuses the same
-// trip-lookup pattern as app/api/fares/route.ts and shares its fare maths
-// through lib/fare-providers.ts, so both pages quote identical prices. Pulls
-// REAL live traffic from lib/traffic-service.ts (TomTom), fetches weather,
-// then runs the scoring engine to produce the ranked top-3 cards.
 import { auth } from "@/lib/auth";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
