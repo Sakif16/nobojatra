@@ -140,7 +140,7 @@ export default function TripHistoryList() {
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:brightness-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:brightness-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -149,7 +149,7 @@ export default function TripHistoryList() {
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:brightness-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground scheme-dark [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:brightness-0 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -234,14 +234,14 @@ export default function TripHistoryList() {
                     href={`/trip-summary?tripHistoryId=${trip.id}`}
                     className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
                   >
-                    <span className="flex size-9 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-base">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
                       {ICONS[key] ?? '🚘'}
                     </span>
 
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 text-sm font-medium text-foreground">
                         <span className="truncate">{trip.originLabel}</span>
-                        <ArrowRight className="size-3.5 flex-shrink-0 text-muted-foreground" />
+                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="truncate">{trip.destinationLabel}</span>
                       </p>
                       <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -252,7 +252,7 @@ export default function TripHistoryList() {
                       </p>
                     </div>
 
-                    <span className="flex-shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                       {trip.fareLow != null && trip.fareHigh != null
                         ? `৳${trip.fareLow}–${trip.fareHigh}`
                         : '—'}

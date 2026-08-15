@@ -173,7 +173,7 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
           </h1>
           <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
             <span className="truncate">{trip.originLabel}</span>
-            <ArrowRight className="size-3.5 flex-shrink-0" />
+            <ArrowRight className="size-3.5 shrink-0" />
             <span className="truncate">{trip.destinationLabel}</span>
           </p>
         </div>
@@ -190,7 +190,7 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
             {/* Chosen vehicle + cost */}
             <div className="rounded-2xl border border-border bg-card px-4 py-4">
               <div className="flex items-center gap-3">
-                <span className="flex size-11 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-lg">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-lg">
                   {ICONS[vehicleKey] ?? '🚘'}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -203,7 +203,7 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
                     {trip.passengerCount > 1 ? 's' : ''}
                   </p>
                 </div>
-                <div className="flex-shrink-0 text-lg font-bold tabular-nums text-foreground">
+                <div className="shrink-0 text-lg font-bold tabular-nums text-foreground">
                   ৳{trip.vehicle.fareLow}–{trip.vehicle.fareHigh}
                 </div>
               </div>
@@ -256,13 +256,13 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
                   className={`flex flex-1 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm ${weatherTone(trip.weather?.severityBand)}`}
                 >
                   {trip.weatherUnavailable ? (
-                    <CloudOff className="size-4 flex-shrink-0" />
+                    <CloudOff className="size-4 shrink-0" />
                   ) : trip.weather?.severityBand === 'severe' ? (
-                    <AlertTriangle className="size-4 flex-shrink-0" />
+                    <AlertTriangle className="size-4 shrink-0" />
                   ) : trip.weather?.severityBand === 'moderate' ? (
-                    <CloudRain className="size-4 flex-shrink-0" />
+                    <CloudRain className="size-4 shrink-0" />
                   ) : (
-                    <Cloud className="size-4 flex-shrink-0" />
+                    <Cloud className="size-4 shrink-0" />
                   )}
                   <div className="min-w-0">
                     {trip.weatherUnavailable || !trip.weather ? (
@@ -283,7 +283,7 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
                 <div
                   className={`flex flex-1 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm ${congestionTone(trip.traffic?.congestionLevel)}`}
                 >
-                  <TrafficCone className="size-4 flex-shrink-0" />
+                  <TrafficCone className="size-4 shrink-0" />
                   <div className="min-w-0">
                     {trip.trafficUnavailable || !trip.traffic ? (
                       <p className="font-medium">Traffic unavailable</p>

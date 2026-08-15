@@ -371,7 +371,7 @@ export default function BestOptionsResults({
           <div
             className={
               canShowMap
-                ? "flex flex-col lg:w-[420px] lg:flex-shrink-0 lg:overflow-y-auto lg:pr-2"
+                ? "flex flex-col lg:w-105 lg:shrink-0 lg:overflow-y-auto lg:pr-2"
                 : "flex w-full flex-col"
             }
           >
@@ -391,10 +391,10 @@ export default function BestOptionsResults({
                 {showBanner && (
                   <div className={cn("mb-4 rounded-2xl border px-3.5 py-3", weatherClassName(weather, weatherUnavailable))}>
                     <div className="flex items-center gap-2">
-                      <span className="flex-shrink-0">{weatherIcon(weather, weatherUnavailable)}</span>
+                      <span className="shrink-0">{weatherIcon(weather, weatherUnavailable)}</span>
                       <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
                       {weather && (
-                        <span className="flex-shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
+                        <span className="shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
                           {weather.severityScore}/10
                         </span>
                       )}
@@ -403,7 +403,7 @@ export default function BestOptionsResults({
                         type="button"
                         onClick={() => setBannerDismissed(true)}
                         aria-label="Dismiss weather banner"
-                        className="flex-shrink-0 rounded-full p-1 opacity-60 transition-opacity hover:opacity-100"
+                        className="shrink-0 rounded-full p-1 opacity-60 transition-opacity hover:opacity-100"
                       >
                         <X className="size-3.5" />
                       </button>
@@ -411,7 +411,7 @@ export default function BestOptionsResults({
 
                     {congestionText && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs opacity-85">
-                        <TrafficCone className="size-3.5 flex-shrink-0" />
+                        <TrafficCone className="size-3.5 shrink-0" />
                         {congestionText}
                       </p>
                     )}
@@ -450,7 +450,7 @@ export default function BestOptionsResults({
                           >
                             {/* Row 1: icon, name, comfort stars, best-for tag */}
                             <div className="flex w-full items-center gap-3">
-                              <span className="flex size-9 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-base">
+                              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
                                 {ICONS[key] ?? "🚘"}
                               </span>
                               <div className="min-w-0 flex-1">
@@ -459,7 +459,7 @@ export default function BestOptionsResults({
                                     {option.displayName}
                                   </span>
                                   {option.bestFor && (
-                                    <span className={cn("flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase", bestForClass(option.bestFor))}>
+                                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase", bestForClass(option.bestFor))}>
                                       Best for {option.bestFor}
                                     </span>
                                   )}
@@ -476,7 +476,7 @@ export default function BestOptionsResults({
                                 </div>
                               </div>
                               {/* Fare range — "Estimated" label per the spec */}
-                              <div className="flex-shrink-0 text-right">
+                              <div className="shrink-0 text-right">
                                 <div className="text-sm font-semibold tabular-nums text-foreground">
                                   ৳{option.fare.low}–{option.fare.high}
                                 </div>
@@ -546,7 +546,7 @@ export default function BestOptionsResults({
               option shares one route geometry, "filtering to the selected
               route" is inherent here rather than swapping between polylines. */}
           {canShowMap && map?.origin && map?.destination && (
-            <div className="h-[500px] w-full flex-shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
+            <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
               <RouteMap
                 origin={map.origin}
                 destination={map.destination}
