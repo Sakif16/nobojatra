@@ -1,7 +1,3 @@
-// app/(main)/best-options/page.tsx
-// Server component — entry point for the Route Comparison Display.
-// Same pattern as app/(main)/fares/page.tsx: read + validate the two IDs
-// from the URL, redirect home if invalid, hand off to the client component.
 import { redirect } from "next/navigation";
 import BestOptionsResults from "@/components/BestOptionsResults";
 

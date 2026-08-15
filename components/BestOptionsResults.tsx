@@ -1,9 +1,3 @@
-// components/BestOptionsResults.tsx
-// Client component for the Route Comparison Display. Fetches ranked options
-// from /api/best-options, renders the dismissible weather banner, the ranked
-// cards (icon, fare range, duration, comfort stars, risk badge, best-for tag,
-// pros/cons chips), a manual Refresh button with a last-updated timestamp,
-// and a map that highlights the selected card's route.
 "use client";
 
 import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, TrafficCone, Users, X } from "lucide-react";
@@ -26,7 +20,7 @@ const RouteMap = dynamic(() => import("@/components/map/RouteMap"), {
 // ── Types matching the /api/best-options response shape ──
 
 type WeatherBand = "low" | "moderate" | "severe";
-// Mirrors CongestionLevel from lib/traffic-service.ts — the real TomTom band
+// Mirrors CongestionLevel VARIABLE from lib/traffic-service.ts, the real TomTom band
 type CongestionLevel = "low" | "moderate" | "high" | "severe";
 type RiskBand = "low" | "moderate" | "high";
 
@@ -42,8 +36,6 @@ interface RankedOption {
   pros: string[];
   cons: string[];
   fare: { low: number; mid: number; high: number };
-  // "rate_card" means the live provider quote was unavailable and this is a
-  // local estimate; fareSourceNote explains why.
   fareSource?: "pathao_api" | "rate_card";
   fareSourceNote?: string | null;
   weatherRestricted: boolean;
@@ -70,7 +62,7 @@ interface WeatherReading {
 interface CongestionReading {
   congestionIndexPercent: number;   // real % slower than TomTom's free-flow baseline
   congestionLevel: CongestionLevel; // low / moderate / high / severe
-  isPeakHour: boolean;              // whether the departure falls in a Dhaka rush window
+  isPeakHour: boolean;             
   durationInTrafficMin: number;     // live car-route duration, minutes
   baselineDurationMin: number;      // free-flow duration for comparison, minutes
 }
