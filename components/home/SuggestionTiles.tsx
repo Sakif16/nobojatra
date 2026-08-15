@@ -38,7 +38,7 @@ const suggestions: Suggestion[] = [
     label: "Trip history",
     description: "Revisit your recent journeys",
     icon: <History className="size-6" />,
-    href: "#recent-trips",
+    href: "/trip-history",
   },
   {
     label: "Saved places",

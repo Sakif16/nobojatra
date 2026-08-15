@@ -3,6 +3,7 @@
 import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, TrafficCone, Users, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
@@ -193,6 +194,9 @@ export default function BestOptionsResults({
   // keeping only the selected route drawn — selecting a different card just
   // re-confirms the same single route rather than swapping geometry.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const router = useRouter();
 
   // Controls the dismissible weather banner — starts visible, hidden once the
   // user dismisses it, and reappears on manual refresh (fresh data deserves a
@@ -281,6 +285,39 @@ export default function BestOptionsResults({
   const title = weatherTitle(weather, weatherUnavailable);
   const showBanner = !bannerDismissed && (title !== null);
   const congestionText = congestionLabel(congestion, trafficUnavailable);
+
+  const selectedOption = options.find((o) => `${o.provider}-${o.vehicleType}` === selectedKey) ?? null;
+
+  async function handleConfirm() {
+    if (!selectedOption) return;
+    setConfirming(true);
+    setConfirmError(null);
+
+    try {
+      const res = await fetch("/api/trip-input/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tripHistoryId,
+          routeId,
+          provider: selectedOption.provider,
+          vehicleType: selectedOption.vehicleType,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data?.success) {
+        setConfirmError(data?.message ?? "Could not confirm this ride. Please try again.");
+        setConfirming(false);
+        return;
+      }
+
+      router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`);
+    } catch {
+      setConfirmError("Could not confirm this ride. Please try again.");
+      setConfirming(false);
+    }
+  }
 
   // Formats the ISO lastUpdated timestamp as a short local time string
   const lastUpdatedLabel = lastUpdated
@@ -479,6 +516,26 @@ export default function BestOptionsResults({
                         );
                       })}
                     </div>
+
+                    {selectedOption && (
+                      <div className="mt-4 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3.5">
+                        {confirmError && (
+                          <p role="alert" className="mb-2 text-xs text-destructive">
+                            {confirmError}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleConfirm}
+                          disabled={confirming}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          {confirming
+                            ? "Confirming…"
+                            : `Confirm ${selectedOption.displayName} · ৳${selectedOption.fare.low}–${selectedOption.fare.high}`}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </>

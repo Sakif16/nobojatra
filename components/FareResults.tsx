@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Cloud, CloudOff, CloudRain, Sparkles, Users } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
@@ -176,6 +177,9 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     let active = true
@@ -251,6 +255,38 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const unavailable = results.filter((result) => !result.eligible || result.weatherBlocked)
   const weatherTitle = getWeatherTitle(weather, weatherUnavailable)
   const weatherDescription = getWeatherDescription(weatherUnavailable)
+  const selectedOption = available.find((v) => `${v.provider}-${v.vehicleType}` === selected) ?? null
+
+  async function handleConfirm() {
+    if (!selectedOption) return
+    setConfirming(true)
+    setConfirmError(null)
+
+    try {
+      const res = await fetch('/api/trip-input/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripHistoryId,
+          routeId,
+          provider: selectedOption.provider,
+          vehicleType: selectedOption.vehicleType,
+        }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data?.success) {
+        setConfirmError(data?.message ?? 'Could not confirm this ride. Please try again.')
+        setConfirming(false)
+        return
+      }
+
+      router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`)
+    } catch {
+      setConfirmError('Could not confirm this ride. Please try again.')
+      setConfirming(false)
+    }
+  }
 
   return (
     <main className="flex-1">
@@ -430,6 +466,26 @@ export default function FareResults({ tripHistoryId, routeId }: {
                         )
                       })}
                     </div>
+
+                    {selectedOption && (
+                      <div className="mt-4 rounded-2xl border border-primary/30 bg-primary/5 px-3.5 py-3">
+                        {confirmError && (
+                          <p role="alert" className="mb-2 text-xs text-destructive">
+                            {confirmError}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleConfirm}
+                          disabled={confirming}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          {confirming
+                            ? 'Confirming…'
+                            : `Confirm ${selectedOption.displayName} · ৳${selectedOption.fare.low}–${selectedOption.fare.high}`}
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
