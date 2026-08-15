@@ -95,6 +95,56 @@ const SelectedVehicleSchema = new Schema(
   { _id: false },
 );
 
+/**
+ * Weather/traffic reading captured at the moment the user confirmed a
+ * vehicle. Stored by value so the Trip Summary page can show "what it was
+ * like when you booked" without re-querying OpenWeather/TomTom — a snapshot,
+ * not a live-updating reading.
+ */
+const SelectionWeatherSchema = new Schema(
+  {
+    source: {
+      type: String,
+      enum: ["route_midpoint", "dhaka_fallback"],
+    },
+    temperatureCelsius: { type: Number },
+    precipitationMmPerHour: { type: Number },
+    windKmh: { type: Number },
+    visibilityMeters: { type: Number, default: null },
+    severityScore: { type: Number },
+    severityBand: {
+      type: String,
+      enum: ["low", "moderate", "severe"],
+    },
+  },
+  { _id: false },
+);
+
+const SelectionTrafficSchema = new Schema(
+  {
+    congestionIndexPercent: { type: Number },
+    congestionLevel: {
+      type: String,
+      enum: ["low", "moderate", "high", "severe"],
+    },
+    isPeakHour: { type: Boolean },
+    durationInTrafficMin: { type: Number },
+    baselineDurationMin: { type: Number },
+  },
+  { _id: false },
+);
+
+const SelectionSnapshotSchema = new Schema(
+  {
+    weather: { type: SelectionWeatherSchema, default: null },
+    weatherUnavailable: { type: Boolean, default: false },
+    traffic: { type: SelectionTrafficSchema, default: null },
+    trafficUnavailable: { type: Boolean, default: false },
+    capturedAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const TripHistorySchema = new Schema(
   {
     userId: {
@@ -143,6 +193,18 @@ const TripHistorySchema = new Schema(
     },
     selectedVehicle: {
       type: SelectedVehicleSchema,
+      default: null,
+    },
+    // Weather/traffic snapshot taken at the moment selectedVehicle was
+    // confirmed. Null until a vehicle is confirmed.
+    selectionSnapshot: {
+      type: SelectionSnapshotSchema,
+      default: null,
+    },
+    // When the user actually confirmed a vehicle — distinct from
+    // completedAt/createdAt, which are set when the route search happened.
+    selectedAt: {
+      type: Date,
       default: null,
     },
     distanceKm: {
