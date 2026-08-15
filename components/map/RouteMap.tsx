@@ -63,7 +63,7 @@ function TrafficLegend({
   if (!traffic && !loading) return null;
 
   return (
-    <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col gap-1.5 rounded-xl border border-border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+    <div className="pointer-events-none absolute right-3 top-3 z-1000 flex flex-col gap-1.5 rounded-xl border border-border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
       {loading ? (
         <span className="text-muted-foreground">Checking live traffic…</span>
       ) : (
@@ -260,7 +260,7 @@ export default function RouteMap({
         />
       </MapContainer>
 
-      <div className="absolute left-3 top-3 z-[1000]">
+      <div className="absolute left-3 top-3 z-1000">
         <button
           type="button"
           onClick={() => setShowTrafficTiles((s) => !s)}

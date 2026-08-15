@@ -332,7 +332,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
           <div
             className={
               canShowMap
-                ? 'flex flex-col lg:w-[380px] lg:flex-shrink-0 lg:overflow-y-auto lg:pr-2'
+                ? 'flex flex-col lg:w-95 lg:shrink-0 lg:overflow-y-auto lg:pr-2'
                 : 'flex w-full flex-col'
             }
           >
@@ -364,14 +364,14 @@ export default function FareResults({ tripHistoryId, routeId }: {
                     )}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="flex-shrink-0">
+                      <span className="shrink-0">
                         {getWeatherIcon(weather, weatherUnavailable)}
                       </span>
                       <p className="min-w-0 flex-1 truncate text-sm font-medium">
                         {weatherTitle}
                       </p>
                       {weather && (
-                        <span className="flex-shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
+                        <span className="shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
                           {weather.severityScore}/10
                         </span>
                       )}
@@ -432,7 +432,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                             )}
                           >
                             <div className="flex w-full items-center gap-3">
-                              <span className="flex size-9 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-base">
+                              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
                                 {ICONS[key] ?? '🚘'}
                               </span>
                               <div className="min-w-0 flex-1">
@@ -451,14 +451,14 @@ export default function FareResults({ tripHistoryId, routeId }: {
                                 </div>
                               </div>
                               {/* tabular-nums keeps the ৳ ranges aligned down the column */}
-                              <div className="flex-shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                              <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                                 ৳{v.fare.low}–{v.fare.high}
                               </div>
                             </div>
 
                             {v.weatherRestricted && v.restrictionReason && (
                               <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
-                                <CloudRain className="mt-px size-3 flex-shrink-0" aria-hidden />
+                                <CloudRain className="mt-px size-3 shrink-0" aria-hidden />
                                 {v.restrictionReason}
                               </p>
                             )}
@@ -512,7 +512,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                             aria-disabled
                             className="flex w-full items-center gap-3 rounded-2xl border border-border/60 bg-card/50 px-3.5 py-3"
                           >
-                            <span className="flex size-9 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-base opacity-50 grayscale">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base opacity-50 grayscale">
                               {ICONS[key] ?? '🚘'}
                             </span>
                             <div className="min-w-0 flex-1">
@@ -525,7 +525,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                                 {getUnavailableReason(v, passengers)}
                               </div>
                             </div>
-                            <div className="flex-shrink-0 text-sm font-semibold tabular-nums text-muted-foreground/60 line-through">
+                            <div className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground/60 line-through">
                               ৳{v.fare.low}–{v.fare.high}
                             </div>
                           </div>
@@ -539,7 +539,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
           </div>
 
           {canShowMap && map?.origin && map?.destination && (
-            <div className="h-[500px] w-full flex-shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
+            <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
               <RouteMap
                 origin={map.origin}
                 destination={map.destination}
