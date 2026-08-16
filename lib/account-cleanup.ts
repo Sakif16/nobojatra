@@ -28,12 +28,14 @@ import dbConnect from "@/lib/mongodb";
 import Alert from "@/models/Alert";
 import Route from "@/models/Map_route";
 import Place from "@/models/Place";
+import SavedTrip from "@/models/SavedTrip";
 import TrafficData from "@/models/TrafficData";
 import TripHistory from "@/models/TripHistory";
 import UserProfile from "@/models/UserProfile";
 
 export type AccountCleanupSummary = {
   alerts: number;
+  savedTrips: number;
   trafficData: number;
   tripHistory: number;
   routes: number;
@@ -71,9 +73,20 @@ export async function deleteAccountData(
   const routes = await Route.find({ userId }).select("_id");
   const routeIds = routes.map((route) => route._id);
 
-  const [alerts, trafficData, tripHistory, routesDeleted, places, profile] =
+  const [
+    alerts,
+    savedTrips,
+    trafficData,
+    tripHistory,
+    routesDeleted,
+    places,
+    profile,
+  ] =
     await Promise.all([
       Alert.deleteMany({ userId }),
+      // Saved trips are keyed by userId only — their alerts are removed by the
+      // Alert delete above, so no id collection is needed first.
+      SavedTrip.deleteMany({ userId }),
       routeIds.length > 0
         ? TrafficData.deleteMany({ routeId: { $in: routeIds } })
         : Promise.resolve({ deletedCount: 0 }),
@@ -113,6 +126,7 @@ export async function deleteAccountData(
 
   return {
     alerts: alerts.deletedCount,
+    savedTrips: savedTrips.deletedCount,
     trafficData: trafficData.deletedCount,
     tripHistory: tripHistory.deletedCount,
     routes: routesDeleted.deletedCount,
