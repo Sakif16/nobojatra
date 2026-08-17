@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { buttonVariants } from "./ui/button";
 import Logout from "./logout";
+import NotificationBell from "./notifications/NotificationBell";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 
@@ -44,29 +45,41 @@ export default async function Navbar() {
           NoboJatra
         </Link>
 
-        <details className="relative">
-          <summary className="cursor-pointer list-none rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted">
-            {session.user.name}
-          </summary>
+        <div className="flex items-center gap-3">
+          {/* Server component rendering a client child — the bell owns its own
+              polling, so the navbar stays static. */}
+          <NotificationBell />
 
-          <div className="absolute right-0 mt-2 w-40 rounded-lg border border-border bg-background p-2 shadow-lg">
-            <Link
-              href="/trip-history"
-              className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-            >
-              Trip History
-            </Link>
-            <Link
-              href="/profile"
-              className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-            >
-              Profile
-            </Link>
-            <div className="mt-1">
-              <Logout />
+          <details className="relative">
+            <summary className="cursor-pointer list-none rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted">
+              {session.user.name}
+            </summary>
+
+            <div className="absolute right-0 mt-2 w-40 rounded-lg border border-border bg-background p-2 shadow-lg">
+              <Link
+                href="/trip-history"
+                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Trip History
+              </Link>
+              <Link
+                href="/saved-trips"
+                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Saved Trips
+              </Link>
+              <Link
+                href="/profile"
+                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Profile
+              </Link>
+              <div className="mt-1">
+                <Logout />
+              </div>
             </div>
-          </div>
-        </details>
+          </details>
+        </div>
       </div>
     </header>
   );
