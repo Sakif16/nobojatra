@@ -110,7 +110,7 @@ export async function buildEvaluationContext(
   const trafficPoints = getTrafficPoints(best.coords);
   const midpoint = getMidpoint(best.coords) ?? trip.origin;
 
-  const [traffic, weather, fare] = await Promise.all([
+  const [traffic, weather, rate] = await Promise.all([
     trafficPoints
       ? getTrafficForTrip(trafficPoints, departure).catch((error: unknown) => {
           notes.push(
@@ -139,17 +139,7 @@ export async function buildEvaluationContext(
         return null;
       }
 
-      const [estimate] = await estimateFaresForRates([rate], {
-        distanceKm: best.distanceKm,
-        durationMin: best.durationMin,
-      });
-
-      return {
-        low: estimate.fare.low,
-        mid: estimate.fare.mid,
-        high: estimate.fare.high,
-        source: estimate.fareSource,
-      };
+      return rate;
     })().catch((error: unknown) => {
       notes.push(
         `Fare unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
@@ -157,6 +147,37 @@ export async function buildEvaluationContext(
       return null;
     }),
   ]);
+
+  let fare: EvaluationContext["fare"] = null;
+
+  if (rate) {
+    try {
+      const [estimate] = await estimateFaresForRates([rate], {
+        distanceKm: best.distanceKm,
+        durationMin: best.durationMin,
+        adjustmentContext: {
+          weather,
+          traffic: traffic
+            ? {
+                congestionLevel: traffic.totals.congestionLevel,
+                isPeakHour: traffic.isPeakHour,
+              }
+            : null,
+        },
+      });
+
+      fare = {
+        low: estimate.fare.low,
+        mid: estimate.fare.mid,
+        high: estimate.fare.high,
+        source: estimate.fareSource,
+      };
+    } catch (error) {
+      notes.push(
+        `Fare unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+    }
+  }
 
   return {
     context: {

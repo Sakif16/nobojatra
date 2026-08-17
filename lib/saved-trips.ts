@@ -274,6 +274,8 @@ function serializeRoute(route: RouteResult) {
   return {
     routeId: route.id,
     distanceKm: route.distanceKm,
+    travelDurationMin: route.travelDurationMin ?? route.durationMin,
+    dwellDurationMin: route.dwellDurationMin ?? 0,
     durationMin: route.durationMin,
     coords: route.coords,
     legs: route.legs,

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { createTripConfirmedAlert } from "@/lib/alerts";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
@@ -33,10 +34,15 @@ type SelectRequestBody = {
 type StoredRoute = {
   routeId?: unknown;
   distanceKm?: unknown;
+  travelDurationMin?: unknown;
+  dwellDurationMin?: unknown;
   durationMin?: unknown;
   coords?: unknown;
+  legs?: unknown;
 };
 type StoredTripHistory = {
+  origin?: unknown;
+  destination?: unknown;
   passengerCount?: unknown;
   departureMode?: unknown;
   scheduledAt?: unknown;
@@ -54,6 +60,15 @@ function isValidPassengerCount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 8;
 }
 
+function getLocationLabel(value: unknown, fallback: string) {
+  if (typeof value !== "object" || value === null || !("label" in value)) {
+    return fallback;
+  }
+
+  const label = (value as { label?: unknown }).label;
+  return typeof label === "string" && label.trim() ? label.trim() : fallback;
+}
+
 function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
   if (!Array.isArray(coords)) return [];
   return coords.filter((coord): coord is LatLngTuple => {
@@ -61,6 +76,42 @@ function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
     const [lat, lng] = coord;
     return typeof lat === "number" && Number.isFinite(lat) && typeof lng === "number" && Number.isFinite(lng);
   });
+}
+
+function getRouteDwellDurationMin(route: StoredRoute) {
+  if (
+    typeof route.dwellDurationMin === "number" &&
+    Number.isFinite(route.dwellDurationMin) &&
+    route.dwellDurationMin >= 0
+  ) {
+    return route.dwellDurationMin;
+  }
+
+  if (!Array.isArray(route.legs)) {
+    return 0;
+  }
+
+  return route.legs.reduce((total, leg) => {
+    if (!leg || typeof leg !== "object") return total;
+
+    const dwellAfterMin = (leg as { dwellAfterMin?: unknown }).dwellAfterMin;
+
+    return typeof dwellAfterMin === "number" && Number.isFinite(dwellAfterMin)
+      ? total + dwellAfterMin
+      : total;
+  }, 0);
+}
+
+function getRouteTravelDurationMin(route: StoredRoute, totalDurationMin: number) {
+  if (
+    typeof route.travelDurationMin === "number" &&
+    Number.isFinite(route.travelDurationMin) &&
+    route.travelDurationMin > 0
+  ) {
+    return route.travelDurationMin;
+  }
+
+  return Math.max(1, totalDurationMin - getRouteDwellDurationMin(route));
 }
 
 function distanceMeters(first: LatLngTuple, second: LatLngTuple) {
@@ -186,6 +237,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: "Stored trip route is missing fare metrics." }, { status: 422 });
   }
 
+  const dwellDurationMin = getRouteDwellDurationMin(selectedRoute);
+  const travelDurationMin = getRouteTravelDurationMin(selectedRoute, durationMin);
+
   const rate = await VehicleRate.findOne({ provider, vehicleType, isActive: true }).lean();
   if (!rate) {
     return NextResponse.json({ success: false, message: "That vehicle is not available." }, { status: 404 });
@@ -245,8 +299,10 @@ export async function POST(req: NextRequest) {
         congestionIndexPercent: result.totals.congestionIndexPercent,
         congestionLevel: result.totals.congestionLevel,
         isPeakHour: result.isPeakHour,
-        durationInTrafficMin: Math.round(result.totals.durationInTrafficSec / 60),
-        baselineDurationMin: Math.round(result.totals.baselineDurationSec / 60),
+        durationInTrafficMin:
+          Math.round(result.totals.durationInTrafficSec / 60) + dwellDurationMin,
+        baselineDurationMin:
+          Math.round(result.totals.baselineDurationSec / 60) + dwellDurationMin,
       };
     } catch (error) {
       if (error instanceof TrafficServiceError) {
@@ -260,8 +316,14 @@ export async function POST(req: NextRequest) {
     trafficUnavailable = true;
   }
 
-  const [fareEstimate] = await estimateFaresForRates([rate], { distanceKm, durationMin });
-  const estimatedDurationMin = traffic ? traffic.durationInTrafficMin : durationMin;
+  const [fareEstimate] = await estimateFaresForRates([rate], {
+    distanceKm,
+    durationMin,
+    adjustmentContext: { weather, traffic },
+  });
+  const estimatedDurationMin = traffic
+    ? traffic.durationInTrafficMin
+    : travelDurationMin + dwellDurationMin;
 
   const saved = await saveVehicleSelection({
     userId: session.user.id,
@@ -298,6 +360,21 @@ export async function POST(req: NextRequest) {
 
   if (!saved) {
     return NextResponse.json({ success: false, message: "Could not confirm this trip." }, { status: 404 });
+  }
+
+  try {
+    await createTripConfirmedAlert({
+      userId: session.user.id,
+      tripHistoryId: saved.id,
+      originLabel: getLocationLabel(trip.origin, "your origin"),
+      destinationLabel: getLocationLabel(trip.destination, "your destination"),
+      vehicleLabel: rate.displayName,
+      fareLow: fareEstimate.fare.low,
+      fareHigh: fareEstimate.fare.high,
+      currency: "BDT",
+    });
+  } catch (error) {
+    console.error("Trip confirmation notification failed:", error);
   }
 
   return NextResponse.json({ success: true, tripHistoryId: saved.id });

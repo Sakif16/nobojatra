@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, TrafficCone, Users, X } from "lucide-react";
+import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, Sparkles, TrafficCone, Users, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,7 @@ type WeatherBand = "low" | "moderate" | "severe";
 // Mirrors CongestionLevel VARIABLE from lib/traffic-service.ts, the real TomTom band
 type CongestionLevel = "low" | "moderate" | "high" | "severe";
 type RiskBand = "low" | "moderate" | "high";
+type TravelPriority = "time" | "cost" | "comfort";
 
 interface RankedOption {
   provider: string;
@@ -39,14 +40,24 @@ interface RankedOption {
   fare: { low: number; mid: number; high: number };
   fareSource?: "pathao_api" | "rate_card";
   fareSourceNote?: string | null;
+  fareAdjustment?: {
+    multiplier: number;
+    weatherMultiplier: number;
+    trafficMultiplier: number;
+    peakHourMultiplier: number;
+    notes: string[];
+  } | null;
   weatherRestricted: boolean;
   restrictionReason: string | null;
+  score: number;
 }
 
 interface TripSummary {
   originLabel: string;
   destinationLabel: string;
   distanceKm: number;
+  travelDurationMin?: number;
+  dwellDurationMin?: number;
   durationMin: number;
   passengers: number;
 }
@@ -81,6 +92,8 @@ interface BestOptionsMap {
     coords: [number, number][];
     legs: RouteResult["legs"];
     distanceKm: number;
+    travelDurationMin?: number;
+    dwellDurationMin?: number;
     durationMin: number;
   };
 }
@@ -93,6 +106,7 @@ interface BestOptionsApiResponse {
   congestion?: CongestionReading | null;
   trafficUnavailable?: boolean;
   options?: RankedOption[];
+  scoringPriority?: TravelPriority;
   lastUpdated?: string;
 }
 
@@ -108,6 +122,26 @@ const ICONS: Record<string, string> = {
 };
 
 const STARS = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
+
+const PRIORITY_OPTIONS: Array<{ value: TravelPriority; label: string }> = [
+  { value: "time", label: "Speed" },
+  { value: "cost", label: "Budget" },
+  { value: "comfort", label: "Comfort" },
+];
+
+function scoreLabel(score: number) {
+  if (!Number.isFinite(score)) return "0";
+  return String(Math.max(0, Math.min(100, Math.round(score * 100))));
+}
+
+function getFareAdjustmentLabel(adjustment: RankedOption["fareAdjustment"]) {
+  if (!adjustment || adjustment.notes.length === 0) return null;
+
+  const notes = adjustment.notes.slice(0, 2).join(" · ");
+  const more = adjustment.notes.length > 2 ? ` · +${adjustment.notes.length - 2} more` : "";
+
+  return `Condition adjusted x${adjustment.multiplier.toFixed(2)}: ${notes}${more}`;
+}
 
 // Risk badge colour classes per band
 function riskBadgeClass(band: RiskBand) {
@@ -182,6 +216,8 @@ export default function BestOptionsResults({
   const [weatherUnavailable, setWeatherUnavailable] = useState(false);
   const [congestion, setCongestion] = useState<CongestionReading | null>(null);
   const [trafficUnavailable, setTrafficUnavailable] = useState(false);
+  const [scoringPriority, setScoringPriority] = useState<TravelPriority | null>(null);
+  const [pendingPriority, setPendingPriority] = useState<TravelPriority | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -196,6 +232,8 @@ export default function BestOptionsResults({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
   // Controls the dismissible weather banner — starts visible, hidden once the
@@ -205,21 +243,34 @@ export default function BestOptionsResults({
 
   // Shared fetch function used by both the initial load and the Refresh button
   const load = useCallback(
-    async (isRefresh: boolean) => {
+    async (isRefresh: boolean, priorityOverride?: TravelPriority | null) => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
+      const requestedPriority = priorityOverride ?? null;
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      abortRef.current?.abort();
+
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       try {
         const res = await fetch("/api/best-options", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tripHistoryId, routeId }),
+          signal: controller.signal,
+          body: JSON.stringify({
+            tripHistoryId,
+            routeId,
+            ...(requestedPriority ? { priority: requestedPriority } : {}),
+          }),
         });
 
         if (!res.ok) throw new Error("Best options service returned an error");
 
         const data = (await res.json()) as BestOptionsApiResponse;
+        if (requestId !== requestIdRef.current) return;
 
         setOptions(Array.isArray(data.options) ? data.options : []);
         setTrip(data.trip ?? null);
@@ -228,15 +279,29 @@ export default function BestOptionsResults({
         setWeatherUnavailable(Boolean(data.weatherUnavailable));
         setCongestion(data.congestion ?? null);
         setTrafficUnavailable(Boolean(data.trafficUnavailable));
+        setScoringPriority(data.scoringPriority ?? null);
         setLastUpdated(data.lastUpdated ?? new Date().toISOString());
         setBannerDismissed(false); // re-run re-shows the banner with fresh data
         setSelectedKey(null);
-      } catch {
+      } catch (fetchError) {
+        if (
+          fetchError instanceof DOMException &&
+          fetchError.name === "AbortError"
+        ) {
+          return;
+        }
+
+        if (requestId !== requestIdRef.current) return;
         setError("Could not load best options. Please try again.");
         setOptions([]);
       } finally {
+        if (requestId !== requestIdRef.current) return;
         setLoading(false);
         setRefreshing(false);
+        setPendingPriority(null);
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
       }
     },
     [tripHistoryId, routeId],
@@ -244,12 +309,26 @@ export default function BestOptionsResults({
 
   // Initial fetch on mount
   useEffect(() => {
-    void load(false);
+    const timeoutId = window.setTimeout(() => {
+      void load(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   // Manual re-run of the whole weather/traffic/scoring pipeline
   function handleRefresh() {
-    void load(true);
+    void load(true, scoringPriority);
+  }
+
+  function handlePriorityChange(priority: TravelPriority) {
+    if (loading || refreshing || priority === scoringPriority) return;
+
+    setPendingPriority(priority);
+    void load(true, priority);
   }
 
   // Trip history stores leg splits only for multi-stop trips — falls back to
@@ -265,6 +344,7 @@ export default function BestOptionsResults({
             endIndex: map.route.coords.length - 1,
             color: ROUTE_COLORS[0],
             distanceKm: map.route.distanceKm,
+            durationMin: map.route.durationMin,
           },
         ];
 
@@ -274,6 +354,8 @@ export default function BestOptionsResults({
         rank: 1,
         coords: map.route.coords,
         distanceKm: map.route.distanceKm,
+        travelDurationMin: map.route.travelDurationMin,
+        dwellDurationMin: map.route.dwellDurationMin,
         durationMin: map.route.durationMin,
         legs,
       },
@@ -285,6 +367,8 @@ export default function BestOptionsResults({
   const title = weatherTitle(weather, weatherUnavailable);
   const showBanner = !bannerDismissed && (title !== null);
   const congestionText = congestionLabel(congestion, trafficUnavailable);
+  const activePriority = pendingPriority ?? scoringPriority ?? "time";
+  const isPriorityChanging = pendingPriority !== null;
 
   const selectedOption = options.find((o) => `${o.provider}-${o.vehicleType}` === selectedKey) ?? null;
 
@@ -312,6 +396,7 @@ export default function BestOptionsResults({
         return;
       }
 
+      window.dispatchEvent(new Event("notifications:refresh"));
       router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`);
     } catch {
       setConfirmError("Could not confirm this ride. Please try again.");
@@ -418,7 +503,11 @@ export default function BestOptionsResults({
                   </div>
                 )}
 
-                {options.length === 0 ? (
+                {isPriorityChanging ? (
+                  <div className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                    Re-scoring for {PRIORITY_OPTIONS.find((priority) => priority.value === pendingPriority)?.label ?? "selected"} priority...
+                  </div>
+                ) : options.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
                     <p className="text-sm font-medium text-foreground">No options available right now</p>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -427,15 +516,45 @@ export default function BestOptionsResults({
                   </div>
                 ) : (
                   <>
-                    <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Top {options.length} ranked option{options.length > 1 ? "s" : ""}
-                    </p>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        Top {options.length} ranked option{options.length > 1 ? "s" : ""}
+                      </p>
+                      <div
+                        role="group"
+                        aria-label="Scoring priority"
+                        className="flex overflow-hidden rounded-full border border-border bg-secondary p-0.5"
+                      >
+                        {PRIORITY_OPTIONS.map((priority) => {
+                          const active = priority.value === activePriority;
+
+                          return (
+                            <button
+                              key={priority.value}
+                              type="button"
+                              aria-pressed={active}
+                              disabled={loading || refreshing}
+                              onClick={() => handlePriorityChange(priority.value)}
+                              className={cn(
+                                "rounded-full px-3 py-1 text-[10px] font-semibold tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                                active
+                                  ? "bg-primary text-primary-foreground"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {priority.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
                     {/* ── Ranked cards ── */}
                     <div className="flex flex-col gap-3">
                       {options.map((option) => {
                         const key = `${option.provider}-${option.vehicleType}`;
                         const isSelected = selectedKey === key;
+                        const adjustmentLabel = getFareAdjustmentLabel(option.fareAdjustment);
 
                         return (
                           <button
@@ -489,7 +608,17 @@ export default function BestOptionsResults({
                               <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", riskBadgeClass(option.riskBand))}>
                                 {riskBadgeLabel(option.riskBand)} RISK
                               </span>
+                              <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary-foreground">
+                                Score {scoreLabel(option.score)}
+                              </span>
                             </div>
+
+                            {adjustmentLabel && (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
+                                <Sparkles className="mt-px size-3 shrink-0" aria-hidden />
+                                {adjustmentLabel}
+                              </p>
+                            )}
 
                             {/* Row 3: pros/cons chips — up to 3 pros, 2 cons */}
                             {(option.pros.length > 0 || option.cons.length > 0) && (

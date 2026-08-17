@@ -179,3 +179,28 @@
     letter-spacing: var(--tracking-normal);
   }
 }
+
+@layer components {
+  @media (hover: hover) {
+    button:not(:disabled):not([aria-disabled="true"]):not([data-no-glow]):hover {
+      border-color: color-mix(in oklch, var(--primary), var(--border) 45%);
+      box-shadow: 0 0 22px color-mix(in oklch, var(--primary), transparent 76%);
+    }
+
+    button:not(:disabled):not([aria-disabled="true"]):not([data-no-glow]):focus-visible {
+      box-shadow: 0 0 22px color-mix(in oklch, var(--primary), transparent 78%);
+    }
+  }
+}
+
+@keyframes notification-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

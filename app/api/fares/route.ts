@@ -2,6 +2,13 @@ import { auth } from "@/lib/auth";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
+  getTrafficForTrip,
+  TrafficServiceError,
+  type DepartureOptions,
+  type TrafficPoint,
+  type TripTrafficResult,
+} from "@/lib/traffic-service";
+import {
   fetchWeatherForPoint,
   getWeatherVehicleRestriction,
   type NormalizedWeather,
@@ -28,6 +35,8 @@ type StoredLocation = {
 type StoredRoute = {
   routeId?: unknown;
   distanceKm?: unknown;
+  travelDurationMin?: unknown;
+  dwellDurationMin?: unknown;
   durationMin?: unknown;
   coords?: unknown;
   legs?: unknown;
@@ -38,6 +47,8 @@ type StoredTripHistory = {
   destination?: StoredLocation;
   stops?: StoredLocation[];
   passengerCount?: unknown;
+  departureMode?: unknown;
+  scheduledAt?: unknown;
   routeOptions?: StoredRoute[];
   selectedRoute?: StoredRoute | null;
 };
@@ -54,6 +65,10 @@ type RouteLeg = {
   endIndex: number;
   color: string;
   distanceKm: number;
+  durationMin: number;
+  fromLabel?: string;
+  toLabel?: string;
+  dwellAfterMin?: number;
 };
 
 type VehicleRateDocument = {
@@ -114,15 +129,71 @@ function toMapPoint(location: StoredLocation | undefined): MapPoint | null {
 function normalizeRouteLegs(legs: unknown): RouteLeg[] {
   if (!Array.isArray(legs)) return [];
 
-  return legs.filter((leg): leg is RouteLeg => {
-    if (!leg || typeof leg !== "object") return false;
+  return legs.reduce<RouteLeg[]>((normalized, leg) => {
+    if (!leg || typeof leg !== "object") return normalized;
     const candidate = leg as Partial<RouteLeg>;
-    return (
+
+    if (
       typeof candidate.startIndex === "number" &&
       typeof candidate.endIndex === "number" &&
       typeof candidate.color === "string"
-    );
-  });
+    ) {
+      normalized.push({
+        startIndex: candidate.startIndex,
+        endIndex: candidate.endIndex,
+        color: candidate.color,
+        distanceKm:
+          typeof candidate.distanceKm === "number" &&
+          Number.isFinite(candidate.distanceKm)
+            ? candidate.distanceKm
+            : 0,
+        durationMin:
+          typeof candidate.durationMin === "number" &&
+          Number.isFinite(candidate.durationMin)
+            ? candidate.durationMin
+            : 0,
+        ...(typeof candidate.fromLabel === "string"
+          ? { fromLabel: candidate.fromLabel }
+          : {}),
+        ...(typeof candidate.toLabel === "string"
+          ? { toLabel: candidate.toLabel }
+          : {}),
+        ...(typeof candidate.dwellAfterMin === "number" &&
+        Number.isFinite(candidate.dwellAfterMin)
+          ? { dwellAfterMin: candidate.dwellAfterMin }
+          : {}),
+      });
+    }
+
+    return normalized;
+  }, []);
+}
+
+function getRouteDwellDurationMin(route: StoredRoute) {
+  if (
+    typeof route.dwellDurationMin === "number" &&
+    Number.isFinite(route.dwellDurationMin) &&
+    route.dwellDurationMin >= 0
+  ) {
+    return route.dwellDurationMin;
+  }
+
+  return normalizeRouteLegs(route.legs).reduce(
+    (total, leg) => total + (leg.dwellAfterMin ?? 0),
+    0,
+  );
+}
+
+function getRouteTravelDurationMin(route: StoredRoute, totalDurationMin: number) {
+  if (
+    typeof route.travelDurationMin === "number" &&
+    Number.isFinite(route.travelDurationMin) &&
+    route.travelDurationMin > 0
+  ) {
+    return route.travelDurationMin;
+  }
+
+  return Math.max(1, totalDurationMin - getRouteDwellDurationMin(route));
 }
 
 function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
@@ -222,6 +293,55 @@ async function getFareWeather(routeMidpoint: WeatherPoint | null) {
   }
 }
 
+function getDepartureOptions(trip: StoredTripHistory): DepartureOptions {
+  if (trip.departureMode === "scheduled" && typeof trip.scheduledAt === "string") {
+    const parsed = new Date(trip.scheduledAt);
+
+    if (!Number.isNaN(parsed.getTime())) {
+      return { mode: "scheduled", scheduledAt: parsed.toISOString() };
+    }
+  }
+
+  return { mode: "now" };
+}
+
+function sampleTrafficPoints(coords: LatLngTuple[]): TrafficPoint[] | null {
+  const sampleCount = Math.min(10, coords.length);
+  if (sampleCount < 2) return null;
+
+  const points: TrafficPoint[] = [];
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const coordinateIndex = Math.round((index * (coords.length - 1)) / Math.max(1, sampleCount - 1));
+    const coordinate = coords[coordinateIndex];
+    if (coordinate) points.push({ lat: coordinate[0], lng: coordinate[1] });
+  }
+
+  return points.length >= 2 ? points : null;
+}
+
+async function getFareTraffic(
+  coords: LatLngTuple[],
+  departure: DepartureOptions,
+): Promise<{ traffic: TripTrafficResult | null; trafficUnavailable: boolean }> {
+  const points = sampleTrafficPoints(coords);
+
+  if (!points) return { traffic: null, trafficUnavailable: true };
+
+  try {
+    const traffic = await getTrafficForTrip(points, departure);
+    return { traffic, trafficUnavailable: false };
+  } catch (error) {
+    if (error instanceof TrafficServiceError) {
+      console.warn("Traffic lookup failed:", error.message);
+    } else {
+      console.warn("Traffic lookup failed:", error);
+    }
+
+    return { traffic: null, trafficUnavailable: true };
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
 
@@ -295,9 +415,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const dwellDurationMin = getRouteDwellDurationMin(selectedRoute);
+  const travelDurationMin = getRouteTravelDurationMin(selectedRoute, durationMin);
+
   const routeCoords = normalizeRouteCoords(selectedRoute.coords);
   const routeMidpoint = getRouteMidpoint(routeCoords);
-  const { weather, weatherUnavailable } = await getFareWeather(routeMidpoint);
+  const [{ weather, weatherUnavailable }, { traffic, trafficUnavailable }] =
+    await Promise.all([
+      getFareWeather(routeMidpoint),
+      getFareTraffic(routeCoords, getDepartureOptions(trip)),
+    ]);
   const rates = (await VehicleRate.find({
     isActive: true,
   }).lean()) as VehicleRateDocument[];
@@ -305,7 +432,19 @@ export async function POST(req: NextRequest) {
   // concurrently under a bound and each one is isolated, so a Pathao outage
   // degrades those two cards to a rate-card estimate instead of taking down
   // the Uber and CNG results with it.
-  const fareEstimates = await estimateFaresForRates(rates, { distanceKm, durationMin });
+  const fareEstimates = await estimateFaresForRates(rates, {
+    distanceKm,
+    durationMin,
+    adjustmentContext: {
+      weather,
+      traffic: traffic
+        ? {
+            congestionLevel: traffic.totals.congestionLevel,
+            isPeakHour: traffic.isPeakHour,
+          }
+        : null,
+    },
+  });
   const results = [];
 
   for (const [index, rate] of rates.entries()) {
@@ -341,6 +480,7 @@ export async function POST(req: NextRequest) {
       // quote apart from a fallback one.
       fareSource: fareEstimate.fareSource,
       fareSourceNote: fareEstimate.fareSourceNote,
+      fareAdjustment: fareEstimate.fareAdjustment,
     });
   }
 
@@ -357,6 +497,8 @@ export async function POST(req: NextRequest) {
       originLabel: getLocationLabel(trip.origin),
       destinationLabel: getLocationLabel(trip.destination),
       distanceKm,
+      travelDurationMin,
+      dwellDurationMin,
       durationMin,
       passengers,
       routeMidpoint,
@@ -374,11 +516,23 @@ export async function POST(req: NextRequest) {
         coords: routeCoords,
         legs: normalizeRouteLegs(selectedRoute.legs),
         distanceKm,
+        travelDurationMin,
+        dwellDurationMin,
         durationMin,
       },
     },
     weather,
     weatherUnavailable,
+    congestion: traffic
+      ? {
+          congestionIndexPercent: traffic.totals.congestionIndexPercent,
+          congestionLevel: traffic.totals.congestionLevel,
+          isPeakHour: traffic.isPeakHour,
+          durationInTrafficMin: Math.round(traffic.totals.durationInTrafficSec / 60),
+          baselineDurationMin: Math.round(traffic.totals.baselineDurationSec / 60),
+        }
+      : null,
+    trafficUnavailable,
     results,
   });
 }

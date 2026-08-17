@@ -14,6 +14,12 @@ const TripLocationSchema = new Schema(
       type: Number,
       required: true,
     },
+    dwellMinutes: {
+      type: Number,
+      min: 0,
+      max: 60,
+      default: undefined,
+    },
   },
   { _id: false },
 );
@@ -31,6 +37,14 @@ const RouteSnapshotSchema = new Schema(
     distanceKm: {
       type: Number,
       required: true,
+    },
+    travelDurationMin: {
+      type: Number,
+      default: null,
+    },
+    dwellDurationMin: {
+      type: Number,
+      default: 0,
     },
     durationMin: {
       type: Number,
