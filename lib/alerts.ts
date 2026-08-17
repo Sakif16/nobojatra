@@ -184,6 +184,17 @@ export type CreateAlertInput = {
   dedupeKey?: string;
 };
 
+export type CreateTripConfirmedAlertInput = {
+  userId: string;
+  tripHistoryId: string;
+  originLabel: string;
+  destinationLabel: string;
+  vehicleLabel: string;
+  fareLow?: number | null;
+  fareHigh?: number | null;
+  currency?: string | null;
+};
+
 /**
  * Writes one alert, or returns null when an alert with the same dedupeKey
  * already exists for this user. Callers treat null as "already reported"
@@ -229,6 +240,56 @@ export async function createAlert(input: CreateAlertInput): Promise<AlertView | 
   } catch (error) {
     // Lost a race to a concurrent writer — the alert exists, which is the
     // outcome we wanted.
+    if (isDuplicateKeyError(error)) return null;
+    throw error;
+  }
+}
+
+function formatTripConfirmationMessage(input: CreateTripConfirmedAlertInput) {
+  const fare =
+    typeof input.fareLow === "number" && typeof input.fareHigh === "number"
+      ? ` Estimated fare: ${input.fareLow}-${input.fareHigh} ${input.currency ?? "BDT"}.`
+      : "";
+
+  return `${input.vehicleLabel} is confirmed for ${input.originLabel} to ${input.destinationLabel}.${fare}`;
+}
+
+/**
+ * Writes the in-app confirmation notification shown after a user picks a vehicle.
+ *
+ * The dedupe key is stable per TripHistory row so retrying the select request,
+ * or re-confirming from an old tab, does not create repeat notifications.
+ */
+export async function createTripConfirmedAlert(
+  input: CreateTripConfirmedAlertInput,
+): Promise<AlertView | null> {
+  await dbConnect();
+
+  const dedupeKey = `trip-confirmed:${input.tripHistoryId}`;
+
+  try {
+    const result = await Alert.findOneAndUpdate(
+      { userId: input.userId, dedupeKey },
+      {
+        $setOnInsert: {
+          title: "Your trip has been confirmed",
+          message: formatTripConfirmationMessage(input),
+          severity: "info",
+          savedTripId: null,
+          tripName: null,
+          conditionId: null,
+          conditionType: null,
+          triggeredValue: null,
+          thresholdLabel: null,
+        },
+      },
+      { upsert: true, returnDocument: "after", includeResultMetadata: true },
+    );
+
+    if (result.lastErrorObject?.updatedExisting) return null;
+
+    return serializeAlert(result.value as StoredAlert);
+  } catch (error) {
     if (isDuplicateKeyError(error)) return null;
     throw error;
   }

@@ -14,18 +14,22 @@ import {
   type TrafficPoint,
   type TripTrafficResult,
 } from "@/lib/traffic-service";
-import { rankRouteOptions, type ScorableOption } from "@/lib/route-scoring";
+import { rankRouteOptions, type ScorableOption, type TravelPriority } from "@/lib/route-scoring";
 import TripHistory from "@/models/TripHistory";
+import UserProfile from "@/models/UserProfile";
 import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
 const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
+const DEFAULT_TRAVEL_PRIORITY: TravelPriority = "time";
+const TRAVEL_PRIORITIES = new Set<TravelPriority>(["time", "cost", "comfort"]);
 
 // ── Request body shape ──
 type BestOptionsRequestBody = {
   tripHistoryId?: unknown;
   routeId?: unknown;
+  priority?: unknown;
 };
 
 // ── Stored document shapes (mirrors app/api/fares/route.ts, plus departure
@@ -35,6 +39,8 @@ type StoredLocation = { label?: unknown; lat?: unknown; lng?: unknown };
 type StoredRoute = {
   routeId?: unknown;
   distanceKm?: unknown;
+  travelDurationMin?: unknown;
+  dwellDurationMin?: unknown;
   durationMin?: unknown;
   coords?: unknown;
   legs?: unknown;
@@ -51,7 +57,16 @@ type StoredTripHistory = {
 };
 
 type MapPoint = { lat: number; lng: number; label: string };
-type RouteLeg = { startIndex: number; endIndex: number; color: string; distanceKm: number };
+type RouteLeg = {
+  startIndex: number;
+  endIndex: number;
+  color: string;
+  distanceKm: number;
+  durationMin: number;
+  fromLabel?: string;
+  toLabel?: string;
+  dwellAfterMin?: number;
+};
 type LatLngTuple = [number, number];
 
 type VehicleRateDocument = {
@@ -66,6 +81,10 @@ type VehicleRateDocument = {
   comfortScore: number;
 };
 
+type StoredUserProfile = {
+  defaultTravelPriority?: unknown;
+};
+
 type WeatherSource = "route_midpoint" | "dhaka_fallback";
 type FareWeather = NormalizedWeather & { source: WeatherSource };
 
@@ -77,6 +96,12 @@ function isFinitePositiveNumber(value: unknown): value is number {
 
 function isValidPassengerCount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 8;
+}
+
+function toTravelPriority(value: unknown): TravelPriority | null {
+  return typeof value === "string" && TRAVEL_PRIORITIES.has(value as TravelPriority)
+    ? (value as TravelPriority)
+    : null;
 }
 
 function getLocationLabel(location: StoredLocation | undefined) {
@@ -96,15 +121,71 @@ function toMapPoint(location: StoredLocation | undefined): MapPoint | null {
 
 function normalizeRouteLegs(legs: unknown): RouteLeg[] {
   if (!Array.isArray(legs)) return [];
-  return legs.filter((leg): leg is RouteLeg => {
-    if (!leg || typeof leg !== "object") return false;
+  return legs.reduce<RouteLeg[]>((normalized, leg) => {
+    if (!leg || typeof leg !== "object") return normalized;
     const candidate = leg as Partial<RouteLeg>;
-    return (
+
+    if (
       typeof candidate.startIndex === "number" &&
       typeof candidate.endIndex === "number" &&
       typeof candidate.color === "string"
-    );
-  });
+    ) {
+      normalized.push({
+        startIndex: candidate.startIndex,
+        endIndex: candidate.endIndex,
+        color: candidate.color,
+        distanceKm:
+          typeof candidate.distanceKm === "number" &&
+          Number.isFinite(candidate.distanceKm)
+            ? candidate.distanceKm
+            : 0,
+        durationMin:
+          typeof candidate.durationMin === "number" &&
+          Number.isFinite(candidate.durationMin)
+            ? candidate.durationMin
+            : 0,
+        ...(typeof candidate.fromLabel === "string"
+          ? { fromLabel: candidate.fromLabel }
+          : {}),
+        ...(typeof candidate.toLabel === "string"
+          ? { toLabel: candidate.toLabel }
+          : {}),
+        ...(typeof candidate.dwellAfterMin === "number" &&
+        Number.isFinite(candidate.dwellAfterMin)
+          ? { dwellAfterMin: candidate.dwellAfterMin }
+          : {}),
+      });
+    }
+
+    return normalized;
+  }, []);
+}
+
+function getRouteDwellDurationMin(route: StoredRoute) {
+  if (
+    typeof route.dwellDurationMin === "number" &&
+    Number.isFinite(route.dwellDurationMin) &&
+    route.dwellDurationMin >= 0
+  ) {
+    return route.dwellDurationMin;
+  }
+
+  return normalizeRouteLegs(route.legs).reduce(
+    (total, leg) => total + (leg.dwellAfterMin ?? 0),
+    0,
+  );
+}
+
+function getRouteTravelDurationMin(route: StoredRoute, totalDurationMin: number) {
+  if (
+    typeof route.travelDurationMin === "number" &&
+    Number.isFinite(route.travelDurationMin) &&
+    route.travelDurationMin > 0
+  ) {
+    return route.travelDurationMin;
+  }
+
+  return Math.max(1, totalDurationMin - getRouteDwellDurationMin(route));
 }
 
 function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
@@ -260,11 +341,21 @@ export async function POST(req: NextRequest) {
 
   await connectMongoDB();
 
-  // Step 3: load the trip, scoped to this user — prevents reading someone else's trip
-  const trip = (await TripHistory.findOne({
-    _id: tripHistoryId,
-    userId: session.user.id,
-  }).lean()) as StoredTripHistory | null;
+  // Step 3: load the trip and scoring preference for this user. The trip query
+  // stays owner-scoped, which prevents reading someone else's trip. A request
+  // priority overrides the profile default for interactive re-scoring.
+  const [trip, profile] = (await Promise.all([
+    TripHistory.findOne({
+      _id: tripHistoryId,
+      userId: session.user.id,
+    }).lean(),
+    UserProfile.findOne({ userId: session.user.id }).select("defaultTravelPriority").lean(),
+  ])) as [StoredTripHistory | null, StoredUserProfile | null];
+
+  const travelPriority =
+    toTravelPriority(body.priority) ??
+    toTravelPriority(profile?.defaultTravelPriority) ??
+    DEFAULT_TRAVEL_PRIORITY;
 
   if (!trip) {
     return NextResponse.json({ success: false, message: "Trip history was not found." }, { status: 404 });
@@ -281,7 +372,7 @@ export async function POST(req: NextRequest) {
   }
 
   const distanceKm = selectedRoute.distanceKm;
-  const storedDurationMin = selectedRoute.durationMin; // ORS estimate — used only as a fallback
+  const storedDurationMin = selectedRoute.durationMin;
   const passengers = trip.passengerCount;
 
   if (!isFinitePositiveNumber(distanceKm) || !isFinitePositiveNumber(storedDurationMin) || !isValidPassengerCount(passengers)) {
@@ -290,6 +381,9 @@ export async function POST(req: NextRequest) {
       { status: 422 },
     );
   }
+
+  const dwellDurationMin = getRouteDwellDurationMin(selectedRoute);
+  const travelDurationMin = getRouteTravelDurationMin(selectedRoute, storedDurationMin);
 
   const routeCoords = normalizeRouteCoords(selectedRoute.coords);
   const routeMidpoint = getRouteMidpoint(routeCoords);
@@ -305,8 +399,11 @@ export async function POST(req: NextRequest) {
   // available, otherwise the ORS estimate stored on the trip. This is the
   // number every vehicle's adjustedDurationMin gets computed from.
   const baseDurationMinForScoring = traffic
-    ? traffic.totals.durationInTrafficSec / 60
+    ? traffic.totals.durationInTrafficSec / 60 + dwellDurationMin
     : storedDurationMin;
+  const baseTravelDurationMinForScoring = traffic
+    ? traffic.totals.durationInTrafficSec / 60
+    : travelDurationMin;
 
   // Falls back to "low" only when traffic genuinely couldn't be read, so a
   // TomTom outage doesn't silently inflate every option's risk score
@@ -322,6 +419,15 @@ export async function POST(req: NextRequest) {
   const fareEstimates = await estimateFaresForRates(rates, {
     distanceKm,
     durationMin: storedDurationMin,
+    adjustmentContext: {
+      weather,
+      traffic: traffic
+        ? {
+            congestionLevel: traffic.totals.congestionLevel,
+            isPeakHour: traffic.isPeakHour,
+          }
+        : null,
+    },
   });
   const scorable: ScorableOption[] = [];
 
@@ -346,6 +452,7 @@ export async function POST(req: NextRequest) {
       fare: fareEstimate.fare,
       fareSource: fareEstimate.fareSource,
       fareSourceNote: fareEstimate.fareSourceNote,
+      fareAdjustment: fareEstimate.fareAdjustment,
     });
   }
 
@@ -356,8 +463,11 @@ export async function POST(req: NextRequest) {
   const rankedOptions = rankRouteOptions({
     options: scorable,
     baseDurationMin: baseDurationMinForScoring,
+    baseTravelDurationMin: baseTravelDurationMinForScoring,
+    dwellDurationMin,
     congestionLevel,
     weatherBand: weather?.severityBand ?? null,
+    priority: travelPriority,
   });
 
   // Step 9: respond with everything the Route Comparison Display page needs —
@@ -371,6 +481,8 @@ export async function POST(req: NextRequest) {
       originLabel: getLocationLabel(trip.origin),
       destinationLabel: getLocationLabel(trip.destination),
       distanceKm,
+      travelDurationMin,
+      dwellDurationMin,
       durationMin: storedDurationMin,
       passengers,
     },
@@ -383,11 +495,14 @@ export async function POST(req: NextRequest) {
         coords: routeCoords,
         legs: normalizeRouteLegs(selectedRoute.legs),
         distanceKm,
+        travelDurationMin,
+        dwellDurationMin,
         durationMin: storedDurationMin,
       },
     },
     weather,
     weatherUnavailable,
+    scoringPriority: travelPriority,
     // Flattened for the client — only the totals, not the per-leg breakdown,
     // since the banner shows one trip-level reading, not a leg-by-leg table
     congestion: traffic

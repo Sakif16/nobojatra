@@ -30,6 +30,7 @@ const TripLocationSchema = new Schema(
     label: { type: String, required: true },
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
+    dwellMinutes: { type: Number, min: 0, max: 60, default: undefined },
   },
   { _id: false },
 );
@@ -38,6 +39,8 @@ const RouteSnapshotSchema = new Schema(
   {
     routeId: { type: String, required: true },
     distanceKm: { type: Number, required: true },
+    travelDurationMin: { type: Number, default: null },
+    dwellDurationMin: { type: Number, default: 0 },
     durationMin: { type: Number, required: true },
     coords: { type: [[Number]], default: [] },
     legs: { type: [Schema.Types.Mixed], default: [] },

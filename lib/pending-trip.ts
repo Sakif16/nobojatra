@@ -1,11 +1,15 @@
 import type { PlaceResult } from "@/lib/geocode";
+import {
+  MAX_STOP_DWELL_MINUTES,
+  MIN_STOP_DWELL_MINUTES,
+} from "@/lib/trip-input";
 
 const PENDING_TRIP_KEY = "nobojatra:pending-trip";
 
 export type PendingTrip = {
   origin: PlaceResult;
   destination: PlaceResult;
-  stops: PlaceResult[];
+  stops: Array<PlaceResult & { dwellMinutes?: number }>;
   passengerCount: number;
   departureMode: "now" | "scheduled";
   scheduledAt: string | null;
@@ -25,6 +29,20 @@ function isPlaceResult(value: unknown): value is PlaceResult {
   );
 }
 
+function isPendingStop(value: unknown): value is PlaceResult & { dwellMinutes?: number } {
+  if (!isPlaceResult(value)) return false;
+
+  const dwellMinutes = (value as { dwellMinutes?: unknown }).dwellMinutes;
+
+  return (
+    dwellMinutes === undefined ||
+    (typeof dwellMinutes === "number" &&
+      Number.isInteger(dwellMinutes) &&
+      dwellMinutes >= MIN_STOP_DWELL_MINUTES &&
+      dwellMinutes <= MAX_STOP_DWELL_MINUTES)
+  );
+}
+
 function isPendingTrip(value: unknown): value is PendingTrip {
   if (typeof value !== "object" || value === null) return false;
 
@@ -34,7 +52,7 @@ function isPendingTrip(value: unknown): value is PendingTrip {
     isPlaceResult(trip.origin) &&
     isPlaceResult(trip.destination) &&
     Array.isArray(trip.stops) &&
-    trip.stops.every(isPlaceResult) &&
+    trip.stops.every(isPendingStop) &&
     typeof trip.passengerCount === "number" &&
     (trip.departureMode === "now" || trip.departureMode === "scheduled")
   );
@@ -74,4 +92,3 @@ export function takePendingTrip(): PendingTrip | null {
     return null;
   }
 }
-

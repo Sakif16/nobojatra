@@ -1,8 +1,9 @@
 'use client'
 
-import { ArrowRight, CalendarClock, X } from 'lucide-react'
+import { ArrowRight, CalendarClock, ChevronDown, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import type { RecentTrip, TripHistoryActivityData } from '@/lib/trip-history'
 
 interface HistoryVehicleOption {
   provider: string
@@ -33,6 +34,13 @@ interface HistorySummary {
   mostUsedVehicle: string | null
 }
 
+type Props = {
+  activityData: TripHistoryActivityData
+}
+
+const CONFIRMED_VIEW = 'confirmed-trips'
+const LAST_SEVEN_DAYS_VIEW = 'last-7-days'
+
 const ICONS: Record<string, string> = {
   'uber-go': '🚗',
   'uber-moto': '🛵',
@@ -51,7 +59,56 @@ const dateFormatter = new Intl.DateTimeFormat('en', {
   minute: '2-digit',
 })
 
-export default function TripHistoryList() {
+function formatActivityMetrics(trip: RecentTrip) {
+  const parts: string[] = []
+
+  if (trip.distanceKm !== null) parts.push(`${trip.distanceKm} km`)
+  if (trip.durationMin !== null) parts.push(`${trip.durationMin} min`)
+  if (trip.stopCount > 0) {
+    parts.push(`${trip.stopCount} stop${trip.stopCount === 1 ? '' : 's'}`)
+  }
+  parts.push(`${trip.passengerCount} passenger${trip.passengerCount === 1 ? '' : 's'}`)
+
+  return parts.join(' · ')
+}
+
+function ActivityRows({ trips }: { trips: RecentTrip[] }) {
+  return (
+    <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+      {trips.map((trip) => (
+        <li
+          key={trip.id}
+          className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
+        >
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-primary">
+            {trip.departureMode === 'scheduled' ? (
+              <CalendarClock className="size-4" />
+            ) : (
+              <MapPin className="size-4" />
+            )}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <span className="truncate">{trip.originLabel}</span>
+              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">{trip.destinationLabel}</span>
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatActivityMetrics(trip)}
+            </p>
+          </div>
+
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {dateFormatter.format(new Date(trip.scheduledAt ?? trip.createdAt))}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export default function TripHistoryList({ activityData }: Props) {
   const [trips, setTrips] = useState<HistoryTrip[]>([])
   const [summary, setSummary] = useState<HistorySummary | null>(null)
   const [vehicles, setVehicles] = useState<HistoryVehicleOption[]>([])
@@ -61,8 +118,10 @@ export default function TripHistoryList() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [vehicleKey, setVehicleKey] = useState('')
+  const [historyView, setHistoryView] = useState(CONFIRMED_VIEW)
 
   const hasFilters = Boolean(from || to || vehicleKey)
+  const showingConfirmedTrips = historyView === CONFIRMED_VIEW
 
   useEffect(() => {
     let active = true
@@ -114,6 +173,24 @@ export default function TripHistoryList() {
     [vehicles],
   )
 
+  const selectedMonth = useMemo(
+    () => activityData.monthlyGroups.find((group) => group.monthKey === historyView) ?? null,
+    [activityData.monthlyGroups, historyView],
+  )
+
+  const selectedActivityTrips =
+    historyView === LAST_SEVEN_DAYS_VIEW
+      ? activityData.lastSevenDays
+      : selectedMonth?.trips ?? []
+  const selectedActivityLabel =
+    historyView === LAST_SEVEN_DAYS_VIEW
+      ? 'Last 7 days'
+      : selectedMonth?.monthLabel ?? 'Route searches'
+  const selectedActivityEmpty =
+    historyView === LAST_SEVEN_DAYS_VIEW
+      ? 'No route searches in the last 7 days.'
+      : 'No route searches found for this month.'
+
   function clearFilters() {
     setFrom('')
     setTo('')
@@ -128,10 +205,51 @@ export default function TripHistoryList() {
             Trip History
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Every ride you&apos;ve confirmed, newest first.
+            Confirmed rides and route searches in one place.
           </p>
         </div>
 
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <label className="relative inline-flex items-center">
+            <span className="sr-only">Trip history view</span>
+            <select
+              value={historyView}
+              onChange={(e) => setHistoryView(e.target.value)}
+              className="h-10 appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-3 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted focus:border-primary"
+            >
+              <option value={CONFIRMED_VIEW}>Confirmed trips</option>
+              <option value={LAST_SEVEN_DAYS_VIEW}>Last 7 days searches</option>
+              {activityData.monthlyGroups.map((group) => (
+                <option key={group.monthKey} value={group.monthKey}>
+                  {group.monthLabel}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 size-4 text-muted-foreground" />
+          </label>
+
+          {!showingConfirmedTrips && (
+            <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+              {selectedActivityTrips.length} trip{selectedActivityTrips.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+
+        {!showingConfirmedTrips ? (
+          <>
+            <h2 className="mb-3 text-xl font-semibold text-foreground">
+              {selectedActivityLabel}
+            </h2>
+            {selectedActivityTrips.length > 0 ? (
+              <ActivityRows trips={selectedActivityTrips} />
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
+                <p className="text-sm text-muted-foreground">{selectedActivityEmpty}</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
         {/* Filters */}
         <div className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card px-4 py-3.5">
           <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -231,7 +349,7 @@ export default function TripHistoryList() {
               return (
                 <li key={trip.id}>
                   <Link
-                    href={`/trip-summary?tripHistoryId=${trip.id}`}
+                    href={`/trip-summary?tripHistoryId=${trip.id}&source=history`}
                     className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
@@ -262,6 +380,8 @@ export default function TripHistoryList() {
               )
             })}
           </ul>
+        )}
+          </>
         )}
       </div>
     </main>

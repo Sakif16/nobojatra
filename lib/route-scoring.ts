@@ -1,10 +1,12 @@
 import "server-only";
-import type { FareSource } from "@/lib/fare-providers";
+import type { FareAdjustment, FareSource } from "@/lib/fare-providers";
 import type { CongestionLevel } from "@/lib/traffic-service";
-
 
 // The three risk tiers shown as the card's colour-coded risk badge
 export type RiskBand = "low" | "moderate" | "high";
+export type TravelPriority = "time" | "cost" | "comfort";
+type BestForTag = "Speed" | "Budget" | "Comfort";
+type MetricScores = { cost: number; time: number; comfort: number };
 
 // Shape of one fare option coming IN from the existing fares computation —
 // matches the objects already built in app/api/fares/route.ts
@@ -21,18 +23,30 @@ export interface ScorableOption {
   fare: { low: number; mid: number; high: number };
   fareSource: FareSource;
   fareSourceNote: string | null;
+  fareAdjustment: FareAdjustment | null;
 }
 export interface RankedOption extends ScorableOption {
   adjustedDurationMin: number;              // real traffic duration × per-vehicle multiplier
   riskBand: RiskBand;                        // combined weather + traffic risk
-  bestFor: "Speed" | "Budget" | "Comfort" | null; // which single metric this option wins on
+  bestFor: BestForTag;                       // strongest normalized metric for this option
   pros: string[];                            // up to 3 short chips
   cons: string[];                            // up to 2 short chips
   score: number;                             // internal weighted score used only for ranking
 }
 
-// Fixed weighting across the three criteria. No per-user priority selector
-const WEIGHTS = { cost: 0.35, time: 0.35, comfort: 0.3 };
+const DEFAULT_PRIORITY: TravelPriority = "time";
+
+const PRIORITY_WEIGHTS: Record<TravelPriority, MetricScores> = {
+  time: { time: 0.7, cost: 0.15, comfort: 0.15 },
+  cost: { time: 0.15, cost: 0.7, comfort: 0.15 },
+  comfort: { time: 0.15, cost: 0.15, comfort: 0.7 },
+};
+
+const BEST_FOR_BY_METRIC: Record<keyof MetricScores, BestForTag> = {
+  time: "Speed",
+  cost: "Budget",
+  comfort: "Comfort",
+};
 
 // Duration multiplier table — how much of the real, car-based TomTom traffic
 // duration each vehicle class actually experiences. Two-wheelers filter
@@ -68,12 +82,64 @@ function normalizeHigherBetter(value: number, min: number, max: number): number 
   return (value - min) / (max - min);
 }
 
+function normalizePriority(priority: TravelPriority | null | undefined): TravelPriority {
+  return priority && priority in PRIORITY_WEIGHTS ? priority : DEFAULT_PRIORITY;
+}
+
+function getBestForTag(scores: MetricScores, priority: TravelPriority): BestForTag {
+  const tieBreaker: Array<keyof MetricScores> = [priority, "time", "cost", "comfort"];
+  const orderedMetrics = Array.from(new Set(tieBreaker));
+
+  return BEST_FOR_BY_METRIC[
+    orderedMetrics.reduce((bestMetric, metric) =>
+      scores[metric] > scores[bestMetric] ? metric : bestMetric,
+    )
+  ];
+}
+
+function compareRankedOptions(
+  first: RankedOption,
+  second: RankedOption,
+  priority: TravelPriority,
+) {
+  const scoreDelta = second.score - first.score;
+
+  if (Math.abs(scoreDelta) > 0.0001) {
+    return scoreDelta;
+  }
+
+  if (priority === "cost") {
+    return (
+      first.fare.mid - second.fare.mid ||
+      first.adjustedDurationMin - second.adjustedDurationMin ||
+      second.comfortScore - first.comfortScore
+    );
+  }
+
+  if (priority === "comfort") {
+    return (
+      second.comfortScore - first.comfortScore ||
+      first.adjustedDurationMin - second.adjustedDurationMin ||
+      first.fare.mid - second.fare.mid
+    );
+  }
+
+  return (
+    first.adjustedDurationMin - second.adjustedDurationMin ||
+    first.fare.mid - second.fare.mid ||
+    second.comfortScore - first.comfortScore
+  );
+}
+
 // Input bundle for the ranking function
 interface RankInput {
   options: ScorableOption[];        // all vehicles already computed by the fares route
-  baseDurationMin: number;          // real traffic-inclusive duration (car baseline) in minutes
+  baseDurationMin: number;          // travel + dwell fallback, in minutes
+  baseTravelDurationMin?: number;   // real traffic-inclusive driving/riding time only
+  dwellDurationMin?: number;        // fixed wait time across vehicles
   congestionLevel: CongestionLevel; // from lib/traffic-service.ts, live TomTom reading
   weatherBand: "low" | "moderate" | "severe" | null; // null when weather is unavailable
+  priority?: TravelPriority | null; // user's profile priority, defaults to time
 }
 
 // Main export — scores every eligible, non-weather-blocked option and returns
@@ -81,9 +147,15 @@ interface RankInput {
 export function rankRouteOptions({
   options,
   baseDurationMin,
+  baseTravelDurationMin,
+  dwellDurationMin = 0,
   congestionLevel,
   weatherBand,
+  priority,
 }: RankInput): RankedOption[] {
+  const normalizedPriority = normalizePriority(priority);
+  const weights = PRIORITY_WEIGHTS[normalizedPriority];
+
   // Step 1: drop anything already filtered out upstream (passenger capacity)
   // or hard-blocked by weather — these never make it onto the comparison cards
   const candidates = options.filter((o) => o.eligible && !o.weatherBlocked);
@@ -95,9 +167,14 @@ export function rankRouteOptions({
   const withDuration = candidates.map((option) => {
     const vehicleClass = getVehicleClass(option.vehicleType);
     const multiplier = DURATION_MULTIPLIERS[vehicleClass][congestionLevel];
+    const travelDurationMin =
+      typeof baseTravelDurationMin === "number" && Number.isFinite(baseTravelDurationMin)
+        ? baseTravelDurationMin
+        : Math.max(1, baseDurationMin - dwellDurationMin);
+
     return {
       ...option,
-      adjustedDurationMin: Math.round(baseDurationMin * multiplier),
+      adjustedDurationMin: Math.round(travelDurationMin * multiplier + dwellDurationMin),
     };
   });
 
@@ -113,9 +190,11 @@ export function rankRouteOptions({
 
   // score every candidate
   const scored = withDuration.map((option) => {
-    const costScore    = normalizeLowerBetter(option.fare.mid, minFare, maxFare);
-    const timeScore     = normalizeLowerBetter(option.adjustedDurationMin, minDur, maxDur);
-    const comfortScoreN = normalizeHigherBetter(option.comfortScore, minComf, maxComf);
+    const metricScores: MetricScores = {
+      cost: normalizeLowerBetter(option.fare.mid, minFare, maxFare),
+      time: normalizeLowerBetter(option.adjustedDurationMin, minDur, maxDur),
+      comfort: normalizeHigherBetter(option.comfortScore, minComf, maxComf),
+    };
 
     // Risk points build up from two independent sources — weather and real
     // traffic congestion — weighted differently per vehicle class
@@ -139,12 +218,12 @@ export function rankRouteOptions({
     const riskPenalty = riskPoints / 5;
 
     const score =
-      costScore * WEIGHTS.cost +
-      timeScore * WEIGHTS.time +
-      comfortScoreN * WEIGHTS.comfort -
+      metricScores.cost * weights.cost +
+      metricScores.time * weights.time +
+      metricScores.comfort * weights.comfort -
       riskPenalty * 0.15;
 
-    return { ...option, riskBand, score };
+    return { ...option, metricScores, riskBand, score };
   });
 
   // find the single winner in each individual metric — used to assign
@@ -157,16 +236,12 @@ export function rankRouteOptions({
 
   // attach the Best-for tag and generate pros/cons chips per candidate
   const withTags: RankedOption[] = scored.map((option) => {
-    let bestFor: RankedOption["bestFor"] = null;
-    if (option === cheapest) bestFor = "Budget";
-    else if (option === fastest) bestFor = "Speed";
-    else if (option === comfiest) bestFor = "Comfort";
-
     const pros: string[] = [];
     const cons: string[] = [];
 
     if (option === cheapest) pros.push("Cheapest option");
     if (option === fastest) pros.push("Fastest in current traffic");
+    if (option === comfiest) pros.push("Most comfortable option");
     if (option.comfortScore >= 4) pros.push("High comfort");
     if (option.riskBand === "low") pros.push("Low overall risk");
     if (!option.weatherRestricted) pros.push("No weather caution");
@@ -176,9 +251,11 @@ export function rankRouteOptions({
     if (option.riskBand === "high") cons.push("Elevated traffic/weather risk");
     if (option.comfortScore <= 2) cons.push("Lower comfort rating");
 
+    const { metricScores, ...rankedOption } = option;
+
     return {
-      ...option,
-      bestFor,
+      ...rankedOption,
+      bestFor: getBestForTag(metricScores, normalizedPriority),
       // Set + slice de-duplicates then caps the chip count per the SRS's
       // "up to 3 pros / 2 cons" limit
       pros: Array.from(new Set(pros)).slice(0, 3),
@@ -186,6 +263,10 @@ export function rankRouteOptions({
     };
   });
 
-  // sort best-first by composite score, return only the top 3
-  return withTags.sort((a, b) => b.score - a.score).slice(0, 3);
+  // sort best-first by composite score, then use priority-specific tie-breaks
+  // so equal-duration/equal-score cases still feel aligned with the selected
+  // Speed/Budget/Comfort mode.
+  return withTags
+    .sort((a, b) => compareRankedOptions(a, b, normalizedPriority))
+    .slice(0, 3);
 }

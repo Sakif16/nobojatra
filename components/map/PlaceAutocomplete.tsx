@@ -35,6 +35,7 @@ export default function PlaceAutocomplete({
 }: Props) {
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,7 +44,7 @@ export default function PlaceAutocomplete({
   const hasSavedPlaces = Boolean(savedPlaces && savedPlaces.length > 0);
   // Saved shortcuts only make sense as an empty-state — once the user has
   // typed anything, the normal search results below take over.
-  const showSavedList = value.trim().length === 0 && hasSavedPlaces;
+  const showSavedList = focused && value.trim().length === 0 && hasSavedPlaces;
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -52,9 +53,7 @@ export default function PlaceAutocomplete({
       debounceRef.current = setTimeout(() => {
         setResults([]);
         setError(null);
-        // Keep the dropdown open to show saved shortcuts when the field is
-        // empty and shortcuts exist; otherwise close it as before.
-        setOpen(value.trim().length === 0 && hasSavedPlaces);
+        setOpen(focused && value.trim().length === 0 && hasSavedPlaces);
       }, 0);
       return () => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -80,7 +79,7 @@ export default function PlaceAutocomplete({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [value, hasSavedPlaces]);
+  }, [value, hasSavedPlaces, focused]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -89,6 +88,7 @@ export default function PlaceAutocomplete({
         !containerRef.current.contains(e.target as Node)
       ) {
         setOpen(false);
+        setFocused(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -111,11 +111,18 @@ export default function PlaceAutocomplete({
           // Clicking into an already-empty field doesn't change `value`, so
           // this can't rely on the effect above re-running — it needs its
           // own check for the same two cases.
-          if (showSavedList) {
+          setFocused(true);
+          if (value.trim().length === 0 && hasSavedPlaces) {
             setOpen(true);
             return;
           }
           if (results.length > 0) setOpen(true);
+        }}
+        onClick={() => {
+          setFocused(true);
+          if (value.trim().length === 0 && hasSavedPlaces) {
+            setOpen(true);
+          }
         }}
         className={cn(
           "w-full rounded-xl border border-input bg-secondary/60 px-4 py-3 text-sm text-foreground transition-colors outline-none placeholder:text-muted-foreground focus:border-ring focus:bg-secondary",
@@ -137,6 +144,7 @@ export default function PlaceAutocomplete({
                   onClick={() => {
                     onSelect(saved.place);
                     setOpen(false);
+                    setFocused(false);
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted"
                 >
@@ -169,6 +177,7 @@ export default function PlaceAutocomplete({
                     onClick={() => {
                       onSelect(place);
                       setOpen(false);
+                      setFocused(false);
                     }}
                     className="block w-full truncate px-4 py-2.5 text-left text-sm text-popover-foreground transition-colors hover:bg-muted"
                   >

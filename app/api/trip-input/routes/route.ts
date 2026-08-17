@@ -58,6 +58,7 @@ function getRouteCacheKey(data: ValidatedTripInput) {
     stops: data.stops.map((stop) => [
       getRoundedCoordinate(stop.lat),
       getRoundedCoordinate(stop.lng),
+      stop.dwellMinutes,
     ]),
   });
 }

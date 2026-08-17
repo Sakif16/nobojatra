@@ -47,6 +47,14 @@ interface SummaryTraffic {
   baselineDurationMin: number
 }
 
+interface SummaryItineraryLeg {
+  fromLabel: string
+  toLabel: string
+  distanceKm: number
+  durationMin: number
+  dwellAfterMin: number
+}
+
 interface TripSummaryDetail {
   id: string
   originLabel: string
@@ -63,6 +71,11 @@ interface TripSummaryDetail {
   weatherUnavailable: boolean
   traffic: SummaryTraffic | null
   trafficUnavailable: boolean
+  itinerary: {
+    travelDurationMin: number
+    dwellDurationMin: number
+    legs: SummaryItineraryLeg[]
+  } | null
   selectedAt: string | null
   createdAt: string
 }
@@ -81,6 +94,15 @@ const timeFormatter = new Intl.DateTimeFormat('en', {
   weekday: 'short',
   month: 'short',
   day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
+const tripTitleFormatter = new Intl.DateTimeFormat('en', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
   hour: 'numeric',
   minute: '2-digit',
 })
@@ -105,7 +127,24 @@ function congestionTone(level: CongestionLevel | undefined) {
   return 'border-border bg-card text-muted-foreground'
 }
 
-export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }) {
+function getTripTitle(trip: TripSummaryDetail, viewMode: 'confirmed' | 'history') {
+  if (viewMode === 'confirmed') return 'Trip confirmed'
+
+  const dateValue = trip.estimatedDepartureAt ?? trip.selectedAt ?? trip.createdAt
+  const date = new Date(dateValue)
+
+  if (Number.isNaN(date.getTime())) return 'Your trip'
+
+  return `Your trip on ${tripTitleFormatter.format(date)}`
+}
+
+export default function TripSummary({
+  tripHistoryId,
+  viewMode,
+}: {
+  tripHistoryId: string
+  viewMode: 'confirmed' | 'history'
+}) {
   const [trip, setTrip] = useState<TripSummaryDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -163,13 +202,14 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
   }
 
   const vehicleKey = trip.vehicle ? `${trip.vehicle.provider}-${trip.vehicle.vehicleType}` : ''
+  const title = getTripTitle(trip, viewMode)
 
   return (
     <main className="flex-1">
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Trip confirmed
+            {title}
           </h1>
           <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
             <span className="truncate">{trip.originLabel}</span>
@@ -240,6 +280,44 @@ export default function TripSummary({ tripHistoryId }: { tripHistoryId: string }
                 </p>
               </div>
             </div>
+
+            {trip.itinerary && (
+              <div className="rounded-2xl border border-border bg-card px-4 py-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <MapPin className="size-3.5" aria-hidden />
+                  Itinerary
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+                  {formatMinutes(trip.itinerary.travelDurationMin)} travel
+                  {trip.itinerary.dwellDurationMin > 0
+                    ? ` · ${formatMinutes(trip.itinerary.dwellDurationMin)} wait`
+                    : ''}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {trip.itinerary.legs.map((leg, index) => (
+                    <div
+                      key={`${leg.fromLabel}-${leg.toLabel}-${index}`}
+                      className="rounded-xl border border-border bg-background/40 px-3 py-2.5 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate font-medium text-foreground">
+                          {leg.fromLabel} → {leg.toLabel}
+                        </p>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {leg.distanceKm} km
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatMinutes(leg.durationMin)}
+                        {leg.dwellAfterMin > 0
+                          ? ` · ${formatMinutes(leg.dwellAfterMin)} wait`
+                          : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Weather/traffic snapshot — explicitly a point-in-time reading */}
             <div className="rounded-2xl border border-border bg-card px-4 py-4">

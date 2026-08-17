@@ -11,6 +11,11 @@ function serializeLocation(location: TripLocation) {
     label: location.label,
     lat: location.lat,
     lng: location.lng,
+    ...("dwellMinutes" in location &&
+    typeof location.dwellMinutes === "number" &&
+    Number.isFinite(location.dwellMinutes)
+      ? { dwellMinutes: location.dwellMinutes }
+      : {}),
   };
 }
 
@@ -19,6 +24,8 @@ function serializeRoute(route: RouteResult) {
     routeId: route.id,
     rank: route.rank,
     distanceKm: route.distanceKm,
+    travelDurationMin: route.travelDurationMin ?? route.durationMin,
+    dwellDurationMin: route.dwellDurationMin ?? 0,
     durationMin: route.durationMin,
     coords: route.coords,
     legs: route.legs,
@@ -39,29 +46,37 @@ export type RecentTrip = {
 };
 
 type StoredLocation = { label?: unknown; lat?: unknown; lng?: unknown };
+type StoredActivityTrip = {
+  _id: unknown;
+  origin?: unknown;
+  destination?: unknown;
+  stops?: unknown;
+  passengerCount?: number;
+  distanceKm?: number | null;
+  durationMin?: number | null;
+  departureMode?: unknown;
+  scheduledAt?: Date | string | null;
+  createdAt?: Date | string | null;
+};
+
+export type MonthlyTripActivityGroup = {
+  monthKey: string;
+  monthLabel: string;
+  trips: RecentTrip[];
+};
+
+export type TripHistoryActivityData = {
+  lastSevenDays: RecentTrip[];
+  monthlyGroups: MonthlyTripActivityGroup[];
+};
 
 function getLocationLabel(location: unknown) {
   const label = (location as StoredLocation | null)?.label;
   return typeof label === "string" && label.trim() ? label : "Unknown place";
 }
 
-/**
- * Home-page summary. Returns plain serializable values because these cross the
- * server/client boundary as props.
- */
-export async function getHomeTripSummary(userId: string, limit = 3) {
-  await dbConnect();
-
-  const [records, upcomingCount] = await Promise.all([
-    TripHistory.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean(),
-    TripHistory.countDocuments({
-      userId,
-      departureMode: "scheduled",
-      scheduledAt: { $gt: new Date() },
-    }),
-  ]);
-
-  const recentTrips: RecentTrip[] = records.map((record) => ({
+function mapRecentTrip(record: StoredActivityTrip): RecentTrip {
+  return {
     id: String(record._id),
     originLabel: getLocationLabel(record.origin),
     destinationLabel: getLocationLabel(record.destination),
@@ -74,9 +89,195 @@ export async function getHomeTripSummary(userId: string, limit = 3) {
       ? new Date(record.scheduledAt).toISOString()
       : null,
     createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
-  }));
+  };
+}
 
-  return { recentTrips, upcomingCount };
+/**
+ * Home-page summary. Returns plain serializable values because these cross the
+ * server/client boundary as props.
+ */
+export async function getHomeTripSummary(userId: string) {
+  await dbConnect();
+
+  const upcomingCount = await TripHistory.countDocuments({
+    userId,
+    departureMode: "scheduled",
+    scheduledAt: { $gt: new Date() },
+  });
+
+  return { upcomingCount };
+}
+
+export type ScheduledTripListItem = {
+  id: string;
+  routeId: string | null;
+  originLabel: string;
+  destinationLabel: string;
+  stops: Array<{ label: string; dwellMinutes: number | null }>;
+  passengerCount: number;
+  scheduledAt: string;
+  estimatedArrivalAt: string | null;
+  distanceKm: number | null;
+  durationMin: number | null;
+  travelDurationMin: number | null;
+  dwellDurationMin: number;
+  vehicle: {
+    displayName: string;
+    fareLow: number;
+    fareHigh: number;
+    currency: string;
+  } | null;
+  weather: SelectionWeatherSnapshot;
+  weatherUnavailable: boolean;
+  traffic: SelectionTrafficSnapshot;
+  trafficUnavailable: boolean;
+  itinerary: {
+    travelDurationMin: number;
+    dwellDurationMin: number;
+    legs: TripSummaryItineraryLeg[];
+  } | null;
+  createdAt: string;
+};
+
+function getStopDwellMinutes(stop: unknown) {
+  if (!stop || typeof stop !== "object") return null;
+
+  const dwellMinutes = (stop as { dwellMinutes?: unknown }).dwellMinutes;
+
+  return typeof dwellMinutes === "number" && Number.isFinite(dwellMinutes)
+    ? dwellMinutes
+    : null;
+}
+
+function getScheduledTripRouteId(record: {
+  selectedRoute?: { routeId?: unknown } | null;
+  routeOptions?: Array<{ routeId?: unknown }>;
+}) {
+  const selectedRouteId = record.selectedRoute?.routeId;
+
+  if (typeof selectedRouteId === "string" && selectedRouteId.trim()) {
+    return selectedRouteId;
+  }
+
+  const firstRouteId = Array.isArray(record.routeOptions)
+    ? record.routeOptions[0]?.routeId
+    : null;
+
+  return typeof firstRouteId === "string" && firstRouteId.trim()
+    ? firstRouteId
+    : null;
+}
+
+export async function getScheduledTrips(userId: string): Promise<ScheduledTripListItem[]> {
+  await dbConnect();
+
+  const records = await TripHistory.find({
+    userId,
+    departureMode: "scheduled",
+    scheduledAt: { $gt: new Date() },
+  })
+    .sort({ scheduledAt: 1 })
+    .lean();
+
+  return records.flatMap((record) => {
+    if (!record.scheduledAt) return [];
+
+    const scheduledAt = new Date(record.scheduledAt);
+    if (Number.isNaN(scheduledAt.getTime())) return [];
+
+    const selectedRoute = record.selectedRoute as StoredRouteSnapshot | null;
+    const durationMin =
+      record.selectedVehicle?.estimatedDurationMin ?? record.durationMin ?? null;
+    const itinerary = getSummaryItinerary(selectedRoute);
+    const dwellDurationMin = itinerary?.dwellDurationMin ?? 0;
+    const travelDurationMin =
+      itinerary?.travelDurationMin ??
+      (durationMin != null ? Math.max(1, durationMin - dwellDurationMin) : null);
+    const estimatedArrivalAt =
+      durationMin != null
+        ? new Date(scheduledAt.getTime() + durationMin * 60_000).toISOString()
+        : null;
+
+    return [
+      {
+        id: String(record._id),
+        routeId: getScheduledTripRouteId(record),
+        originLabel: getLocationLabel(record.origin),
+        destinationLabel: getLocationLabel(record.destination),
+        stops: Array.isArray(record.stops)
+          ? (record.stops as unknown[]).map((stop) => ({
+              label: getLocationLabel(stop),
+              dwellMinutes: getStopDwellMinutes(stop),
+            }))
+          : [],
+        passengerCount: record.passengerCount ?? 1,
+        scheduledAt: scheduledAt.toISOString(),
+        estimatedArrivalAt,
+        distanceKm: record.distanceKm ?? null,
+        durationMin,
+        travelDurationMin,
+        dwellDurationMin,
+        vehicle: record.selectedVehicle
+          ? {
+              displayName: record.selectedVehicle.displayName,
+              fareLow: record.selectedVehicle.estimatedFareLow,
+              fareHigh: record.selectedVehicle.estimatedFareHigh,
+              currency: record.selectedVehicle.currency ?? "BDT",
+            }
+          : null,
+        weather: record.selectionSnapshot?.weather ?? null,
+        weatherUnavailable: Boolean(record.selectionSnapshot?.weatherUnavailable),
+        traffic: record.selectionSnapshot?.traffic ?? null,
+        trafficUnavailable: Boolean(record.selectionSnapshot?.trafficUnavailable),
+        itinerary,
+        createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
+      },
+    ];
+  });
+}
+
+export async function getTripHistoryActivityData(userId: string): Promise<TripHistoryActivityData> {
+  await dbConnect();
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const [lastSevenDayRecords, monthlyRecords] = (await Promise.all([
+    TripHistory.find({ userId, createdAt: { $gte: sevenDaysAgo } })
+      .sort({ createdAt: -1 })
+      .lean(),
+    TripHistory.find({ userId })
+      .sort({ createdAt: -1 })
+      .lean(),
+  ])) as [StoredActivityTrip[], StoredActivityTrip[]];
+
+  const monthFormatter = new Intl.DateTimeFormat("en", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const groups = new Map<string, MonthlyTripActivityGroup>();
+
+  for (const record of monthlyRecords) {
+    const trip = mapRecentTrip(record);
+    const createdAt = new Date(trip.createdAt);
+    const monthKey = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}`;
+    const existing = groups.get(monthKey);
+
+    if (existing) {
+      existing.trips.push(trip);
+    } else {
+      groups.set(monthKey, {
+        monthKey,
+        monthLabel: monthFormatter.format(createdAt),
+        trips: [trip],
+      });
+    }
+  }
+
+  return {
+    lastSevenDays: lastSevenDayRecords.map(mapRecentTrip),
+    monthlyGroups: Array.from(groups.values()),
+  };
 }
 
 export async function createTripHistoryRecord({
@@ -195,6 +396,91 @@ export type SelectionSnapshotInput = {
   trafficUnavailable: boolean;
 };
 
+export type TripSummaryItineraryLeg = {
+  fromLabel: string;
+  toLabel: string;
+  distanceKm: number;
+  durationMin: number;
+  dwellAfterMin: number;
+};
+
+type StoredRouteSnapshot = {
+  travelDurationMin?: unknown;
+  dwellDurationMin?: unknown;
+  durationMin?: unknown;
+  legs?: unknown;
+};
+
+function normalizeSummaryLegs(legs: unknown): TripSummaryItineraryLeg[] {
+  if (!Array.isArray(legs)) return [];
+
+  return legs.reduce<TripSummaryItineraryLeg[]>((normalized, leg, index) => {
+    if (!leg || typeof leg !== "object") return normalized;
+
+    const candidate = leg as Record<string, unknown>;
+    const fromLabel =
+      typeof candidate.fromLabel === "string" && candidate.fromLabel.trim()
+        ? candidate.fromLabel.trim()
+        : `Point ${index + 1}`;
+    const toLabel =
+      typeof candidate.toLabel === "string" && candidate.toLabel.trim()
+        ? candidate.toLabel.trim()
+        : `Point ${index + 2}`;
+    const distanceKm =
+      typeof candidate.distanceKm === "number" && Number.isFinite(candidate.distanceKm)
+        ? candidate.distanceKm
+        : 0;
+    const durationMin =
+      typeof candidate.durationMin === "number" && Number.isFinite(candidate.durationMin)
+        ? candidate.durationMin
+        : 0;
+    const dwellAfterMin =
+      typeof candidate.dwellAfterMin === "number" && Number.isFinite(candidate.dwellAfterMin)
+        ? candidate.dwellAfterMin
+        : 0;
+
+    normalized.push({
+      fromLabel,
+      toLabel,
+      distanceKm,
+      durationMin,
+      dwellAfterMin,
+    });
+
+    return normalized;
+  }, []);
+}
+
+function getSummaryItinerary(route: StoredRouteSnapshot | null | undefined) {
+  if (!route) return null;
+
+  const legs = normalizeSummaryLegs(route.legs);
+  if (legs.length <= 1) return null;
+
+  const dwellDurationMin =
+    typeof route.dwellDurationMin === "number" &&
+    Number.isFinite(route.dwellDurationMin)
+      ? route.dwellDurationMin
+      : legs.reduce((total, leg) => total + leg.dwellAfterMin, 0);
+  const totalDurationMin =
+    typeof route.durationMin === "number" && Number.isFinite(route.durationMin)
+      ? route.durationMin
+      : null;
+  const travelDurationMin =
+    typeof route.travelDurationMin === "number" &&
+    Number.isFinite(route.travelDurationMin)
+      ? route.travelDurationMin
+      : totalDurationMin !== null
+        ? Math.max(1, totalDurationMin - dwellDurationMin)
+        : legs.reduce((total, leg) => total + leg.durationMin, 0);
+
+  return {
+    travelDurationMin,
+    dwellDurationMin,
+    legs,
+  };
+}
+
 /**
  * Confirms a vehicle for a trip: re-anchors the selected route (in case the
  * user picked a different route card than what was last saved), stores the
@@ -267,6 +553,11 @@ export type TripSummaryDetail = {
   weatherUnavailable: boolean;
   traffic: SelectionTrafficSnapshot;
   trafficUnavailable: boolean;
+  itinerary: {
+    travelDurationMin: number;
+    dwellDurationMin: number;
+    legs: TripSummaryItineraryLeg[];
+  } | null;
   selectedAt: string | null;
   createdAt: string;
 };
@@ -297,6 +588,7 @@ export async function getTripSummary(
 
   const durationMin =
     record.selectedVehicle?.estimatedDurationMin ?? record.durationMin ?? null;
+  const itinerary = getSummaryItinerary(record.selectedRoute as StoredRouteSnapshot | null);
 
   // "now" trips depart when the user confirmed; scheduled trips depart at the
   // chosen time. Arrival is derived, not stored, so it never drifts from the
@@ -330,6 +622,7 @@ export async function getTripSummary(
     weatherUnavailable: Boolean(record.selectionSnapshot?.weatherUnavailable),
     traffic: record.selectionSnapshot?.traffic ?? null,
     trafficUnavailable: Boolean(record.selectionSnapshot?.trafficUnavailable),
+    itinerary,
     selectedAt: record.selectedAt ? new Date(record.selectedAt).toISOString() : null,
     createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
   };

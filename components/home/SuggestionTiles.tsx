@@ -1,74 +1,62 @@
 import {
+  BookmarkCheck,
   CalendarClock,
   History,
   MapPinned,
   Route,
-  Star,
   Wallet,
 } from "lucide-react";
-import Link from "next/link";
 
-type Suggestion = {
+type Feature = {
   label: string;
   description: string;
   icon: React.ReactNode;
-  href?: string;
-  soon?: boolean;
 };
 
-// Everything here works today except the ones carrying a "Soon" badge, which are
-// modelled in the database but have no UI yet.
-const suggestions: Suggestion[] = [
+const features: Feature[] = [
   {
-    label: "Multi-stop",
-    description: "Chain up to 6 stops in one trip",
+    label: "Multi-stop routing",
+    description: "Build trips with up to 6 planned stops",
     icon: <MapPinned className="size-6" />,
   },
   {
-    label: "Schedule",
-    description: "Plan a departure up to 7 days out",
+    label: "Scheduled trips",
+    description: "Plan departures up to 7 days ahead",
     icon: <CalendarClock className="size-6" />,
   },
   {
-    label: "Compare routes",
-    description: "Up to 3 ranked alternatives",
+    label: "AI route ranking",
+    description: "Compare the top 3 route options",
     icon: <Route className="size-6" />,
   },
   {
     label: "Trip history",
-    description: "Revisit your recent journeys",
+    description: "Review confirmed trips and recent searches",
     icon: <History className="size-6" />,
-    href: "/trip-history",
   },
   {
-    label: "Saved places",
-    description: "Home, work and favourites",
-    icon: <Star className="size-6" />,
-    soon: true,
+    label: "Saved trips & alerts",
+    description: "Track weather, traffic, and fare changes",
+    icon: <BookmarkCheck className="size-6" />,
   },
   {
     // Live now, but /fares needs a route's distance and duration, so this stays
     // a descriptive tile rather than a link that would bounce straight back.
-    label: "Fare compare",
-    description: "Uber, Pathao and CNG estimates once you pick a route",
+    label: "Fare comparison",
+    description: "Estimate Uber, Pathao, and CNG fares",
     icon: <Wallet className="size-6" />,
   },
 ];
 
-function TileBody({ suggestion }: { suggestion: Suggestion }) {
+function TileBody({ feature }: { feature: Feature }) {
   return (
     <>
-      <span className="text-primary">{suggestion.icon}</span>
+      <span className="text-primary">{feature.icon}</span>
       <span className="mt-3 flex items-center gap-2 text-sm font-medium text-foreground">
-        {suggestion.label}
-        {suggestion.soon ? (
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-            Soon
-          </span>
-        ) : null}
+        {feature.label}
       </span>
       <span className="mt-1 text-xs text-muted-foreground">
-        {suggestion.description}
+        {feature.description}
       </span>
     </>
   );
@@ -77,26 +65,21 @@ function TileBody({ suggestion }: { suggestion: Suggestion }) {
 export default function SuggestionTiles() {
   return (
     <div className="w-full">
-      <h2 className="mb-4 text-lg font-semibold text-foreground">Suggestions</h2>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-foreground">NoboJatra features</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Built-in tools for smarter route planning in Dhaka.
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {suggestions.map((suggestion) =>
-          suggestion.href ? (
-            <Link
-              key={suggestion.label}
-              href={suggestion.href}
-              className="flex flex-col rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted"
-            >
-              <TileBody suggestion={suggestion} />
-            </Link>
-          ) : (
-            <div
-              key={suggestion.label}
-              className="flex flex-col rounded-2xl border border-border bg-card p-4"
-            >
-              <TileBody suggestion={suggestion} />
-            </div>
-          )
-        )}
+        {features.map((feature) => (
+          <div
+            key={feature.label}
+            className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_rgba(249,151,57,0.18)]"
+          >
+            <TileBody feature={feature} />
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -5,20 +5,34 @@ import { ArrowDown, ArrowUp, LocateFixed, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
-import { SERVICE_AREA_NAME, isInsideServiceArea } from "@/lib/trip-input";
+import {
+  DEFAULT_STOP_DWELL_MINUTES,
+  MAX_STOP_DWELL_MINUTES,
+  MIN_STOP_DWELL_MINUTES,
+  SERVICE_AREA_NAME,
+  isInsideServiceArea,
+} from "@/lib/trip-input";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+export type RouteStopValue = PlaceResult & {
+  dwellMinutes?: number;
+};
 
 export type RouteFormValues = {
   origin: PlaceResult;
   destination: PlaceResult;
-  stops: PlaceResult[];
+  stops: RouteStopValue[];
   passengerCount: number;
   departureMode: "now" | "scheduled";
   scheduledAt: string | null;
 };
 
-type StopField = { label: string; place: PlaceResult | null };
+type StopField = {
+  label: string;
+  place: PlaceResult | null;
+  dwellMinutes: number;
+};
 
 type Props = {
   onSubmit: (values: RouteFormValues) => void;
@@ -88,7 +102,14 @@ export default function RouteFinderForm({
   );
 
   const [stops, setStops] = useState<StopField[]>(
-    initialValues?.stops.map((place) => ({ label: place.label, place })) ?? []
+    initialValues?.stops.map((place) => ({
+      label: place.label,
+      place,
+      dwellMinutes:
+        typeof place.dwellMinutes === "number"
+          ? place.dwellMinutes
+          : DEFAULT_STOP_DWELL_MINUTES,
+    })) ?? []
   );
   const [locating, setLocating] = useState(false);
   const [locationPrompt, setLocationPrompt] = useState<string | null>(null);
@@ -155,7 +176,10 @@ export default function RouteFinderForm({
   function addStop() {
     setFormError(null);
     if (stops.length >= MAX_STOPS) return;
-    setStops((s) => [...s, { label: "", place: null }]);
+    setStops((s) => [
+      ...s,
+      { label: "", place: null, dwellMinutes: DEFAULT_STOP_DWELL_MINUTES },
+    ]);
   }
 
   function removeStop(index: number) {
@@ -172,6 +196,18 @@ export default function RouteFinderForm({
   function selectStopPlace(index: number, place: PlaceResult) {
     setStops((s) =>
       s.map((st, i) => (i === index ? { ...st, place, label: place.label } : st))
+    );
+  }
+
+  function updateStopDwell(index: number, dwellMinutes: number) {
+    setFormError(null);
+    const bounded = Math.max(
+      MIN_STOP_DWELL_MINUTES,
+      Math.min(MAX_STOP_DWELL_MINUTES, dwellMinutes)
+    );
+
+    setStops((s) =>
+      s.map((st, i) => (i === index ? { ...st, dwellMinutes: bounded } : st))
     );
   }
 
@@ -192,9 +228,16 @@ export default function RouteFinderForm({
     });
   }
 
-  const validStops = stops
-    .map((s) => s.place)
-    .filter((p): p is PlaceResult => p !== null);
+  const validStops = stops.reduce<RouteStopValue[]>((selectedStops, stop) => {
+    if (!stop.place) return selectedStops;
+
+    selectedStops.push({
+      ...stop.place,
+      dwellMinutes: stop.dwellMinutes,
+    });
+
+    return selectedStops;
+  }, []);
 
   const hasIncompleteStops = stops.some((stop) => stop.place === null);
   const canSubmit =
@@ -277,6 +320,7 @@ export default function RouteFinderForm({
 
       <button
         type="button"
+        data-no-glow
         onClick={useCurrentLocation}
         disabled={locating}
         className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
@@ -363,6 +407,7 @@ export default function RouteFinderForm({
           <span className="text-sm font-semibold text-foreground">Stops</span>
           <button
             type="button"
+            data-no-glow
             onClick={addStop}
             disabled={stops.length >= MAX_STOPS}
             className="text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:cursor-not-allowed disabled:text-muted-foreground"
@@ -389,6 +434,21 @@ export default function RouteFinderForm({
                   className="border-none bg-transparent px-0 py-0 focus:bg-transparent"
                 />
               </div>
+              <label className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-1 text-xs text-muted-foreground">
+                <span>Wait</span>
+                <input
+                  type="number"
+                  min={MIN_STOP_DWELL_MINUTES}
+                  max={MAX_STOP_DWELL_MINUTES}
+                  value={stop.dwellMinutes}
+                  onChange={(event) =>
+                    updateStopDwell(i, Number(event.target.value))
+                  }
+                  className="w-10 bg-transparent text-center text-foreground outline-none"
+                  aria-label={`Wait time at stop ${i + 1}`}
+                />
+                <span>min</span>
+              </label>
               <button
                 type="button"
                 onClick={() => removeStop(i)}

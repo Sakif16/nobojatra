@@ -5,6 +5,10 @@ export type RouteLeg = {
   endIndex: number;
   color: string;
   distanceKm: number;
+  durationMin: number;
+  fromLabel?: string;
+  toLabel?: string;
+  dwellAfterMin?: number;
 };
 
 export type RouteResult = {
@@ -12,6 +16,8 @@ export type RouteResult = {
   rank: number;
   coords: [number, number][];
   distanceKm: number;
+  travelDurationMin?: number;
+  dwellDurationMin?: number;
   durationMin: number;
   legs: RouteLeg[];
 };
@@ -148,6 +154,7 @@ export type RoutePoint = {
   lat: number;
   lng: number;
   label: string;
+  dwellMinutes?: number;
 };
 
 

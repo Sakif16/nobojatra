@@ -20,6 +20,11 @@ type OrsFeature = {
   };
 };
 
+type RouteWaypoint = LatLng & {
+  label?: string;
+  dwellMinutes?: number;
+};
+
 type OrsErrorPayload = {
   error?: string | { message?: string };
   message?: string;
@@ -260,50 +265,121 @@ function limitUniqueRoutes(routes: RouteResult[]) {
   });
 }
 
-function mapOrsFeatureToRoute(feature: OrsFeature, index: number, hasStops: boolean) {
+function roundKm(meters: number) {
+  return Math.round((meters / 1000) * 10) / 10;
+}
+
+function roundMinutes(seconds: number) {
+  return Math.max(1, Math.round(seconds / 60));
+}
+
+function clampRouteIndex(value: number, maxIndex: number) {
+  return Math.max(0, Math.min(maxIndex, value));
+}
+
+function getWaypointIndices(feature: OrsFeature, segmentCount: number, maxIndex: number) {
+  const wayPoints = feature.properties.way_points;
+
+  if (!Array.isArray(wayPoints) || wayPoints.length < segmentCount + 1) {
+    return null;
+  }
+
+  const normalized = wayPoints
+    .slice(0, segmentCount + 1)
+    .map((point) => clampRouteIndex(Math.round(point), maxIndex));
+
+  return normalized.every((point, pointIndex) => {
+    const previous = normalized[pointIndex - 1];
+    return pointIndex === 0 || previous === undefined || point >= previous;
+  })
+    ? normalized
+    : null;
+}
+
+function getWaypointLabel(waypoint: RouteWaypoint | undefined, fallback: string) {
+  if (!waypoint) return fallback;
+
+  const label = waypoint.label ?? waypoint.name;
+  return typeof label === "string" && label.trim() ? label.trim() : fallback;
+}
+
+function getStopDwellMinutes(stop: RouteWaypoint | undefined) {
+  if (
+    stop &&
+    typeof stop.dwellMinutes === "number" &&
+    Number.isFinite(stop.dwellMinutes) &&
+    stop.dwellMinutes > 0
+  ) {
+    return Math.round(stop.dwellMinutes);
+  }
+
+  return 0;
+}
+
+function mapOrsFeatureToRoute(
+  feature: OrsFeature,
+  index: number,
+  waypoints: RouteWaypoint[],
+) {
   const coords: [number, number][] = feature.geometry.coordinates.map(
     ([lng, lat]) => [lat, lng]
   );
 
-  let legs: RouteLeg[] = [];
+  const maxIndex = Math.max(0, coords.length - 1);
+  const segments =
+    feature.properties.segments.length > 0
+      ? feature.properties.segments
+      : [
+          {
+            distance: feature.properties.summary.distance,
+            duration: feature.properties.summary.duration,
+            steps: [],
+          },
+        ];
+  const waypointIndices = getWaypointIndices(feature, segments.length, maxIndex);
+  const hasStops = waypoints.length > 2;
 
-  if (hasStops) {
-    const segs = feature.properties.segments;
-    let cursor = 0;
-    const totalPoints = coords.length;
-    const pointsPerLeg = Math.floor(totalPoints / segs.length);
+  const legs: RouteLeg[] = segments.map((segment, legIndex) => {
+    const fallbackStart = Math.round((legIndex * maxIndex) / segments.length);
+    const fallbackEnd = Math.round(((legIndex + 1) * maxIndex) / segments.length);
+    const startIndex = waypointIndices?.[legIndex] ?? fallbackStart;
+    const endIndex = waypointIndices?.[legIndex + 1] ?? fallbackEnd;
+    const dwellAfterMin =
+      legIndex < waypoints.length - 2
+        ? getStopDwellMinutes(waypoints[legIndex + 1])
+        : 0;
 
-    segs.forEach((seg, legIdx) => {
-      const start = cursor;
-      const end =
-        legIdx === segs.length - 1 ? totalPoints - 1 : cursor + pointsPerLeg;
-      legs.push({
-        startIndex: start,
-        endIndex: end,
-        color: ROUTE_COLORS[legIdx % ROUTE_COLORS.length],
-        distanceKm: Math.round((seg.distance / 1000) * 10) / 10,
-      });
-      cursor = end;
-    });
-  } else {
-    legs = [
-      {
-        startIndex: 0,
-        endIndex: coords.length - 1,
-        color: ROUTE_COLORS[index % ROUTE_COLORS.length],
-        distanceKm:
-          Math.round((feature.properties.summary.distance / 1000) * 10) / 10,
-      },
-    ];
-  }
+    return {
+      startIndex: clampRouteIndex(startIndex, maxIndex),
+      endIndex: Math.max(
+        clampRouteIndex(startIndex, maxIndex),
+        clampRouteIndex(endIndex, maxIndex),
+      ),
+      color: hasStops
+        ? ROUTE_COLORS[legIndex % ROUTE_COLORS.length]
+        : ROUTE_COLORS[index % ROUTE_COLORS.length],
+      distanceKm: roundKm(segment.distance),
+      durationMin: roundMinutes(segment.duration),
+      fromLabel: getWaypointLabel(waypoints[legIndex], `Point ${legIndex + 1}`),
+      toLabel: getWaypointLabel(waypoints[legIndex + 1], `Point ${legIndex + 2}`),
+      dwellAfterMin,
+    };
+  });
+
+  const travelDurationMin = roundMinutes(feature.properties.summary.duration);
+  const dwellDurationMin = legs.reduce(
+    (total, leg) => total + (leg.dwellAfterMin ?? 0),
+    0,
+  );
 
   return {
     id: `route-${index}`,
     rank: index + 1,
     coords,
-    distanceKm:
-      Math.round((feature.properties.summary.distance / 1000) * 10) / 10,
-    durationMin: Math.round(feature.properties.summary.duration / 60),
+    distanceKm: roundKm(feature.properties.summary.distance),
+    travelDurationMin,
+    dwellDurationMin,
+    durationMin: travelDurationMin + dwellDurationMin,
     legs,
   };
 }
@@ -311,7 +387,7 @@ function mapOrsFeatureToRoute(feature: OrsFeature, index: number, hasStops: bool
 export async function fetchRouteSuggestions(
   origin: LatLng,
   destination: LatLng,
-  stops: LatLng[] = []
+  stops: RouteWaypoint[] = []
 ) {
   const apiKey = getOrsApiKey();
 
@@ -323,7 +399,7 @@ export async function fetchRouteSuggestions(
     );
   }
 
-  const waypoints = [origin, ...stops, destination];
+  const waypoints: RouteWaypoint[] = [origin, ...stops, destination];
   const coordinates = waypoints.map((p) => [p.lng, p.lat]);
   const hasStops = stops.length > 0;
   const body: Record<string, unknown> = {
@@ -371,7 +447,7 @@ export async function fetchRouteSuggestions(
 
   const geojson = (await response.json()) as { features?: OrsFeature[] };
   const routes = (geojson.features ?? []).map((feature, index) =>
-    mapOrsFeatureToRoute(feature, index, hasStops)
+    mapOrsFeatureToRoute(feature, index, waypoints)
   );
 
   return limitUniqueRoutes(routes);

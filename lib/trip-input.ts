@@ -41,6 +41,9 @@ export const NOMINATIM_SERVICE_AREA_VIEWBOX = [
 export const MIN_AUTOCOMPLETE_QUERY_LENGTH = 2;
 export const MAX_AUTOCOMPLETE_RESULTS = 8;
 export const MAX_STOPS = 6;
+export const DEFAULT_STOP_DWELL_MINUTES = 5;
+export const MIN_STOP_DWELL_MINUTES = 0;
+export const MAX_STOP_DWELL_MINUTES = 60;
 export const MIN_TRIP_DISTANCE_METERS = 500;
 export const MIN_PASSENGER_COUNT = 1;
 export const MAX_PASSENGER_COUNT = 8;
@@ -51,6 +54,10 @@ export type TripLocation = {
   label: string;
   lat: number;
   lng: number;
+};
+
+export type TripStop = TripLocation & {
+  dwellMinutes: number;
 };
 
 export type DepartureMode = "now" | "scheduled";
@@ -76,7 +83,7 @@ export type TripValidationErrors = {
 export type ValidatedTripInput = {
   origin: TripLocation;
   destination: TripLocation;
-  stops: TripLocation[];
+  stops: TripStop[];
   passengerCount: number;
   departureMode: DepartureMode;
   scheduledAt?: string;
@@ -138,6 +145,39 @@ export function normalizeTripLocation(value: unknown): TripLocation | null {
   };
 }
 
+function normalizeStopDwellMinutes(value: unknown) {
+  const dwellMinutes = value === undefined ? DEFAULT_STOP_DWELL_MINUTES : Number(value);
+
+  if (
+    !Number.isInteger(dwellMinutes) ||
+    dwellMinutes < MIN_STOP_DWELL_MINUTES ||
+    dwellMinutes > MAX_STOP_DWELL_MINUTES
+  ) {
+    return null;
+  }
+
+  return dwellMinutes;
+}
+
+export function normalizeTripStop(value: unknown): TripStop | null {
+  const location = normalizeTripLocation(value);
+
+  if (!location || !isRecord(value)) {
+    return null;
+  }
+
+  const dwellMinutes = normalizeStopDwellMinutes(value.dwellMinutes);
+
+  if (dwellMinutes === null) {
+    return null;
+  }
+
+  return {
+    ...location,
+    dwellMinutes,
+  };
+}
+
 export function calculateDistanceMeters(
   first: Pick<TripLocation, "lat" | "lng">,
   second: Pick<TripLocation, "lat" | "lng">,
@@ -192,9 +232,9 @@ export function validateTripInput(
   }
 
   const stops = stopsInput.map((stop, index) => {
-    const normalizedStop = normalizeTripLocation(stop);
+    const normalizedStop = normalizeTripStop(stop);
     if (!normalizedStop) {
-      stopErrors[index] = "Stop is required.";
+      stopErrors[index] = `Stop is required and wait time must be ${MIN_STOP_DWELL_MINUTES}-${MAX_STOP_DWELL_MINUTES} minutes.`;
     } else if (!isInsideServiceArea(normalizedStop)) {
       stopErrors[index] = outsideServiceAreaMessage(`Stop ${index + 1}`);
     }
@@ -265,7 +305,7 @@ export function validateTripInput(
     data: {
       origin: origin as TripLocation,
       destination: destination as TripLocation,
-      stops: stops.filter((stop): stop is TripLocation => stop !== null),
+      stops: stops.filter((stop): stop is TripStop => stop !== null),
       passengerCount,
       departureMode: departureMode as DepartureMode,
       ...(scheduledAt ? { scheduledAt } : {}),

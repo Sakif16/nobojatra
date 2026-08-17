@@ -57,18 +57,6 @@ export default async function Navbar() {
 
             <div className="absolute right-0 mt-2 w-40 rounded-lg border border-border bg-background p-2 shadow-lg">
               <Link
-                href="/trip-history"
-                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-              >
-                Trip History
-              </Link>
-              <Link
-                href="/saved-trips"
-                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-              >
-                Saved Trips
-              </Link>
-              <Link
                 href="/profile"
                 className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
               >

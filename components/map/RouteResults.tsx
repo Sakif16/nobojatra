@@ -33,6 +33,9 @@ export default function RouteResults({
 
   const activeRoute = routes.find((r) => r.id === activeRouteId) ?? routes[0];
   const isMultiStop = activeRoute.legs.length > 1;
+  const dwellDurationMin = activeRoute.dwellDurationMin ?? 0;
+  const travelDurationMin =
+    activeRoute.travelDurationMin ?? activeRoute.durationMin - dwellDurationMin;
   const hasOneDistinctRoute = !isMultiStop && routes.length === 1;
   const routeSaveMessage =
     routeSaveStatus === "saving"
@@ -111,18 +114,29 @@ export default function RouteResults({
           <p className="mb-2 text-sm font-medium text-foreground">
             {activeRoute.distanceKm} km · {activeRoute.durationMin} min total
           </p>
+          {dwellDurationMin > 0 && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              {travelDurationMin} min travel · {dwellDurationMin} min wait
+            </p>
+          )}
           <div className="space-y-1.5">
             {activeRoute.legs.map((leg, i) => (
               <div
                 key={i}
-                className="flex items-center gap-2 text-xs text-muted-foreground"
+                className="flex items-start gap-2 text-xs text-muted-foreground"
               >
                 <span
-                  className="size-2.5 flex-shrink-0 rounded-full"
+                  className="mt-1 size-2.5 flex-shrink-0 rounded-full"
                   style={{ background: leg.color }}
                 />
-                <span>
-                  Leg {i + 1} — {leg.distanceKm} km
+                <span className="min-w-0">
+                  <span className="block truncate">
+                    {leg.fromLabel ?? `Leg ${i + 1}`} → {leg.toLabel ?? `Point ${i + 2}`}
+                  </span>
+                  <span className="block">
+                    {leg.distanceKm} km · {leg.durationMin} min
+                    {leg.dwellAfterMin ? ` · ${leg.dwellAfterMin} min wait` : ""}
+                  </span>
                 </span>
               </div>
             ))}

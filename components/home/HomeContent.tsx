@@ -27,8 +27,6 @@ export default function HomeContent({
 
   return (
     <div className="mt-8">
-      <PlanAgainCards trips={frequentTrips} onPlanAgain={setPlanAgainTrip} />
-
       <MapDashboardSection
         defaultPassengerCount={defaultPassengerCount}
         savedPlaces={savedPlaces}
@@ -36,6 +34,8 @@ export default function HomeContent({
         onPlanAgainHandled={() => setPlanAgainTrip(null)}
         aside={<SuggestionTiles />}
       />
+
+      <PlanAgainCards trips={frequentTrips} onPlanAgain={setPlanAgainTrip} />
     </div>
   );
 }

@@ -19,6 +19,14 @@ const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
 
+interface FareAdjustment {
+  multiplier: number
+  weatherMultiplier: number
+  trafficMultiplier: number
+  peakHourMultiplier: number
+  notes: string[]
+}
+
 interface FareOption {
   provider: string
   vehicleType: string
@@ -34,12 +42,15 @@ interface FareOption {
   // local estimate; fareSourceNote explains why.
   fareSource?: 'pathao_api' | 'rate_card'
   fareSourceNote?: string | null
+  fareAdjustment?: FareAdjustment | null
 }
 
 interface FareTripSummary {
   originLabel: string
   destinationLabel: string
   distanceKm: number
+  travelDurationMin?: number
+  dwellDurationMin?: number
   durationMin: number
   passengers: number
 }
@@ -67,6 +78,8 @@ interface FareMap {
     coords: [number, number][]
     legs: RouteResult['legs']
     distanceKm: number
+    travelDurationMin?: number
+    dwellDurationMin?: number
     durationMin: number
   }
 }
@@ -166,6 +179,15 @@ function getUnavailableReason(option: FareOption, passengers: number) {
   return reasons.join(' · ') || `Not available for ${passengers} passengers`
 }
 
+function getFareAdjustmentLabel(adjustment: FareAdjustment | null | undefined) {
+  if (!adjustment || adjustment.notes.length === 0) return null
+
+  const notes = adjustment.notes.slice(0, 2).join(' · ')
+  const more = adjustment.notes.length > 2 ? ` · +${adjustment.notes.length - 2} more` : ''
+
+  return `Condition adjusted x${adjustment.multiplier.toFixed(2)}: ${notes}${more}`
+}
+
 export default function FareResults({ tripHistoryId, routeId }: {
   tripHistoryId: string; routeId: string
 }) {
@@ -232,6 +254,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
             endIndex: map.route.coords.length - 1,
             color: ROUTE_COLORS[0],
             distanceKm: map.route.distanceKm,
+            durationMin: map.route.durationMin,
           },
         ]
 
@@ -241,6 +264,8 @@ export default function FareResults({ tripHistoryId, routeId }: {
         rank: 1,
         coords: map.route.coords,
         distanceKm: map.route.distanceKm,
+        travelDurationMin: map.route.travelDurationMin,
+        dwellDurationMin: map.route.dwellDurationMin,
         durationMin: map.route.durationMin,
         legs,
       },
@@ -281,6 +306,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
         return
       }
 
+      window.dispatchEvent(new Event('notifications:refresh'))
       router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`)
     } catch {
       setConfirmError('Could not confirm this ride. Please try again.')
@@ -418,6 +444,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                       {available.map((v) => {
                         const key = `${v.provider}-${v.vehicleType}`
                         const isSelected = selected === key
+                        const adjustmentLabel = getFareAdjustmentLabel(v.fareAdjustment)
                         return (
                           <button
                             key={key}
@@ -460,6 +487,13 @@ export default function FareResults({ tripHistoryId, routeId }: {
                               <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
                                 <CloudRain className="mt-px size-3 shrink-0" aria-hidden />
                                 {v.restrictionReason}
+                              </p>
+                            )}
+
+                            {adjustmentLabel && (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
+                                <Sparkles className="mt-px size-3 shrink-0" aria-hidden />
+                                {adjustmentLabel}
                               </p>
                             )}
                           </button>

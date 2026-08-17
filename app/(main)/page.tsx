@@ -1,7 +1,3 @@
-// app/(main)/page.tsx
-// NOTE: reconstructed from what was shared earlier in this thread — diff
-// against your actual current file before applying, in case it has diverged
-// since (e.g. if the multi-path / group-travel or other features touched it).
 import { headers } from "next/headers";
 import AnonymousHome from "@/components/home/AnonymousHome";
 import AuthedHome from "@/components/home/AuthedHome";
@@ -9,8 +5,6 @@ import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
 import { getFrequentTrips, getHomeTripSummary } from "@/lib/trip-history";
 import UserProfile from "@/models/UserProfile";
-require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
-
 
 type SavedPlaceDoc = {
   label: string;
@@ -29,7 +23,7 @@ export default async function Home() {
 
   await dbConnect();
 
-  const [{ recentTrips, upcomingCount }, profile, frequentTrips] = await Promise.all([
+  const [{ upcomingCount }, profile, frequentTrips] = await Promise.all([
     getHomeTripSummary(session.user.id),
     UserProfile.findOne({ userId: session.user.id }).lean(),
     getFrequentTrips(session.user.id),
@@ -46,7 +40,6 @@ export default async function Home() {
     <AuthedHome
       userName={session.user.name}
       upcomingCount={upcomingCount}
-      recentTrips={recentTrips}
       defaultPassengerCount={profile?.defaultPassengerCount ?? 1}
       savedPlaces={savedPlaces}
       frequentTrips={frequentTrips}

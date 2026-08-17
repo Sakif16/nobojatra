@@ -23,7 +23,7 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
   if (trips.length === 0) return null;
 
   return (
-    <div className="mb-8">
+    <div className="mt-10">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
         <Repeat2 className="size-4 text-primary" />
         Plan again
