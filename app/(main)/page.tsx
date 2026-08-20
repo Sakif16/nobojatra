@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
 import { getFrequentTrips, getHomeTripSummary } from "@/lib/trip-history";
 import UserProfile from "@/models/UserProfile";
+require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
 
 type SavedPlaceDoc = {
   label: string;
