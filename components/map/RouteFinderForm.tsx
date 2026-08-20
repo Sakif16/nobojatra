@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, LocateFixed, Minus, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Camera, LocateFixed, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
+import ImageLocationModal from "./ImageLocationModal";
 import type { PlaceResult } from "@/lib/geocode";
 import { reverseGeocode } from "@/lib/geocode";
 import {
@@ -52,6 +53,11 @@ const MIN_PASSENGERS = 1;
 const MAX_PASSENGERS = 8;
 const MAX_STOPS = 6;
 const SCHEDULE_WINDOW_DAYS = 7;
+
+// Stretches to the field's own height rather than hard-coding one, so the
+// button stays square with the input if the field padding ever changes.
+const cameraButtonClassName =
+  "flex w-11 flex-shrink-0 items-center justify-center rounded-xl border border-input bg-secondary/60 text-muted-foreground transition-colors hover:border-ring hover:bg-secondary hover:text-foreground";
 
 function formatDateTimeLocal(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -116,6 +122,11 @@ export default function RouteFinderForm({
   const [locating, setLocating] = useState(false);
   const [locationPrompt, setLocationPrompt] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Which field the photo-identification modal is currently filling. One
+  // shared modal instead of one per field, so only one can ever be open.
+  const [imageTarget, setImageTarget] = useState<"origin" | "destination" | null>(
+    null
+  );
 
   const [scheduleBounds] = useState(() => {
     const now = Date.now();
@@ -174,6 +185,19 @@ export default function RouteFinderForm({
         setLocating(false);
       }
     );
+  }
+
+  function handleImagePlace(place: PlaceResult) {
+    if (imageTarget === "origin") {
+      setOrigin(place);
+      setOriginLabel(place.label);
+    } else if (imageTarget === "destination") {
+      setDestination(place);
+      setDestinationLabel(place.label);
+    }
+
+    setFormError(null);
+    setImageTarget(null);
   }
 
   function addStop() {
@@ -286,39 +310,65 @@ export default function RouteFinderForm({
           aria-hidden
           className="absolute top-6 bottom-6 left-[21px] w-px bg-border"
         />
-        <PlaceAutocomplete
-          placeholder="Enter location"
-          value={originLabel}
-          icon={
-            <span className="block size-2.5 rounded-full border-2 border-foreground" />
-          }
-          savedPlaces={savedPlaces}
-          onChange={(v) => {
-            setFormError(null);
-            setOriginLabel(v);
-            setOrigin(null);
-          }}
-          onSelect={(place) => {
-            setOrigin(place);
-            setOriginLabel(place.label);
-          }}
-        />
+        <div className="flex items-stretch gap-2">
+          <div className="min-w-0 flex-1">
+            <PlaceAutocomplete
+              placeholder="Enter location"
+              value={originLabel}
+              icon={
+                <span className="block size-2.5 rounded-full border-2 border-foreground" />
+              }
+              savedPlaces={savedPlaces}
+              onChange={(v) => {
+                setFormError(null);
+                setOriginLabel(v);
+                setOrigin(null);
+              }}
+              onSelect={(place) => {
+                setOrigin(place);
+                setOriginLabel(place.label);
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setImageTarget("origin")}
+            aria-label="Identify origin from a photo"
+            title="Identify from a photo"
+            className={cameraButtonClassName}
+          >
+            <Camera size={16} />
+          </button>
+        </div>
 
-        <PlaceAutocomplete
-          placeholder="Enter destination"
-          value={destinationLabel}
-          icon={<span className="block size-2.5 bg-foreground" />}
-          savedPlaces={savedPlaces}
-          onChange={(v) => {
-            setFormError(null);
-            setDestinationLabel(v);
-            setDestination(null);
-          }}
-          onSelect={(place) => {
-            setDestination(place);
-            setDestinationLabel(place.label);
-          }}
-        />
+        <div className="flex items-stretch gap-2">
+          <div className="min-w-0 flex-1">
+            <PlaceAutocomplete
+              placeholder="Enter destination"
+              value={destinationLabel}
+              icon={<span className="block size-2.5 bg-foreground" />}
+              savedPlaces={savedPlaces}
+              onChange={(v) => {
+                setFormError(null);
+                setDestinationLabel(v);
+                setDestination(null);
+              }}
+              onSelect={(place) => {
+                setDestination(place);
+                setDestinationLabel(place.label);
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setImageTarget("destination")}
+            aria-label="Identify destination from a photo"
+            title="Identify from a photo"
+            className={cameraButtonClassName}
+          >
+            <Camera size={16} />
+          </button>
+        </div>
       </div>
 
       <button
@@ -499,6 +549,12 @@ export default function RouteFinderForm({
       >
         {loading ? loadingLabel : submitLabel}
       </button>
+
+      <ImageLocationModal
+        open={imageTarget !== null}
+        onClose={() => setImageTarget(null)}
+        onConfirm={handleImagePlace}
+      />
     </div>
   );
 }
