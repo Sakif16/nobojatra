@@ -16,6 +16,7 @@ import {
   WEATHER_SEVERITY_MIN,
 } from "@/lib/alert-evaluator/evaluators";
 import { deleteAlertsForSavedTrip } from "@/lib/alerts";
+import { resolveCountry, type CountryCode } from "@/lib/country-config";
 import { estimateFaresForRates, type FareSource } from "@/lib/fare-providers";
 import dbConnect from "@/lib/mongodb";
 import { fetchRouteSuggestions, RouteServiceError } from "@/lib/route-service";
@@ -87,6 +88,8 @@ export type SavedTripRouteSummary = {
 export type SavedTripDetail = {
   id: string;
   name: string;
+  /** Country the trip was saved in — decides the currency the baseline renders in. */
+  country: CountryCode;
   origin: TripLocation;
   destination: TripLocation;
   stops: TripLocation[];
@@ -117,6 +120,7 @@ export type SavedTripDetail = {
 type StoredLocation = { label: string; lat: number; lng: number };
 
 type StoredSavedTrip = {
+  country?: unknown;
   _id: unknown;
   name: string;
   origin: StoredLocation;
@@ -179,6 +183,7 @@ export function serializeSavedTrip(
   return {
     id: String(record._id),
     name: record.name,
+    country: resolveCountry(record.country),
     origin: toLocation(record.origin),
     destination: toLocation(record.destination),
     stops: Array.isArray(record.stops) ? record.stops.map(toLocation) : [],
@@ -392,11 +397,13 @@ export async function createSavedTrip({
   name,
   trip,
   preferredVehicleRateId,
+  country,
 }: {
   userId: string;
   name: string;
   trip: ValidatedTripInput;
   preferredVehicleRateId?: string | null;
+  country: CountryCode;
 }): Promise<SavedTripDetail> {
   await dbConnect();
 
@@ -426,6 +433,7 @@ export async function createSavedTrip({
     const record = await SavedTrip.create({
       userId,
       name,
+      country,
       origin: trip.origin,
       destination: trip.destination,
       stops: trip.stops,

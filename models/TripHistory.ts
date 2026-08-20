@@ -1,4 +1,5 @@
 import { Schema, model, models } from "mongoose";
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "@/lib/country-config";
 
 const TripLocationSchema = new Schema(
   {
@@ -181,6 +182,15 @@ const TripHistorySchema = new Schema(
     stops: {
       type: [TripLocationSchema],
       default: [],
+    },
+    // The country this trip was planned in, snapshotted at creation for the
+    // same reason selectedVehicle is stored by value: a user who later switches
+    // their profile to another country must not have their past trips
+    // re-render in the wrong currency and service area.
+    country: {
+      type: String,
+      enum: COUNTRY_OPTIONS,
+      default: DEFAULT_COUNTRY,
     },
     passengerCount: {
       type: Number,

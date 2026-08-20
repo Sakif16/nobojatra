@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { formatFare, type CountryCode } from '@/lib/country-config'
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
 type CongestionLevel = 'low' | 'moderate' | 'high' | 'severe'
@@ -57,6 +58,7 @@ interface SummaryItineraryLeg {
 
 interface TripSummaryDetail {
   id: string
+  country: CountryCode
   originLabel: string
   destinationLabel: string
   stopCount: number
@@ -244,7 +246,7 @@ export default function TripSummary({
                   </p>
                 </div>
                 <div className="shrink-0 text-lg font-bold tabular-nums text-foreground">
-                  ৳{trip.vehicle.fareLow}–{trip.vehicle.fareHigh}
+                  {formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)}
                 </div>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { COUNTRY_CONFIG, resolveCountry, type CountryCode } from "@/lib/country-config";
 import { createTripConfirmedAlert } from "@/lib/alerts";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
@@ -19,7 +20,10 @@ import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
-const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
+// Only reached when a route has no usable geometry to take a midpoint from.
+function getWeatherFallbackPoint(country: CountryCode): WeatherPoint {
+  return COUNTRY_CONFIG[country].fallbackWeatherPoint;
+}
 
 // ── Request body ──
 type SelectRequestBody = {
@@ -41,6 +45,7 @@ type StoredRoute = {
   legs?: unknown;
 };
 type StoredTripHistory = {
+  country?: unknown;
   origin?: unknown;
   destination?: unknown;
   passengerCount?: unknown;
@@ -240,7 +245,13 @@ export async function POST(req: NextRequest) {
   const dwellDurationMin = getRouteDwellDurationMin(selectedRoute);
   const travelDurationMin = getRouteTravelDurationMin(selectedRoute, durationMin);
 
-  const rate = await VehicleRate.findOne({ provider, vehicleType, isActive: true }).lean();
+  // The country comes off the trip, not the profile. It is also load-bearing
+  // for this lookup: the same provider/vehicleType pair exists in every market
+  // the app serves, so without it this findOne would return an arbitrary
+  // country's rate card and price the trip in the wrong currency.
+  const country = resolveCountry(trip.country);
+
+  const rate = await VehicleRate.findOne({ country, provider, vehicleType, isActive: true }).lean();
   if (!rate) {
     return NextResponse.json({ success: false, message: "That vehicle is not available." }, { status: 404 });
   }
@@ -254,7 +265,7 @@ export async function POST(req: NextRequest) {
 
   const routeCoords = normalizeRouteCoords(selectedRoute.coords);
   const routeMidpoint = getRouteMidpoint(routeCoords);
-  const weatherPoint = routeMidpoint ?? DHAKA_WEATHER_FALLBACK;
+  const weatherPoint = routeMidpoint ?? getWeatherFallbackPoint(country);
   const weatherSource: "route_midpoint" | "dhaka_fallback" = routeMidpoint ? "route_midpoint" : "dhaka_fallback";
 
   // Weather snapshot — mirrors app/api/fares/route.ts's fallback policy: a
@@ -338,7 +349,7 @@ export async function POST(req: NextRequest) {
       estimatedFareLow: fareEstimate.fare.low,
       estimatedFareHigh: fareEstimate.fare.high,
       estimatedDurationMin,
-      currency: "BDT",
+      currency: COUNTRY_CONFIG[country].currency,
     },
     snapshot: {
       weather: weather
@@ -371,7 +382,7 @@ export async function POST(req: NextRequest) {
       vehicleLabel: rate.displayName,
       fareLow: fareEstimate.fare.low,
       fareHigh: fareEstimate.fare.high,
-      currency: "BDT",
+      currency: COUNTRY_CONFIG[country].currency,
     });
   } catch (error) {
     console.error("Trip confirmation notification failed:", error);

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getUserCountry } from "@/lib/user-country";
 import {
   createSavedTrip,
   listSavedTrips,
@@ -95,7 +96,11 @@ export async function POST(req: NextRequest) {
 
   // Same validator the dashboard search uses, so a saved trip can never hold
   // a location the route finder would have rejected.
-  const validation = validateTripInput(body);
+  // Saved trips are validated against, and stored with, the user's current
+  // country — unlike trip history, a saved trip is being created fresh here.
+  const country = await getUserCountry(session.user.id);
+
+  const validation = validateTripInput(body, new Date(), country);
 
   if (!validation.success) {
     return NextResponse.json(
@@ -125,6 +130,7 @@ export async function POST(req: NextRequest) {
       name,
       trip: validation.data,
       preferredVehicleRateId: body.preferredVehicleRateId ?? null,
+      country,
     });
 
     return NextResponse.json({ success: true, trip }, { status: 201 });

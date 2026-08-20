@@ -1,4 +1,5 @@
 import { Schema, model, models } from "mongoose";
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "@/lib/country-config";
 
 /**
  * A trip the user named and kept, independent of TripHistory.
@@ -127,6 +128,14 @@ const SavedTripSchema = new Schema(
     stops: {
       type: [TripLocationSchema],
       default: [],
+    },
+    // Fixed at creation. The alert evaluator re-prices this trip on a schedule
+    // and must keep using the rate table and currency the baseline was captured
+    // against, regardless of what the user's profile says later.
+    country: {
+      type: String,
+      enum: COUNTRY_OPTIONS,
+      default: DEFAULT_COUNTRY,
     },
     passengerCount: {
       type: Number,

@@ -3,6 +3,7 @@ import {
   RouteServiceError,
 } from "@/lib/route-service";
 import { auth } from "@/lib/auth";
+import { getUserCountry } from "@/lib/user-country";
 import { createTripHistoryRecord } from "@/lib/trip-history";
 import {
   validateTripInput,
@@ -152,7 +153,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const validation = validateTripInput(payload);
+  // The user's chosen country decides which service area their origin,
+  // destination and stops are validated against, and is snapshotted onto the
+  // trip record so the fare and weather stages downstream agree with it.
+  const country = await getUserCountry(session.user.id);
+
+  const validation = validateTripInput(payload, new Date(), country);
 
   if (!validation.success) {
     return NextResponse.json(
@@ -173,6 +179,7 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       trip: validation.data,
       routes: cached.routes,
+      country,
     });
 
     return NextResponse.json(
@@ -226,6 +233,7 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       trip: validation.data,
       routes,
+      country,
     });
 
     return NextResponse.json(

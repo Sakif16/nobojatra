@@ -4,6 +4,7 @@
 // snapshot. That is what makes the fare condition mechanically able to fire:
 // the Pathao endpoint prices on distance and duration, so a fare can only move
 // if the duration does, and the duration only moves if we ask for it again.
+import { resolveCountry } from "@/lib/country-config";
 import "server-only";
 
 import { estimateFaresForRates } from "@/lib/fare-providers";
@@ -182,6 +183,7 @@ export async function buildEvaluationContext(
   return {
     context: {
       tripName: trip.name,
+      country: resolveCountry(trip.country),
       distanceKm: best.distanceKm,
       durationMin: best.durationMin,
       weather,

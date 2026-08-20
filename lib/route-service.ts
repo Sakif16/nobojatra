@@ -1,9 +1,18 @@
 import "server-only";
 
 import { ROUTE_COLORS, type LatLng, type RouteLeg, type RouteResult } from "@/lib/routing";
+import { calculateDistanceMeters } from "@/lib/trip-input";
 
 const ORS_BASE = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
 const ORS_TIMEOUT_MS = 12_000;
+
+/**
+ * ORS caps its alternative-routes algorithm at a 100 km routed distance. Roads
+ * wander, so a straight line always understates the routed distance — 70 km of
+ * straight line can easily route to over 100. The margin keeps us clear of the
+ * limit rather than discovering it as a 400.
+ */
+const ALTERNATIVE_ROUTES_MAX_STRAIGHT_LINE_METERS = 70_000;
 const MAX_ROUTE_SUGGESTIONS = 3;
 const DUPLICATE_DISTANCE_TOLERANCE_KM = 0.25;
 const DUPLICATE_DURATION_TOLERANCE_MIN = 3;
@@ -86,6 +95,14 @@ function getFriendlyOrsMessage(status: number, detail: string) {
 
   if (status >= 500) {
     return "Routing service is temporarily unavailable.";
+  }
+
+  // ORS error 2004. Reachable when a trip's straight line clears our margin but
+  // the road distance still passes ORS's 100 km alternatives limit. The route
+  // itself is fine — only the alternatives are refused — so say that rather
+  // than implying an outage the user could retry away.
+  if (detail.toLowerCase().includes("alternative")) {
+    return "This trip is too long for route alternatives. Try a shorter trip.";
   }
 
   if (detail.toLowerCase().includes("point")) {
@@ -406,7 +423,22 @@ export async function fetchRouteSuggestions(
     coordinates,
   };
 
-  if (!hasStops) {
+  // ORS rejects alternative_routes outright once the approximate route distance
+  // passes 100 km ("error code 2004"), and it judges that on its own routed
+  // distance rather than the straight line — so the check below uses a margin
+  // rather than the raw limit. Asking anyway would turn a perfectly routable
+  // long trip into a 400 that surfaces to the user as "Routing service is
+  // temporarily unavailable", which is wrong twice over: the service is fine,
+  // and retrying can never help.
+  //
+  // This mattered little when every trip was inside Dhaka Division, but the
+  // service area is now per-country and the US box alone spans thousands of
+  // kilometres. Long trips fall back to the single best route.
+  const straightLineMeters = calculateDistanceMeters(origin, destination);
+  const canRequestAlternatives =
+    straightLineMeters <= ALTERNATIVE_ROUTES_MAX_STRAIGHT_LINE_METERS;
+
+  if (!hasStops && canRequestAlternatives) {
     body.alternative_routes = {
       target_count: MAX_ROUTE_SUGGESTIONS,
       weight_factor: 1.6,

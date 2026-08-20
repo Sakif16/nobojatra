@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import SavedTripsManager from "@/components/saved-trips/SavedTripsManager";
 import type { VehicleOption } from "@/components/saved-trips/types";
 import { auth } from "@/lib/auth";
+import { resolveCountry } from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import UserProfile from "@/models/UserProfile";
 import VehicleRate from "@/models/VehicleRate";
@@ -34,13 +35,17 @@ export default async function SavedTripsPage() {
 
   await dbConnect();
 
-  const [profile, rates] = await Promise.all([
-    UserProfile.findOne({ userId: session.user.id }).lean(),
-    VehicleRate.find({ isActive: true })
-      .select("displayName maxPassengers")
-      .sort({ displayName: 1 })
-      .lean(),
-  ]);
+  const profile = await UserProfile.findOne({ userId: session.user.id }).lean();
+
+  // Sequenced rather than parallel with the profile read because the vehicle
+  // list has to be scoped to the country the profile names — a UK user picking
+  // a preferred vehicle should be offered Uber and Bolt, not CNG.
+  const country = resolveCountry((profile as { country?: unknown } | null)?.country);
+
+  const rates = await VehicleRate.find({ country, isActive: true })
+    .select("displayName maxPassengers")
+    .sort({ displayName: 1 })
+    .lean();
 
   const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile?.savedPlaces)
     ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({

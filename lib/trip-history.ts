@@ -1,5 +1,6 @@
 import "server-only";
 
+import { DEFAULT_COUNTRY, resolveCountry, type CountryCode } from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import type { RouteResult } from "@/lib/routing";
 import type { TripLocation, ValidatedTripInput } from "@/lib/trip-input";
@@ -110,6 +111,8 @@ export async function getHomeTripSummary(userId: string) {
 
 export type ScheduledTripListItem = {
   id: string;
+  /** Country the trip was planned in — decides the currency it renders in. */
+  country: CountryCode;
   routeId: string | null;
   originLabel: string;
   destinationLabel: string;
@@ -211,6 +214,7 @@ export async function getScheduledTrips(userId: string): Promise<ScheduledTripLi
             }))
           : [],
         passengerCount: record.passengerCount ?? 1,
+        country: resolveCountry(record.country),
         scheduledAt: scheduledAt.toISOString(),
         estimatedArrivalAt,
         distanceKm: record.distanceKm ?? null,
@@ -284,10 +288,12 @@ export async function createTripHistoryRecord({
   userId,
   trip,
   routes,
+  country,
 }: {
   userId: string;
   trip: ValidatedTripInput;
   routes: RouteResult[];
+  country: CountryCode;
 }) {
   await dbConnect();
 
@@ -295,6 +301,7 @@ export async function createTripHistoryRecord({
 
   const record = await TripHistory.create({
     userId,
+    country,
     origin: serializeLocation(trip.origin),
     destination: serializeLocation(trip.destination),
     stops: trip.stops.map(serializeLocation),
@@ -531,6 +538,8 @@ export async function saveVehicleSelection({
 
 export type TripSummaryDetail = {
   id: string;
+  /** Country the trip was planned in — decides the currency it renders in. */
+  country: CountryCode;
   originLabel: string;
   destinationLabel: string;
   stopCount: number;
@@ -608,6 +617,7 @@ export async function getTripSummary(
 
   return {
     id: String(record._id),
+    country: resolveCountry(record.country),
     originLabel: getLocationLabel(record.origin),
     destinationLabel: getLocationLabel(record.destination),
     stopCount: Array.isArray(record.stops) ? record.stops.length : 0,
@@ -630,6 +640,8 @@ export async function getTripSummary(
 
 export type TripHistoryListItem = {
   id: string;
+  /** Country the trip was planned in — decides the currency it renders in. */
+  country: CountryCode;
   originLabel: string;
   destinationLabel: string;
   vehicleProvider: string | null;
@@ -658,6 +670,14 @@ export type TripHistoryPage = {
     totalCost: number;
     averageCost: number;
     mostUsedVehicle: string | null;
+    /**
+     * The country the cost figures are denominated in, and how many of the
+     * listed trips they cover. History can span countries once a user switches,
+     * and adding 110 BDT to 14 USD would produce a meaningless total — so the
+     * costs below are computed over one country's trips only.
+     */
+    costCountry: CountryCode;
+    costTripCount: number;
   };
 };
 
@@ -707,6 +727,7 @@ export async function getTripHistoryPage(
 
     return {
       id: String(record._id),
+      country: resolveCountry(record.country),
       originLabel: getLocationLabel(record.origin),
       destinationLabel: getLocationLabel(record.destination),
       vehicleProvider: record.selectedVehicle?.provider ?? null,
@@ -722,7 +743,28 @@ export async function getTripHistoryPage(
     };
   });
 
-  const costs = trips.map((t) => t.fareMid).filter((v): v is number => v != null);
+  // Costs are summed within a single currency only. The country chosen is the
+  // one most of the priced trips were planned in; trips from other countries
+  // still appear in the list, they just do not contribute to the totals.
+  const pricedTrips = trips.filter((t) => t.fareMid != null);
+
+  const countryCounts = new Map<CountryCode, number>();
+  for (const trip of pricedTrips) {
+    countryCounts.set(trip.country, (countryCounts.get(trip.country) ?? 0) + 1);
+  }
+
+  let costCountry: CountryCode = DEFAULT_COUNTRY;
+  let bestCountryCount = 0;
+  for (const [code, count] of countryCounts) {
+    if (count > bestCountryCount) {
+      bestCountryCount = count;
+      costCountry = code;
+    }
+  }
+
+  const costs = pricedTrips
+    .filter((t) => t.country === costCountry)
+    .map((t) => t.fareMid as number);
   const totalCost = Math.round(costs.reduce((sum, v) => sum + v, 0));
   const averageCost = costs.length > 0 ? Math.round(totalCost / costs.length) : 0;
 
@@ -751,6 +793,8 @@ export async function getTripHistoryPage(
       totalCost,
       averageCost,
       mostUsedVehicle,
+      costCountry,
+      costTripCount: costs.length,
     },
   };
 }

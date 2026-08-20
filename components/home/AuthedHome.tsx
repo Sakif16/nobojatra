@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BookmarkCheck, CalendarClock, History, TrafficCone } from "lucide-react";
+import CountrySwitcher from "@/components/country/CountrySwitcher";
 import HomeContent from "./HomeContent";
 import type { FrequentTripCard } from "./PlanAgainCards";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
@@ -46,6 +47,7 @@ export default function AuthedHome({
             </span>
           )}
           <div className="ml-auto flex items-center gap-5">
+            <CountrySwitcher />
             <Link
               href="/trip-history"
               className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"

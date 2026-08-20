@@ -1,4 +1,11 @@
 import { auth } from "@/lib/auth";
+import {
+  COUNTRY_OPTIONS,
+  DEFAULT_COUNTRY,
+  isCountryCode,
+  resolveCountry,
+  type CountryCode,
+} from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import UserProfile, { TRAVEL_PRIORITIES, type TravelPriority } from "@/models/UserProfile";
 import { NextRequest, NextResponse } from "next/server";
@@ -6,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 type ProfileUpdateBody = {
   name?: unknown;
   email?: unknown;
+  country?: unknown;
   defaultTravelPriority?: unknown;
   defaultPassengerCount?: unknown;
   savedPlaces?: unknown;
@@ -47,11 +55,15 @@ function toValidSavedPlace(value: unknown): SavedPlace | null {
 }
 
 function serializeProfile(profile: {
+  country?: unknown;
   defaultTravelPriority: TravelPriority;
   defaultPassengerCount: number;
   savedPlaces?: SavedPlace[];
 }) {
   return {
+    // Profiles created before the country field existed have no value stored,
+    // so this resolves rather than passing undefined to the client.
+    country: resolveCountry(profile.country),
     defaultTravelPriority: profile.defaultTravelPriority,
     defaultPassengerCount: profile.defaultPassengerCount,
     savedPlaces: Array.isArray(profile.savedPlaces)
@@ -101,6 +113,7 @@ async function getOrCreateProfile(userId: string) {
     {
       $setOnInsert: {
         userId,
+        country: DEFAULT_COUNTRY,
         defaultTravelPriority: "time",
         defaultPassengerCount: 1,
       },
@@ -166,7 +179,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const updates: Record<string, TravelPriority | number | SavedPlace[]> = {};
+  const updates: Record<string, TravelPriority | CountryCode | number | SavedPlace[]> = {};
 
   // ── Phase 1: validate everything before writing anything ────────────────
   // Every field is checked up front so a late validation failure (say, a bad
@@ -198,6 +211,17 @@ export async function PATCH(req: NextRequest) {
     if (normalizedEmail !== session.user.email.toLowerCase()) {
       nextEmail = normalizedEmail;
     }
+  }
+
+  if (body.country !== undefined) {
+    if (!isCountryCode(body.country)) {
+      return NextResponse.json(
+        { success: false, message: `Country must be one of ${COUNTRY_OPTIONS.join(", ")}.` },
+        { status: 400 },
+      );
+    }
+
+    updates.country = body.country;
   }
 
   if (body.defaultTravelPriority !== undefined) {

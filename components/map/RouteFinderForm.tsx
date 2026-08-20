@@ -9,9 +9,10 @@ import {
   DEFAULT_STOP_DWELL_MINUTES,
   MAX_STOP_DWELL_MINUTES,
   MIN_STOP_DWELL_MINUTES,
-  SERVICE_AREA_NAME,
+  getServiceAreaName,
   isInsideServiceArea,
 } from "@/lib/trip-input";
+import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +78,7 @@ export default function RouteFinderForm({
   initialValues,
   savedPlaces,
 }: Props) {
+  const country = useCountry();
   const [originLabel, setOriginLabel] = useState(
     initialValues?.origin.label ?? ""
   );
@@ -142,9 +144,10 @@ export default function RouteFinderForm({
 
         // Catch this here rather than at submit: it saves a reverse-geocode
         // call and tells the user why their location was not accepted.
-        if (!isInsideServiceArea({ lat: latitude, lng: longitude })) {
+        if (!isInsideServiceArea({ lat: latitude, lng: longitude }, country)) {
+          const areaName = getServiceAreaName(country);
           setLocationPrompt(
-            `You appear to be outside ${SERVICE_AREA_NAME}. Routes are only planned inside ${SERVICE_AREA_NAME} — enter your origin manually.`
+            `You appear to be outside ${areaName}. Routes are only planned inside ${areaName} — enter your origin manually.`
           );
           setLocating(false);
           return;

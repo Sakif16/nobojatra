@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { DEFAULT_COUNTRY, resolveCountry } from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import UserProfile from "@/models/UserProfile";
 import { headers } from "next/headers";
@@ -26,6 +27,7 @@ export default async function ProfilePage() {
     {
       $setOnInsert: {
         userId: session.user.id,
+        country: DEFAULT_COUNTRY,
         defaultTravelPriority: "time",
         defaultPassengerCount: 1,
       },
@@ -49,6 +51,7 @@ export default async function ProfilePage() {
         createdAt: new Date(session.user.createdAt).toISOString(),
       }}
       initialProfile={{
+        country: resolveCountry(profile.country),
         defaultTravelPriority: profile.defaultTravelPriority,
         defaultPassengerCount: profile.defaultPassengerCount,
         savedPlaces,

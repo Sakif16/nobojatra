@@ -15,13 +15,22 @@ type ApiResponse<T> =
       message?: string;
     };
 
-export async function searchPlaces(query: string): Promise<PlaceResult[]> {
+export async function searchPlaces(
+  query: string,
+  country?: string,
+): Promise<PlaceResult[]> {
   const normalizedQuery = query.trim();
 
   if (normalizedQuery.length < 2) return [];
 
   const url = new URL("/api/trip-input/autocomplete", window.location.origin);
   url.searchParams.set("query", normalizedQuery);
+
+  // Omitted rather than defaulted here — the endpoint resolves a missing or
+  // unrecognised country itself, so the landing page can search without one.
+  if (country) {
+    url.searchParams.set("country", country);
+  }
 
   const res = await fetch(url.toString());
 

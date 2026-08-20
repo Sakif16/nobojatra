@@ -3,10 +3,11 @@ import {
   getClientIp,
   getRateLimitHeaders,
 } from "@/lib/rate-limit";
+import { getCountryConfig, resolveCountry } from "@/lib/country-config";
 import {
+  getNominatimServiceAreaViewbox,
   MAX_AUTOCOMPLETE_RESULTS,
   MIN_AUTOCOMPLETE_QUERY_LENGTH,
-  NOMINATIM_SERVICE_AREA_VIEWBOX,
 } from "@/lib/trip-input";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -37,6 +38,10 @@ function getNominatimConfig() {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("query")?.trim();
+  // This endpoint is unauthenticated, so the country cannot come from a
+  // session — the client sends it and anything unrecognised resolves to the
+  // default rather than erroring.
+  const country = resolveCountry(searchParams.get("country"));
 
   if (!query || query.length < MIN_AUTOCOMPLETE_QUERY_LENGTH) {
     return NextResponse.json({
@@ -73,8 +78,19 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("q", query);
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("limit", String(MAX_AUTOCOMPLETE_RESULTS));
-  url.searchParams.set("viewbox", NOMINATIM_SERVICE_AREA_VIEWBOX);
-  url.searchParams.set("bounded", "1");
+
+  // countrycodes does the country-level filtering for every market. Bangladesh
+  // additionally pins a viewbox because its service area is a division, not the
+  // whole country — without it, Chittagong and Sylhet results would come back
+  // and then fail validation. The US and UK are whole countries, where the
+  // country filter is both sufficient and more accurate than a rectangle.
+  const { nominatimCountryCode, useBoundedViewbox } = getCountryConfig(country);
+  url.searchParams.set("countrycodes", nominatimCountryCode);
+
+  if (useBoundedViewbox) {
+    url.searchParams.set("viewbox", getNominatimServiceAreaViewbox(country));
+    url.searchParams.set("bounded", "1");
+  }
 
   try {
     const response = await fetch(url, {

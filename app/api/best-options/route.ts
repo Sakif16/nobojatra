@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { COUNTRY_CONFIG, resolveCountry, type CountryCode } from "@/lib/country-config";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
@@ -21,7 +22,11 @@ import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
-const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
+// Weather is read at the route's midpoint; this is only reached when a route
+// has no usable geometry to take a midpoint from.
+function getWeatherFallbackPoint(country: CountryCode): WeatherPoint {
+  return COUNTRY_CONFIG[country].fallbackWeatherPoint;
+}
 const DEFAULT_TRAVEL_PRIORITY: TravelPriority = "time";
 const TRAVEL_PRIORITIES = new Set<TravelPriority>(["time", "cost", "comfort"]);
 
@@ -46,6 +51,7 @@ type StoredRoute = {
   legs?: unknown;
 };
 type StoredTripHistory = {
+  country?: unknown;
   origin?: StoredLocation;
   destination?: StoredLocation;
   stops?: StoredLocation[];
@@ -243,9 +249,11 @@ function getRouteMidpoint(coords: LatLngTuple[]) {
   return last ? { lat: last[0], lng: last[1] } : null;
 }
 
-async function getRouteWeather(routeMidpoint: WeatherPoint | null) {
+async function getRouteWeather(routeMidpoint: WeatherPoint | null, country: CountryCode) {
+  // "dhaka_fallback" is a persisted enum on TripHistory, so the literal keeps
+  // its name even when the point resolved is a US or UK one.
   const source: WeatherSource = routeMidpoint ? "route_midpoint" : "dhaka_fallback";
-  const point = routeMidpoint ?? DHAKA_WEATHER_FALLBACK;
+  const point = routeMidpoint ?? getWeatherFallbackPoint(country);
   try {
     const weather = await fetchWeatherForPoint(point);
     return { weather: { source, ...weather } satisfies FareWeather, weatherUnavailable: false };
@@ -388,8 +396,12 @@ export async function POST(req: NextRequest) {
   const routeCoords = normalizeRouteCoords(selectedRoute.coords);
   const routeMidpoint = getRouteMidpoint(routeCoords);
 
+  // Read off the trip, not the user's current profile, so a trip planned in
+  // Dhaka stays priced against the BD rate table after a profile switch.
+  const country = resolveCountry(trip.country);
+
   // Step 5: fetch weather at the route's midpoint (same approach as fares)
-  const { weather, weatherUnavailable } = await getRouteWeather(routeMidpoint);
+  const { weather, weatherUnavailable } = await getRouteWeather(routeMidpoint, country);
 
   // Step 6: fetch REAL live traffic for this route from TomTom
   const departure = getDepartureOptions(trip);
@@ -411,7 +423,7 @@ export async function POST(req: NextRequest) {
 
   // Step 7: compute a fare + eligibility + weather-restriction entry for every
   // active vehicle — same math as /api/fares
-  const rates = (await VehicleRate.find({ isActive: true }).lean()) as VehicleRateDocument[];
+  const rates = (await VehicleRate.find({ country, isActive: true }).lean()) as VehicleRateDocument[];
   // Same shared calculator /api/fares uses, so a vehicle costs the same on
   // both pages. Provider failures fall back to the rate card rather than
   // dropping the option, so the ranked set no longer shrinks during a Pathao
@@ -475,6 +487,8 @@ export async function POST(req: NextRequest) {
   // real traffic reading (for the risk badges + banner), and the ranked cards
   return NextResponse.json({
     success: true,
+    // Drives which currency the comparison UI renders.
+    country,
     trip: {
       tripHistoryId,
       routeId,

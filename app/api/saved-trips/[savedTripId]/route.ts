@@ -164,7 +164,10 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       scheduledAt: body.scheduledAt ?? existing.scheduledAt ?? undefined,
     };
 
-    const validation = validateTripInput(merged);
+    // Validated against the country the trip was SAVED in, not the user's
+    // current one. Editing the passenger count on an old Dhaka trip must not
+    // start rejecting its origin because the user has since switched to the UK.
+    const validation = validateTripInput(merged, new Date(), existing.country);
 
     if (!validation.success) {
       return NextResponse.json(

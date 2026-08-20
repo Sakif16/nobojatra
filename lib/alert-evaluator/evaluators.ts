@@ -2,6 +2,7 @@
 //
 // Each is a pure function of (condition, context) — no I/O — so the thresholds
 // and messages can be reasoned about and tested without touching a provider.
+import { formatFare } from "@/lib/country-config";
 import { TRAFFIC_LEVEL_LABELS } from "@/lib/routing";
 import type { TrafficLevel } from "@/models/SavedTrip";
 import type {
@@ -118,8 +119,8 @@ const evaluateFareChange: ConditionEvaluator = (
     severity: percent > 0 ? "warning" : "info",
     title: `Fare ${direction} ${Math.abs(round(percent))}% on ${context.tripName}`,
     message:
-      `Estimated fare is now ${context.fare.low}–${context.fare.high} BDT, ` +
-      `against a baseline of ${context.baseline.fareLow}–${context.baseline.fareHigh} BDT.`,
+      `Estimated fare is now ${formatFare(context.fare.low, context.fare.high, context.country)}, ` +
+      `against a baseline of ${formatFare(context.baseline.fareLow, context.baseline.fareHigh, context.country)}.`,
     thresholdLabel: `±${round(threshold)}% from baseline`,
   };
 };
