@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 
-const TRAFFIC_PUNK_URL = "https://traffic-punk-re.onrender.com/";
+const TRAFFIC_PUNK_URL = "https://traffic-punk-re.onrender.com/?embed=1";
 
 /**
  * Embeds the Traffic Punk landing page directly — it already lists every
@@ -17,7 +17,7 @@ export default function LiveCamsFrame() {
   const [reloadKey, setReloadKey] = useState(0);
 
   return (
-    <div className="relative h-[75vh] w-full overflow-hidden rounded-3xl border border-border bg-card">
+    <div className="relative min-h-[500px] w-full overflow-hidden rounded-3xl border border-border bg-card">
       {!loaded && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-card text-center">
           <RefreshCw className="size-5 animate-spin text-muted-foreground" />
@@ -32,7 +32,7 @@ export default function LiveCamsFrame() {
         key={reloadKey}
         src={TRAFFIC_PUNK_URL}
         onLoad={() => setLoaded(true)}
-        className="h-full w-full"
+        className="h-[500px] w-full"
         title="Live traffic camera feeds"
         allow="camera; autoplay; encrypted-media"
       />
