@@ -3,6 +3,7 @@
 import { ArrowRight, CalendarClock, ChevronDown, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { COUNTRY_CONFIG, formatAmount, formatFare, type CountryCode } from '@/lib/country-config'
 import type { RecentTrip, TripHistoryActivityData } from '@/lib/trip-history'
 
 interface HistoryVehicleOption {
@@ -13,6 +14,7 @@ interface HistoryVehicleOption {
 
 interface HistoryTrip {
   id: string
+  country: CountryCode
   originLabel: string
   destinationLabel: string
   vehicleProvider: string | null
@@ -32,6 +34,11 @@ interface HistorySummary {
   totalCost: number
   averageCost: number
   mostUsedVehicle: string | null
+  // History can span countries. The cost figures cover only the trips planned
+  // in `costCountry`, and `costTripCount` says how many of the listed trips
+  // that is — see getTripHistoryPage in lib/trip-history.
+  costCountry: CountryCode
+  costTripCount: number
 }
 
 type Props = {
@@ -300,11 +307,12 @@ export default function TripHistoryList({ activityData }: Props) {
 
         {/* Summary header */}
         {summary && summary.tripCount > 0 && (
-          <div className="mb-6 grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card px-4 py-4 text-center">
+          <div className="mb-6 rounded-2xl border border-border bg-card px-4 py-4">
+          <div className="grid grid-cols-3 gap-3 text-center">
             <div>
               <p className="text-xs text-muted-foreground">Total cost</p>
               <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
-                ৳{summary.totalCost}
+                {formatAmount(summary.totalCost, summary.costCountry)}
               </p>
             </div>
             <div>
@@ -316,9 +324,19 @@ export default function TripHistoryList({ activityData }: Props) {
             <div>
               <p className="text-xs text-muted-foreground">Average cost</p>
               <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
-                ৳{summary.averageCost}
+                {formatAmount(summary.averageCost, summary.costCountry)}
               </p>
             </div>
+          </div>
+          {/* Only shown once history actually spans more than one country, so
+              the common single-country case stays uncluttered. */}
+          {summary.costTripCount < summary.tripCount && (
+            <p className="mt-3 border-t border-border pt-3 text-center text-xs text-muted-foreground">
+              Costs cover the {summary.costTripCount} of {summary.tripCount} trips planned in{' '}
+              {COUNTRY_CONFIG[summary.costCountry].label}. Trips from other countries are listed
+              but not totalled, since their fares are in a different currency.
+            </p>
+          )}
           </div>
         )}
 
@@ -372,7 +390,7 @@ export default function TripHistoryList({ activityData }: Props) {
 
                     <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                       {trip.fareLow != null && trip.fareHigh != null
-                        ? `৳${trip.fareLow}–${trip.fareHigh}`
+                        ? formatFare(trip.fareLow, trip.fareHigh, trip.country)
                         : '—'}
                     </span>
                   </Link>

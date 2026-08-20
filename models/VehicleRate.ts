@@ -1,7 +1,16 @@
 // models/VehicleRate.ts
 import mongoose, { Schema, Document } from 'mongoose'
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY, type CountryCode } from '@/lib/country-config'
 
-export const VEHICLE_PROVIDERS = ['uber', 'pathao', 'cng'] as const
+// Not every provider operates in every country — the country field below is
+// what scopes them. Pathao and CNG are Bangladesh-only, Lyft is US-only and
+// Bolt is UK-only here; Uber is the one provider seeded in all three.
+export const VEHICLE_PROVIDERS = ['uber', 'pathao', 'cng', 'lyft', 'bolt'] as const
+
+// Deliberately unchanged. The US and UK fleets reuse the existing classes —
+// `go` for the standard car, `xl` for the large one, `premier` for the premium
+// tier — because these names already describe a tier rather than a brand, and
+// because lib/fare-providers keys its weather multipliers off them.
 export const VEHICLE_TYPES = [
   'go',
   'moto',
@@ -16,6 +25,7 @@ export type VehicleProvider = (typeof VEHICLE_PROVIDERS)[number]
 export type VehicleType = (typeof VEHICLE_TYPES)[number]
 
 export interface IVehicleRate extends Document {
+  country: CountryCode
   provider: VehicleProvider
   vehicleType: VehicleType
   displayName: string
@@ -31,6 +41,7 @@ export interface IVehicleRate extends Document {
 }
 
 const VehicleRateSchema = new Schema<IVehicleRate>({
+  country:      { type: String, enum: COUNTRY_OPTIONS, default: DEFAULT_COUNTRY, required: true },
   provider:     { type: String, enum: VEHICLE_PROVIDERS, required: true },
   vehicleType:  { type: String, enum: VEHICLE_TYPES, required: true },
   displayName:  { type: String, required: true },
@@ -44,6 +55,11 @@ const VehicleRateSchema = new Schema<IVehicleRate>({
   isActive:     { type: Boolean, default: true },
 }, { timestamps: true })
 
-VehicleRateSchema.index({ provider: 1, vehicleType: 1 }, { unique: true })
+// Country leads the key because the same provider/vehicleType pair exists in
+// several markets with entirely different economics — an Uber Go is ~110 BDT in
+// Dhaka and ~$14 in New York. Replacing the old { provider, vehicleType }
+// unique index requires dropping it by hand before reseeding; a stale
+// provider_1_vehicleType_1 will reject the second country's rows.
+VehicleRateSchema.index({ country: 1, provider: 1, vehicleType: 1 }, { unique: true })
 
 export default mongoose.models.VehicleRate || mongoose.model<IVehicleRate>('VehicleRate', VehicleRateSchema)

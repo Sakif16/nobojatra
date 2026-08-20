@@ -1,42 +1,53 @@
+import {
+  DEFAULT_COUNTRY,
+  getCountryConfig,
+  getNominatimViewbox,
+  type CountryCode,
+} from "@/lib/country-config";
+
 /**
- * The service area: a bounding box covering all 13 districts of Dhaka Division
- * — Dhaka, Gazipur, Kishoreganj, Manikganj, Munshiganj, Narayanganj, Narsingdi,
- * Tangail, Faridpur, Gopalganj, Madaripur, Rajbari and Shariatpur.
+ * The service area is no longer one fixed box. Each country in ./country-config
+ * carries its own bounds and name, and every check below takes the country the
+ * trip is being planned in.
  *
- * This one box drives three things: the Nominatim `viewbox` that restricts
- * autocomplete results, the server-side check in validateTripInput, and the
- * client-side guard on "Use Current Location". Changing it moves all three.
- *
- * It is deliberately a rectangle, not the division's true outline. Nominatim's
- * viewbox only accepts a rectangle, and validating against a tighter polygon
- * would let someone pick a suggestion that then failed to validate.
- *
- * Some spill into neighbouring divisions is unavoidable: Tangail reaches as far
- * north as Mymensingh city, and Gopalganj as far south and west as Khulna, so
- * no rectangle containing the division can exclude them. Mymensingh, Comilla,
- * Brahmanbaria, Chandpur, Khulna, Magura and Narail all fall inside. Erring
- * wide keeps autocomplete and validation consistent and never blocks a genuine
- * in-division trip. Swap in a point-in-polygon test if that becomes a problem.
+ * The Bangladesh entry keeps the original rectangle covering all 13 districts
+ * of Dhaka Division, and the original reasoning still holds for it: it is
+ * deliberately a rectangle rather than the division's true outline, because
+ * Nominatim's viewbox only accepts a rectangle and validating against a tighter
+ * polygon would let someone pick a suggestion that then failed to validate.
+ * Some spill into neighbouring divisions is unavoidable — Tangail reaches as
+ * far north as Mymensingh city, Gopalganj as far south-west as Khulna — and
+ * erring wide never blocks a genuine in-division trip.
  */
-export const SERVICE_AREA_BOUNDS = {
-  west: 89.3,
-  south: 22.8,
-  east: 91.2,
-  north: 24.8,
-} as const;
+export function isInsideServiceArea(
+  location: Pick<TripLocation, "lat" | "lng">,
+  country: CountryCode = DEFAULT_COUNTRY,
+) {
+  const bounds = getCountryConfig(country).bounds;
 
-export const SERVICE_AREA_NAME = "Dhaka Division";
-
-export function outsideServiceAreaMessage(field: string) {
-  return `${field} must be inside the ${SERVICE_AREA_NAME} service area.`;
+  return (
+    location.lat >= bounds.south &&
+    location.lat <= bounds.north &&
+    location.lng >= bounds.west &&
+    location.lng <= bounds.east
+  );
 }
 
-export const NOMINATIM_SERVICE_AREA_VIEWBOX = [
-  SERVICE_AREA_BOUNDS.west,
-  SERVICE_AREA_BOUNDS.north,
-  SERVICE_AREA_BOUNDS.east,
-  SERVICE_AREA_BOUNDS.south,
-].join(",");
+export function outsideServiceAreaMessage(
+  field: string,
+  country: CountryCode = DEFAULT_COUNTRY,
+) {
+  return `${field} must be inside the ${getCountryConfig(country).serviceAreaName} service area.`;
+}
+
+export function getServiceAreaName(country: CountryCode = DEFAULT_COUNTRY) {
+  return getCountryConfig(country).serviceAreaName;
+}
+
+/** Re-exported so callers do not need to reach into country-config directly. */
+export function getNominatimServiceAreaViewbox(country: CountryCode = DEFAULT_COUNTRY) {
+  return getNominatimViewbox(country);
+}
 
 export const MIN_AUTOCOMPLETE_QUERY_LENGTH = 2;
 export const MAX_AUTOCOMPLETE_RESULTS = 8;
@@ -111,17 +122,6 @@ export function isValidLatitude(value: unknown) {
 export function isValidLongitude(value: unknown) {
   const lng = toFiniteNumber(value);
   return lng !== null && lng >= -180 && lng <= 180;
-}
-
-export function isInsideServiceArea(
-  location: Pick<TripLocation, "lat" | "lng">,
-) {
-  return (
-    location.lat >= SERVICE_AREA_BOUNDS.south &&
-    location.lat <= SERVICE_AREA_BOUNDS.north &&
-    location.lng >= SERVICE_AREA_BOUNDS.west &&
-    location.lng <= SERVICE_AREA_BOUNDS.east
-  );
 }
 
 export function normalizeTripLocation(value: unknown): TripLocation | null {
@@ -207,6 +207,7 @@ export function getScheduleWindow(now = new Date()) {
 export function validateTripInput(
   payload: TripValidationPayload,
   now = new Date(),
+  country: CountryCode = DEFAULT_COUNTRY,
 ): TripValidationResult {
   const errors: TripValidationErrors = {};
   const origin = normalizeTripLocation(payload.origin);
@@ -214,14 +215,14 @@ export function validateTripInput(
 
   if (!origin) {
     errors.origin = "Origin is required.";
-  } else if (!isInsideServiceArea(origin)) {
-    errors.origin = outsideServiceAreaMessage("Origin");
+  } else if (!isInsideServiceArea(origin, country)) {
+    errors.origin = outsideServiceAreaMessage("Origin", country);
   }
 
   if (!destination) {
     errors.destination = "Destination is required.";
-  } else if (!isInsideServiceArea(destination)) {
-    errors.destination = outsideServiceAreaMessage("Destination");
+  } else if (!isInsideServiceArea(destination, country)) {
+    errors.destination = outsideServiceAreaMessage("Destination", country);
   }
 
   const stopsInput = Array.isArray(payload.stops) ? payload.stops : [];
@@ -235,8 +236,8 @@ export function validateTripInput(
     const normalizedStop = normalizeTripStop(stop);
     if (!normalizedStop) {
       stopErrors[index] = `Stop is required and wait time must be ${MIN_STOP_DWELL_MINUTES}-${MAX_STOP_DWELL_MINUTES} minutes.`;
-    } else if (!isInsideServiceArea(normalizedStop)) {
-      stopErrors[index] = outsideServiceAreaMessage(`Stop ${index + 1}`);
+    } else if (!isInsideServiceArea(normalizedStop, country)) {
+      stopErrors[index] = outsideServiceAreaMessage(`Stop ${index + 1}`, country);
     }
     return normalizedStop;
   });

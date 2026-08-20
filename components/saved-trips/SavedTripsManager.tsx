@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ConditionEditor from "./ConditionEditor";
 import SavedTripForm from "./SavedTripForm";
+import { formatFare } from "@/lib/country-config";
 import type { SavedTripDetail, VehicleOption } from "./types";
 
 /**
@@ -252,7 +253,7 @@ export default function SavedTripsManager({
               <div className="flex gap-1">
                 <dt>Baseline</dt>
                 <dd className="font-medium text-foreground">
-                  {trip.baseline.fareLow}–{trip.baseline.fareHigh} BDT
+                  {formatFare(trip.baseline.fareLow, trip.baseline.fareHigh, trip.country)}
                 </dd>
               </div>
             )}

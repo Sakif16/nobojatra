@@ -1,4 +1,5 @@
 import { Schema, model, models } from "mongoose";
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "@/lib/country-config";
 
 export const TRAVEL_PRIORITIES = ["time", "cost", "comfort"] as const;
 export type TravelPriority = (typeof TRAVEL_PRIORITIES)[number];
@@ -35,6 +36,15 @@ const UserProfileSchema = new Schema(
       type: String,
       enum: TRAVEL_PRIORITIES,
       default: "time",
+      required: true,
+    },
+    // Drives the service area, the ride services offered and the currency
+    // fares are shown in. Profiles written before this field existed have no
+    // value; every read defaults them to BD via resolveCountry().
+    country: {
+      type: String,
+      enum: COUNTRY_OPTIONS,
+      default: DEFAULT_COUNTRY,
       required: true,
     },
     defaultPassengerCount: {

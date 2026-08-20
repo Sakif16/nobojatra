@@ -10,6 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { formatFare } from "@/lib/country-config";
 import type { ScheduledTripListItem } from "@/lib/trip-history";
 
 type Props = {
@@ -35,10 +36,12 @@ function formatMinutes(min: number | null) {
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-function formatFare(trip: ScheduledTripListItem) {
+function formatTripFare(trip: ScheduledTripListItem) {
   if (!trip.vehicle) return "No vehicle confirmed";
 
-  return `৳${trip.vehicle.fareLow}-${trip.vehicle.fareHigh}`;
+  // The trip's own country, not the user's current one — a Dhaka trip stays
+  // quoted in taka after the user switches their profile.
+  return formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country);
 }
 
 function getStatus(trip: ScheduledTripListItem) {
@@ -160,7 +163,7 @@ export default function ScheduledTripsList({ trips }: Props) {
                   <p className="text-sm font-semibold text-foreground">
                     {trip.vehicle?.displayName ?? "Ride not selected"}
                   </p>
-                  <p className="text-sm text-muted-foreground">{formatFare(trip)}</p>
+                  <p className="text-sm text-muted-foreground">{formatTripFare(trip)}</p>
                   <Link
                     href={action.href}
                     className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"

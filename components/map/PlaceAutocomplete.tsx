@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
+import { useCountry } from "@/components/country/CountryProvider";
 import { searchPlaces, type PlaceResult } from "@/lib/geocode";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,9 @@ export default function PlaceAutocomplete({
   icon,
   savedPlaces,
 }: Props) {
+  // Read from context rather than taken as a prop — this component has eight
+  // call sites and none of the intermediate components care about the country.
+  const country = useCountry();
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -64,7 +68,7 @@ export default function PlaceAutocomplete({
       setLoading(true);
       setError(null);
       try {
-        const places = await searchPlaces(value);
+        const places = await searchPlaces(value, country);
         setResults(places);
         setOpen(true);
       } catch {
@@ -79,7 +83,10 @@ export default function PlaceAutocomplete({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [value, hasSavedPlaces, focused]);
+    // `country` is a dependency so switching country re-runs the search that
+    // is already on screen against the new one, rather than leaving stale
+    // suggestions the user could pick and then fail validation with.
+  }, [value, hasSavedPlaces, focused, country]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

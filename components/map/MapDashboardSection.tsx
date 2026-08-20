@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import RouteResults from "./RouteResults";
+import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
 import type { SavedPlaceOption } from "./PlaceAutocomplete";
 import {
@@ -102,6 +103,7 @@ export default function MapDashboardSection({
   planAgainTrip,
   onPlanAgainHandled,
 }: Props) {
+  const country = useCountry();
   const router = useRouter();
   const [origin, setOrigin] = useState<TripLocation | null>(null);
   const [destination, setDestination] = useState<TripLocation | null>(null);
@@ -208,6 +210,7 @@ export default function MapDashboardSection({
           passengerCount: values.passengerCount,
           departureMode: values.departureMode,
           scheduledAt: values.scheduledAt,
+          country,
         }),
       });
 

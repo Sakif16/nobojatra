@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
+import {
+  COUNTRY_CONFIG,
+  DEFAULT_COUNTRY,
+  formatFare,
+  type CountryCode,
+} from '@/lib/country-config'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
 import { cn } from '@/lib/utils'
 
@@ -85,6 +91,7 @@ interface FareMap {
 }
 
 interface FaresApiResponse {
+  country?: CountryCode
   results?: FareOption[]
   trip?: FareTripSummary
   map?: FareMap | null
@@ -123,8 +130,13 @@ const WEATHER_STATS: { label: string; format: (weather: FareWeather) => string }
   },
 ]
 
-function getWeatherSourceLabel(weather: FareWeather) {
-  return weather.source === 'route_midpoint' ? 'route midpoint' : 'Dhaka fallback'
+// `source` is a persisted enum whose "dhaka_fallback" value predates multi-
+// country support, so the stored name stays while the label names whichever
+// country's fallback point was actually used.
+function getWeatherSourceLabel(weather: FareWeather, country: CountryCode) {
+  return weather.source === 'route_midpoint'
+    ? 'route midpoint'
+    : `${COUNTRY_CONFIG[country].label} fallback`
 }
 
 function getWeatherTitle(weather: FareWeather | null, unavailable: boolean) {
@@ -191,6 +203,10 @@ function getFareAdjustmentLabel(adjustment: FareAdjustment | null | undefined) {
 export default function FareResults({ tripHistoryId, routeId }: {
   tripHistoryId: string; routeId: string
 }) {
+  // The trip's country, from the API rather than from context: this page
+  // prices a stored trip, which keeps the country it was planned in even after
+  // the user switches. Defaults until the response lands.
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY)
   const [results, setResults] = useState<FareOption[]>([])
   const [trip, setTrip] = useState<FareTripSummary | null>(null)
   const [map, setMap] = useState<FareMap | null>(null)
@@ -217,6 +233,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
       })
       .then((d) => {
         if (!active) return
+        setCountry(d?.country ?? DEFAULT_COUNTRY)
         setResults(Array.isArray(d?.results) ? d.results : [])
         setTrip(d?.trip ?? null)
         setMap(d?.map ?? null)
@@ -331,6 +348,15 @@ export default function FareResults({ tripHistoryId, routeId }: {
               {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers > 1 ? 's' : ''}
             </p>
           )}
+          {/* Names the country the estimates belong to. Without it, a fare in
+              an unfamiliar currency reads as a bug rather than as a trip
+              planned in another country. */}
+          {!loading && results.length > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Showing services for {COUNTRY_CONFIG[country].label} · fares in{' '}
+              {COUNTRY_CONFIG[country].currency}
+            </p>
+          )}
           {/* Entry point into the Route Comparison Display. Reuses the same
               tripHistoryId + routeId this page already received, so
               /best-options can look up the exact same trip and route rather
@@ -418,7 +444,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                           ))}
                         </dl>
                         <p className="mt-2.5 text-[11px] opacity-70">
-                          Measured at {getWeatherSourceLabel(weather)}
+                          Measured at {getWeatherSourceLabel(weather, country)}
                         </p>
                       </>
                     ) : (
@@ -477,9 +503,9 @@ export default function FareResults({ tripHistoryId, routeId }: {
                                   </span>
                                 </div>
                               </div>
-                              {/* tabular-nums keeps the ৳ ranges aligned down the column */}
+                              {/* tabular-nums keeps the fare ranges aligned down the column */}
                               <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                                ৳{v.fare.low}–{v.fare.high}
+                                {formatFare(v.fare.low, v.fare.high, country)}
                               </div>
                             </div>
 
@@ -516,7 +542,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                         >
                           {confirming
                             ? 'Confirming…'
-                            : `Confirm ${selectedOption.displayName} · ৳${selectedOption.fare.low}–${selectedOption.fare.high}`}
+                            : `Confirm ${selectedOption.displayName} · ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
                         </button>
                       </div>
                     )}
@@ -560,7 +586,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                               </div>
                             </div>
                             <div className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground/60 line-through">
-                              ৳{v.fare.low}–{v.fare.high}
+                              {formatFare(v.fare.low, v.fare.high, country)}
                             </div>
                           </div>
                         )

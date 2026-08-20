@@ -1,3 +1,4 @@
+import type { CountryCode } from "@/lib/country-config";
 // Shared types for the alert evaluator.
 //
 // Lives under lib/alert-evaluator/ rather than lib/alerts/ so it cannot be
@@ -18,6 +19,8 @@ import type { AlertConditionType, TrafficLevel } from "@/models/SavedTrip";
  */
 export type EvaluationContext = {
   tripName: string;
+  /** The country the saved trip was created in — the currency alert copy uses. */
+  country: CountryCode;
   distanceKm: number;
   /** Fresh duration from this run's routing call, not the stored snapshot. */
   durationMin: number;
@@ -72,6 +75,7 @@ export type SavedTripDocument = {
   _id: unknown;
   userId: string;
   name: string;
+  country?: unknown;
   origin: TripLocation;
   destination: TripLocation;
   stops: TripLocation[];

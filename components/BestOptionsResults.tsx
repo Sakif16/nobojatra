@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_COUNTRY, formatFare, type CountryCode } from "@/lib/country-config";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +100,7 @@ interface BestOptionsMap {
 }
 
 interface BestOptionsApiResponse {
+  country?: CountryCode;
   trip?: TripSummary;
   map?: BestOptionsMap | null;
   weather?: WeatherReading | null;
@@ -209,6 +211,9 @@ export default function BestOptionsResults({
   routeId: string;
 }) {
   // Holds the ranked options returned by the scoring engine
+  // From the API, not from context: this ranks a stored trip, which keeps the
+  // country it was planned in.
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [options, setOptions] = useState<RankedOption[]>([]);
   const [trip, setTrip] = useState<TripSummary | null>(null);
   const [map, setMap] = useState<BestOptionsMap | null>(null);
@@ -272,6 +277,7 @@ export default function BestOptionsResults({
         const data = (await res.json()) as BestOptionsApiResponse;
         if (requestId !== requestIdRef.current) return;
 
+        setCountry(data.country ?? DEFAULT_COUNTRY);
         setOptions(Array.isArray(data.options) ? data.options : []);
         setTrip(data.trip ?? null);
         setMap(data.map ?? null);
@@ -597,7 +603,7 @@ export default function BestOptionsResults({
                               {/* Fare range — "Estimated" label per the spec */}
                               <div className="shrink-0 text-right">
                                 <div className="text-sm font-semibold tabular-nums text-foreground">
-                                  ৳{option.fare.low}–{option.fare.high}
+                                  {formatFare(option.fare.low, option.fare.high, country)}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">Estimated</div>
                               </div>
@@ -661,7 +667,7 @@ export default function BestOptionsResults({
                         >
                           {confirming
                             ? "Confirming…"
-                            : `Confirm ${selectedOption.displayName} · ৳${selectedOption.fare.low}–${selectedOption.fare.high}`}
+                            : `Confirm ${selectedOption.displayName} · ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
                         </button>
                       </div>
                     )}

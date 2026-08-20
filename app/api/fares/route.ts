@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { COUNTRY_CONFIG, resolveCountry, type CountryCode } from "@/lib/country-config";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import connectMongoDB from "@/lib/mongodb";
 import {
@@ -19,7 +20,11 @@ import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
 
-const DHAKA_WEATHER_FALLBACK: WeatherPoint = { lat: 23.8103, lng: 90.4125 };
+// Weather is read at the route's midpoint; this is only reached when a route
+// has no usable geometry to take a midpoint from.
+function getWeatherFallbackPoint(country: CountryCode): WeatherPoint {
+  return COUNTRY_CONFIG[country].fallbackWeatherPoint;
+}
 
 type FareRequestBody = {
   tripHistoryId?: unknown;
@@ -43,6 +48,7 @@ type StoredRoute = {
 };
 
 type StoredTripHistory = {
+  country?: unknown;
   origin?: StoredLocation;
   destination?: StoredLocation;
   stops?: StoredLocation[];
@@ -269,9 +275,12 @@ function getRouteMidpoint(coords: LatLngTuple[]) {
   return last ? { lat: last[0], lng: last[1] } : null;
 }
 
-async function getFareWeather(routeMidpoint: WeatherPoint | null) {
+async function getFareWeather(routeMidpoint: WeatherPoint | null, country: CountryCode) {
+  // The "dhaka_fallback" literal is a persisted enum on TripHistory, so it
+  // keeps its name for now even when the point resolved is a US or UK one.
+  // Renaming it to something country-neutral is a data migration.
   const source: WeatherSource = routeMidpoint ? "route_midpoint" : "dhaka_fallback";
-  const point = routeMidpoint ?? DHAKA_WEATHER_FALLBACK;
+  const point = routeMidpoint ?? getWeatherFallbackPoint(country);
 
   try {
     const weather = await fetchWeatherForPoint(point);
@@ -418,14 +427,20 @@ export async function POST(req: NextRequest) {
   const dwellDurationMin = getRouteDwellDurationMin(selectedRoute);
   const travelDurationMin = getRouteTravelDurationMin(selectedRoute, durationMin);
 
+  // Read off the trip, not the user's current profile: a trip planned in Dhaka
+  // must keep being priced against the BD rate table in BDT even after the user
+  // switches their profile to another country.
+  const country = resolveCountry(trip.country);
+
   const routeCoords = normalizeRouteCoords(selectedRoute.coords);
   const routeMidpoint = getRouteMidpoint(routeCoords);
   const [{ weather, weatherUnavailable }, { traffic, trafficUnavailable }] =
     await Promise.all([
-      getFareWeather(routeMidpoint),
+      getFareWeather(routeMidpoint, country),
       getFareTraffic(routeCoords, getDepartureOptions(trip)),
     ]);
   const rates = (await VehicleRate.find({
+    country,
     isActive: true,
   }).lean()) as VehicleRateDocument[];
   // One shared calculator prices every rate. Live provider lookups run
@@ -491,6 +506,9 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    // The country this trip was planned in — drives which currency the fare
+    // panel renders and which service area it names.
+    country,
     trip: {
       tripHistoryId,
       routeId,

@@ -6,6 +6,11 @@ import { X } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { fieldClassName } from "@/components/ui/field-styles";
 import PlaceAutocomplete from "@/components/map/PlaceAutocomplete";
+import {
+  COUNTRY_CONFIG,
+  COUNTRY_OPTIONS,
+  type CountryCode,
+} from "@/lib/country-config";
 import type { PlaceResult } from "@/lib/geocode";
 
 type TravelPriority = "time" | "cost" | "comfort";
@@ -33,6 +38,7 @@ type ProfileFormProps = {
     createdAt: string;
   };
   initialProfile: {
+    country: CountryCode;
     defaultTravelPriority: TravelPriority;
     defaultPassengerCount: number;
     savedPlaces: SavedPlaceInput[];
@@ -66,6 +72,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
   const router = useRouter();
   const [name, setName] = useState(initialUser.name);
   const [email, setEmail] = useState(initialUser.email);
+  const [country, setCountry] = useState<CountryCode>(initialProfile.country);
   const [defaultTravelPriority, setDefaultTravelPriority] = useState<TravelPriority>(
     initialProfile.defaultTravelPriority,
   );
@@ -162,6 +169,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
       body: JSON.stringify({
         name,
         email,
+        country,
         defaultTravelPriority,
         defaultPassengerCount,
         savedPlaces: buildSavedPlacesPayload(),
@@ -281,6 +289,32 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
                 </label>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="country" className="mb-2 block text-sm font-medium">
+              Country
+            </label>
+            <select
+              id="country"
+              value={country}
+              onChange={(event) => setCountry(event.target.value as CountryCode)}
+              className={fieldClassName(false, "h-11 py-0")}
+            >
+              {COUNTRY_OPTIONS.map((code) => (
+                <option key={code} value={code}>
+                  {COUNTRY_CONFIG[code].label}
+                </option>
+              ))}
+            </select>
+            {/* Naming the consequences here rather than in a tooltip: this is
+                the one control that changes which places are searchable, which
+                services appear and what currency fares are quoted in. */}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Sets your service area ({COUNTRY_CONFIG[country].serviceAreaName}), the ride
+              services offered and the currency fares are shown in. Trips you have already
+              planned keep the country they were planned in.
+            </p>
           </div>
 
           <div>

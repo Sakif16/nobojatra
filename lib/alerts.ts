@@ -5,6 +5,7 @@
 // One rule lives here and nowhere else: visibleAlertFilter(). The unread badge,
 // the notification list, and the evaluator's "is this already showing?" check
 // must all agree on what "surfaced" means, so they all call it.
+import { COUNTRY_CONFIG, DEFAULT_COUNTRY } from "@/lib/country-config";
 import "server-only";
 
 import dbConnect from "@/lib/mongodb";
@@ -248,7 +249,7 @@ export async function createAlert(input: CreateAlertInput): Promise<AlertView | 
 function formatTripConfirmationMessage(input: CreateTripConfirmedAlertInput) {
   const fare =
     typeof input.fareLow === "number" && typeof input.fareHigh === "number"
-      ? ` Estimated fare: ${input.fareLow}-${input.fareHigh} ${input.currency ?? "BDT"}.`
+      ? ` Estimated fare: ${input.fareLow}-${input.fareHigh} ${input.currency ?? COUNTRY_CONFIG[DEFAULT_COUNTRY].currency}.`
       : "";
 
   return `${input.vehicleLabel} is confirmed for ${input.originLabel} to ${input.destinationLabel}.${fare}`;
