@@ -1,3 +1,5 @@
+"use client";
+
 import {
   BookmarkCheck,
   CalendarClock,
@@ -6,6 +8,7 @@ import {
   Route,
   Wallet,
 } from "lucide-react";
+import { useCountryConfig } from "@/components/country/CountryProvider";
 
 type Feature = {
   label: string;
@@ -63,12 +66,16 @@ function TileBody({ feature }: { feature: Feature }) {
 }
 
 export default function SuggestionTiles() {
+  // Follows the country switcher — the tiles describe what you can plan where
+  // you are planning, so the blurb must not keep saying Dhaka in London.
+  const { serviceAreaName } = useCountryConfig();
+
   return (
     <div className="w-full">
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-foreground">NoboJatra features</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Built-in tools for smarter route planning in Dhaka.
+          Built-in tools for smarter route planning in {serviceAreaName}.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

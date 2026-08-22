@@ -190,6 +190,13 @@ const SavedTripSchema = new Schema(
 // Names are the user-facing handle for a trip, so two trips called "Commute"
 // in one account would be indistinguishable in the notification list. The
 // unique index makes that a 409 at the API rather than a support question.
-SavedTripSchema.index({ userId: 1, name: 1 }, { unique: true });
+//
+// Scoped by country because the saved-trips list is: without the country in
+// the key, someone whose Dhaka list holds "Commute" would be refused a London
+// "Commute" by a trip their screen cannot show them.
+//
+// NOTE: the older { userId, name } index is not dropped automatically. Until
+// it is dropped in an environment, names stay unique per account there.
+SavedTripSchema.index({ userId: 1, country: 1, name: 1 }, { unique: true });
 
 export default models.SavedTrip || model("SavedTrip", SavedTripSchema);

@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { formatFare } from "@/lib/country-config";
 import type { ScheduledTripListItem } from "@/lib/trip-history";
+import BackLink from "@/components/BackLink";
 
 type Props = {
   trips: ScheduledTripListItem[];
@@ -99,6 +100,7 @@ export default function ScheduledTripsList({ trips }: Props) {
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
+        <BackLink href="/" label="Back to planner" className="mb-4" />
         <h1 className="text-3xl font-bold tracking-tight text-foreground">
           Scheduled trips
         </h1>

@@ -833,20 +833,31 @@ function toGroupableLocation(location: unknown): TripLocation | null {
  * returns the most-repeated ones, for the home screen's "Plan Again" cards.
  * A pair must occur at least `minOccurrences` times to count as "frequent" —
  * a one-off trip isn't a pattern worth surfacing.
+ *
+ * Scoped to a single country: a Dhaka commute is not a suggestion worth making
+ * to someone planning in London, and its coordinates would fail validation
+ * there anyway. Pass the *profile's* country — this is a "what could I plan
+ * next" list, not a rendering of a stored trip.
  */
 export async function getFrequentTrips(
   userId: string,
-  options: { days?: number; limit?: number; minOccurrences?: number } = {},
+  options: {
+    country?: CountryCode;
+    days?: number;
+    limit?: number;
+    minOccurrences?: number;
+  } = {},
 ): Promise<FrequentTripSuggestion[]> {
   await dbConnect();
 
+  const country = options.country ?? DEFAULT_COUNTRY;
   const days = options.days ?? 30;
   const limit = options.limit ?? 3;
   const minOccurrences = options.minOccurrences ?? 2;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const records = await TripHistory.find({ userId, createdAt: { $gte: cutoff } })
-    .select("origin destination passengerCount createdAt")
+    .select("origin destination passengerCount country createdAt")
     .sort({ createdAt: -1 }) // newest first, so the first hit per group is the most recent passenger count
     .lean();
 
@@ -860,6 +871,11 @@ export async function getFrequentTrips(
   const groups = new Map<string, Group>();
 
   for (const record of records) {
+    // Filtered here rather than in the query so that trips written before the
+    // country field existed still count as BD, exactly as resolveCountry says
+    // they should — a `{ country: "BD" }` query would silently drop them.
+    if (resolveCountry(record.country) !== country) continue;
+
     const origin = toGroupableLocation(record.origin);
     const destination = toGroupableLocation(record.destination);
     if (!origin || !destination) continue;

@@ -13,6 +13,7 @@ import {
 } from '@/lib/country-config'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
 import { cn } from '@/lib/utils'
+import BackLink from "@/components/BackLink";
 
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
   ssr: false,
@@ -335,6 +336,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
     <main className="flex-1">
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8 max-w-3xl">
+          <BackLink href="/" label="Back to planner" className="mb-4" />
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Available Services
           </h1>

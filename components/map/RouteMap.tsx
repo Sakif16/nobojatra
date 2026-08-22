@@ -162,7 +162,18 @@ export default function RouteMap({
   // Visual helpers intentionally removed: directional arrows disabled.
 
   return (
-    <div className="relative h-full w-full">
+    /*
+     * `isolate` is load-bearing, not cosmetic. Leaflet's stylesheet gives its
+     * panes and controls z-indexes from 200 up to 1000, and this wrapper had no
+     * stacking context of its own — so those values competed directly with the
+     * rest of the page and won against anything below 1000. The photo-location
+     * modal (z-50) opened *behind* the map because of it, and the navbar (z-40)
+     * and notification toasts (z-70) were one map away from the same bug.
+     *
+     * Isolating here rather than at each call site keeps the guarantee with the
+     * component that owns the Leaflet instance: every map gets it for free.
+     */
+    <div className="relative isolate h-full w-full">
       <MapContainer
         center={[origin.lat, origin.lng]}
         zoom={13}

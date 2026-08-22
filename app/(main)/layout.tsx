@@ -1,12 +1,14 @@
 import { headers } from "next/headers";
+import Footer from "@/components/Footer";
 import Navbar from "@/components/navbar";
 import { CountryProvider } from "@/components/country/CountryProvider";
 import { auth } from "@/lib/auth";
 import { DEFAULT_COUNTRY } from "@/lib/country-config";
 import { getUserCountry } from "@/lib/user-country";
 
-// The navbar belongs to the signed-in product surface and the landing page,
-// not to the auth flow — see app/(auth)/layout.tsx.
+// The navbar and footer belong to the product surface, not to the auth flow —
+// see app/(auth)/layout.tsx, which is full-bleed and carries its own footer
+// line.
 //
 // The country is resolved once here and shared through CountryProvider, so the
 // planner, the place autocomplete and the fare panel all read the same value
@@ -24,6 +26,7 @@ export default async function MainLayout({
     <CountryProvider country={country}>
       <Navbar />
       {children}
+      <Footer />
     </CountryProvider>
   );
 }

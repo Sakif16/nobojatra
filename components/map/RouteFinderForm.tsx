@@ -43,7 +43,7 @@ type Props = {
   loadingLabel?: string;
   /** Comes from the signed-in user's saved travel defaults. */
   defaultPassengerCount?: number;
-  /** Replays a trip an anonymous visitor started before signing up. */
+  /** Replays a trip picked from a "Plan Again" card. */
   initialValues?: RouteFormValues | null;
   /** Home/Work/custom shortcuts shown when origin or destination is empty. */
   savedPlaces?: SavedPlaceOption[];

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Globe } from "lucide-react";
+import { ChevronDown, Globe } from "lucide-react";
 import { useCountry } from "./CountryProvider";
 import { COUNTRY_CONFIG, COUNTRY_OPTIONS, isCountryCode } from "@/lib/country-config";
 
@@ -60,21 +60,32 @@ export default function CountrySwitcher({ className }: { className?: string }) {
 
   return (
     <div className={className}>
-      <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Globe className="size-4" aria-hidden="true" />
+      <label className="relative inline-flex items-center">
         <span className="sr-only">Country</span>
+        <Globe
+          className="pointer-events-none absolute left-3 size-4 text-muted-foreground"
+          aria-hidden="true"
+        />
         <select
           value={country}
           disabled={busy}
           onChange={(event) => handleChange(event.target.value)}
-          className="cursor-pointer rounded-md bg-transparent py-1 pr-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-10 cursor-pointer appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-9 text-sm font-medium text-foreground outline-none transition-colors hover:bg-muted focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {COUNTRY_OPTIONS.map((code) => (
-            <option key={code} value={code}>
+            <option
+              key={code}
+              value={code}
+              // Native option lists are OS-drawn: `color-scheme: dark` in
+              // globals.css is what darkens the popup on WebKit, and these
+              // colours cover the browsers that do honour option styling.
+              className="bg-popover text-popover-foreground"
+            >
               {COUNTRY_CONFIG[code].label}
             </option>
           ))}
         </select>
+        <ChevronDown className="pointer-events-none absolute right-3 size-4 text-muted-foreground" />
       </label>
       {error ? (
         <p role="alert" className="mt-1 text-xs text-destructive">

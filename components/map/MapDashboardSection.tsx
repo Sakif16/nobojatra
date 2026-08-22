@@ -17,7 +17,6 @@ import {
   type RouteResult,
   type TripTrafficResult,
 } from "@/lib/routing";
-import { savePendingTrip, takePendingTrip } from "@/lib/pending-trip";
 import type {
   TripLocation,
   TripValidationErrors,
@@ -52,11 +51,6 @@ type TripValidationResponse =
     };
 
 type Props = {
-  /**
-   * Anonymous visitors can search places but not fetch routes, so their trip is
-   * stashed and they are handed off to signup instead.
-   */
-  variant?: "authed" | "anonymous";
   defaultPassengerCount?: number;
   /** Rendered beside the form until there are results to show a map for. */
   aside?: React.ReactNode;
@@ -96,7 +90,6 @@ const RouteMap = dynamic(() => import("./RouteMap"), {
 });
 
 export default function MapDashboardSection({
-  variant = "authed",
   defaultPassengerCount,
   aside,
   savedPlaces,
@@ -267,26 +260,8 @@ export default function MapDashboardSection({
   }
 
   function handleSubmit(values: RouteFormValues) {
-    if (variant === "anonymous") {
-      savePendingTrip(values);
-      router.push("/signup");
-      return;
-    }
-
     void findRoutes(values);
   }
-
-  useEffect(() => {
-    if (variant !== "authed") return;
-
-    const pending = takePendingTrip();
-    if (!pending) return;
-
-    void (async () => {
-      setRestoredTrip(pending);
-      await findRoutes(pending);
-    })();
-  }, [variant]);
 
   // "Plan Again" — a frequent-trip card sets this from the home screen. Any
   // new non-null value (even for a repeat click on the same trip) re-fills

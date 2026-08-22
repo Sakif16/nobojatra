@@ -2,6 +2,7 @@
 
 import { MapPin, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useCountryConfig } from "@/components/country/CountryProvider";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +10,7 @@ import ConditionEditor from "./ConditionEditor";
 import SavedTripForm from "./SavedTripForm";
 import { formatFare } from "@/lib/country-config";
 import type { SavedTripDetail, VehicleOption } from "./types";
+import BackLink from "@/components/BackLink";
 
 /**
  * The saved-trips screen: create named trips, attach alert conditions, and
@@ -25,6 +27,10 @@ export default function SavedTripsManager({
   savedPlaces: SavedPlaceOption[];
   vehicles: VehicleOption[];
 }) {
+  // The list the API returns is scoped to this country, so both the subtitle
+  // and the empty state have to name it — otherwise switching country looks
+  // like the saved trips were lost.
+  const { serviceAreaName } = useCountryConfig();
   const [trips, setTrips] = useState<SavedTripDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,11 +131,13 @@ export default function SavedTripsManager({
 
   return (
     <div className="flex flex-col gap-5">
+      <BackLink href="/" label="Back to planner" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Saved trips</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Attach conditions to a trip and get notified when they are met.
+            Your trips in {serviceAreaName}. Attach conditions to one and get
+            notified when they are met.
           </p>
         </div>
 
@@ -188,9 +196,12 @@ export default function SavedTripsManager({
       {!loading && !error && trips.length === 0 && !showForm && (
         <div className="rounded-2xl border border-dashed border-border px-6 py-10 text-center">
           <MapPin className="mx-auto size-5 text-muted-foreground" aria-hidden />
-          <p className="mt-2 text-sm font-medium text-foreground">No saved trips yet</p>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            No saved trips in {serviceAreaName} yet
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Save a trip to start watching its weather, traffic, and fare.
+            Save a trip to start watching its weather, traffic, and fare. Trips
+            saved in another country stay there — switch back to see them.
           </p>
         </div>
       )}

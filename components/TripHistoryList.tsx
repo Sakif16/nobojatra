@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { COUNTRY_CONFIG, formatAmount, formatFare, type CountryCode } from '@/lib/country-config'
 import type { RecentTrip, TripHistoryActivityData } from '@/lib/trip-history'
+import BackLink from "@/components/BackLink";
 
 interface HistoryVehicleOption {
   provider: string
@@ -208,6 +209,7 @@ export default function TripHistoryList({ activityData }: Props) {
     <main className="flex-1">
       <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6">
+          <BackLink href="/" label="Back to planner" className="mb-4" />
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Trip History
           </h1>

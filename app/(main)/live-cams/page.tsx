@@ -1,10 +1,12 @@
 import LiveCamsFrame from "@/components/live-cams/LiveCamsFrame";
+import BackLink from "@/components/BackLink";
 
 export default function LiveCamsPage() {
   return (
     <main className="flex-1">
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6 max-w-3xl">
+          <BackLink href="/" label="Back to planner" className="mb-4" />
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Live Cams
           </h1>

@@ -48,10 +48,11 @@ export type CountryConfig = {
   /**
    * Whether to additionally send `viewbox` + `bounded=1` to Nominatim.
    *
-   * Only BD sets this. Its service area is a *division*, not a country, so
-   * `countrycodes=bd` alone would return Chittagong and Sylhet results that
-   * then fail validation. US and UK are whole countries, where `countrycodes`
-   * is both sufficient and more accurate than a rectangle.
+   * No country sets this today: all three service areas are whole countries,
+   * where `countrycodes` is both sufficient and more accurate than a
+   * rectangle. It stays because the knob is what a sub-national service area
+   * would need — BD used it while it was limited to Dhaka Division, and any
+   * future city- or region-scoped entry would need it again.
    */
   useBoundedViewbox: boolean;
   /** ISO 4217, stored on trip records so history renders in its own currency. */
@@ -63,21 +64,23 @@ export type CountryConfig = {
 
 export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
   /**
-   * Bounds, name and fallback point are carried over verbatim from the
-   * constants that used to live in ./trip-input, so nothing changes for
-   * existing users. The original reasoning still applies: this is deliberately
-   * a rectangle around all 13 districts of Dhaka Division rather than the
-   * division's true outline, because Nominatim's viewbox only accepts a
-   * rectangle and validating against a tighter polygon would let someone pick
-   * a suggestion that then failed to validate. Some spill into neighbouring
-   * divisions is unavoidable and is preferable to blocking a genuine trip.
+   * The whole country, not the Dhaka Division rectangle this started as.
+   *
+   * The box spans Tetulia in the north to St Martin's in the south and the
+   * Chittagong Hill Tracts in the east, so it also takes in slivers of India
+   * and Myanmar — acceptable for the same reason the US box is, since the box
+   * is only the coarse validation gate while `countrycodes=bd` does the real
+   * filtering on the autocomplete that feeds it.
+   *
+   * The fallback weather point stays Dhaka: it is the country's largest city
+   * and only applies when a route has no usable midpoint to read.
    */
   BD: {
     label: "Bangladesh",
-    serviceAreaName: "Dhaka Division",
-    bounds: { west: 89.3, south: 22.8, east: 91.2, north: 24.8 },
+    serviceAreaName: "Bangladesh",
+    bounds: { west: 88.0, south: 20.5, east: 92.7, north: 26.7 },
     nominatimCountryCode: "bd",
-    useBoundedViewbox: true,
+    useBoundedViewbox: false,
     currency: "BDT",
     currencySymbol: "৳",
     fallbackWeatherPoint: { lat: 23.8103, lng: 90.4125 },

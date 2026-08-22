@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { resolveCountry } from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import UserProfile from "@/models/UserProfile";
+import { filterPlacesInServiceArea } from "@/lib/trip-input";
 import VehicleRate from "@/models/VehicleRate";
 
 type SavedPlaceDoc = {
@@ -47,12 +48,17 @@ export default async function SavedTripsPage() {
     .sort({ displayName: 1 })
     .lean();
 
-  const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile?.savedPlaces)
-    ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
-        label: sp.label,
-        place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
-      }))
-    : [];
+  // Scoped to the active country: a Dhaka shortcut offered to someone planning
+  // in London only leads to a validation error.
+  const savedPlaces: SavedPlaceDoc[] = filterPlacesInServiceArea(
+    Array.isArray(profile?.savedPlaces)
+      ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
+          label: sp.label,
+          place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
+        }))
+      : [],
+    country,
+  );
 
   const vehicles: VehicleOption[] = (rates as VehicleRateDoc[]).map((rate) => ({
     id: String(rate._id),

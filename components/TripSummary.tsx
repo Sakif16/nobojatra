@@ -16,6 +16,7 @@ import {
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { formatFare, type CountryCode } from '@/lib/country-config'
+import BackLink from "@/components/BackLink";
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
 type CongestionLevel = 'low' | 'moderate' | 'high' | 'severe'
@@ -210,6 +211,7 @@ export default function TripSummary({
     <main className="flex-1">
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6">
+          <BackLink href="/" label="Back to planner" className="mb-4" />
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             {title}
           </h1>

@@ -16,7 +16,11 @@ import {
   WEATHER_SEVERITY_MIN,
 } from "@/lib/alert-evaluator/evaluators";
 import { deleteAlertsForSavedTrip } from "@/lib/alerts";
-import { resolveCountry, type CountryCode } from "@/lib/country-config";
+import {
+  getCountryConfig,
+  resolveCountry,
+  type CountryCode,
+} from "@/lib/country-config";
 import { estimateFaresForRates, type FareSource } from "@/lib/fare-providers";
 import dbConnect from "@/lib/mongodb";
 import { fetchRouteSuggestions, RouteServiceError } from "@/lib/route-service";
@@ -31,7 +35,13 @@ import SavedTrip, {
 import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 
-/** Per-account cap. Every saved trip costs provider calls on each evaluation. */
+/**
+ * Per-country cap. Every saved trip costs provider calls on each evaluation.
+ *
+ * Counted per country rather than per account because the list is scoped that
+ * way: a global cap would let someone with a full Dhaka list be refused a
+ * London trip while the London screen sat empty, with no visible cause.
+ */
 export const MAX_SAVED_TRIPS = 20;
 
 /** Kept in step with the `maxlength` on SavedTrip.name. */
@@ -354,7 +364,22 @@ async function resolveRoute(trip: {
 
 // ── Reads ──────────────────────────────────────────────────────────────────
 
-export async function listSavedTrips(userId: string): Promise<SavedTripDetail[]> {
+/**
+ * The user's saved trips in one country.
+ *
+ * Scoped like the planner itself: a saved trip carries the country it was
+ * created in, and showing a Dhaka trip to someone planning in London means
+ * offering an alert on a route they cannot currently plan.
+ *
+ * The country match happens in JS, not in the query, so trips written before
+ * the field existed still count as BD — the same rule resolveCountry applies
+ * everywhere else. The cap keeps the result set small enough for this to be
+ * cheaper than a second index.
+ */
+export async function listSavedTrips(
+  userId: string,
+  country: CountryCode,
+): Promise<SavedTripDetail[]> {
   await dbConnect();
 
   const records = (await SavedTrip.find({ userId })
@@ -362,7 +387,18 @@ export async function listSavedTrips(userId: string): Promise<SavedTripDetail[]>
     .sort({ createdAt: -1 })
     .lean()) as StoredSavedTrip[];
 
-  return records.map((record) => serializeSavedTrip(record));
+  return records
+    .filter((record) => resolveCountry(record.country) === country)
+    .map((record) => serializeSavedTrip(record));
+}
+
+/** Saved trips the user already has in one country, for the cap check. */
+async function countSavedTripsInCountry(userId: string, country: CountryCode) {
+  const records = (await SavedTrip.find({ userId })
+    .select("country")
+    .lean()) as { country?: unknown }[];
+
+  return records.filter((record) => resolveCountry(record.country) === country).length;
 }
 
 export async function getSavedTrip(
@@ -407,13 +443,13 @@ export async function createSavedTrip({
 }): Promise<SavedTripDetail> {
   await dbConnect();
 
-  const existingCount = await SavedTrip.countDocuments({ userId });
+  const existingCount = await countSavedTripsInCountry(userId, country);
 
   if (existingCount >= MAX_SAVED_TRIPS) {
     throw new SavedTripError(
-      `User ${userId} is at the saved-trip cap`,
+      `User ${userId} is at the saved-trip cap for ${country}`,
       409,
-      `You can save up to ${MAX_SAVED_TRIPS} trips. Delete one to add another.`,
+      `You can save up to ${MAX_SAVED_TRIPS} trips in ${getCountryConfig(country).serviceAreaName}. Delete one to add another.`,
     );
   }
 
@@ -461,7 +497,7 @@ export async function createSavedTrip({
       throw new SavedTripError(
         `Duplicate saved-trip name for user ${userId}`,
         409,
-        "You already have a saved trip with that name.",
+        "You already have a saved trip with that name in this country.",
       );
     }
     throw error;
@@ -560,7 +596,7 @@ export async function updateSavedTrip({
       throw new SavedTripError(
         `Duplicate saved-trip name for user ${userId}`,
         409,
-        "You already have a saved trip with that name.",
+        "You already have a saved trip with that name in this country.",
       );
     }
     throw error;

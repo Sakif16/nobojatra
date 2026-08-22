@@ -2,12 +2,12 @@
 
 import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, Sparkles, TrafficCone, Users, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_COUNTRY, formatFare, type CountryCode } from "@/lib/country-config";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
+import BackLink from "@/components/BackLink";
 
 // Lazy-loads the map client-side only — Leaflet needs the browser
 const RouteMap = dynamic(() => import("@/components/map/RouteMap"), {
@@ -418,6 +418,11 @@ export default function BestOptionsResults({
   return (
     <main className="flex-1">
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <BackLink
+          href={`/fares?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
+          label="Back to fare estimates"
+          className="mb-4"
+        />
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
@@ -693,16 +698,6 @@ export default function BestOptionsResults({
           )}
         </div>
 
-        {trip && (
-          <div className="mt-6">
-            <Link
-              href={`/fares?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
-              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              ← Back to fare estimates
-            </Link>
-          </div>
-        )}
       </div>
     </main>
   );

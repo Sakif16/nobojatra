@@ -10,14 +10,11 @@ import {
  * carries its own bounds and name, and every check below takes the country the
  * trip is being planned in.
  *
- * The Bangladesh entry keeps the original rectangle covering all 13 districts
- * of Dhaka Division, and the original reasoning still holds for it: it is
- * deliberately a rectangle rather than the division's true outline, because
+ * Every entry is a rectangle rather than the country's true outline, because
  * Nominatim's viewbox only accepts a rectangle and validating against a tighter
  * polygon would let someone pick a suggestion that then failed to validate.
- * Some spill into neighbouring divisions is unavoidable — Tangail reaches as
- * far north as Mymensingh city, Gopalganj as far south-west as Khulna — and
- * erring wide never blocks a genuine in-division trip.
+ * Erring wide is the safe direction: the box is a coarse gate, and the
+ * `countrycodes` filter on the autocomplete does the precise work.
  */
 export function isInsideServiceArea(
   location: Pick<TripLocation, "lat" | "lng">,
@@ -38,6 +35,23 @@ export function outsideServiceAreaMessage(
   country: CountryCode = DEFAULT_COUNTRY,
 ) {
   return `${field} must be inside the ${getCountryConfig(country).serviceAreaName} service area.`;
+}
+
+/**
+ * Keeps only the saved shortcuts that belong to the country being planned in.
+ *
+ * Saved places carry no country of their own, and they do not need one: the
+ * three service areas are disjoint boxes, so a place's coordinates already say
+ * which one it belongs to. That also means this works on places saved before
+ * the app knew about countries, with no migration.
+ *
+ * Without it, a user who switches to the UK is offered their Dhaka "Home" as a
+ * one-tap shortcut — which then fails validation as outside the service area.
+ */
+export function filterPlacesInServiceArea<
+  T extends { place: Pick<TripLocation, "lat" | "lng"> },
+>(places: T[], country: CountryCode = DEFAULT_COUNTRY): T[] {
+  return places.filter((entry) => isInsideServiceArea(entry.place, country));
 }
 
 export function getServiceAreaName(country: CountryCode = DEFAULT_COUNTRY) {

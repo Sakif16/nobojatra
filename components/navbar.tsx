@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { buttonVariants } from "./ui/button";
-import Logout from "./logout";
+import ProfileMenu from "./ProfileMenu";
 import NotificationBell from "./notifications/NotificationBell";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -50,23 +50,7 @@ export default async function Navbar() {
               polling, so the navbar stays static. */}
           <NotificationBell />
 
-          <details className="relative">
-            <summary className="cursor-pointer list-none rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted">
-              {session.user.name}
-            </summary>
-
-            <div className="absolute right-0 mt-2 w-40 rounded-lg border border-border bg-background p-2 shadow-lg">
-              <Link
-                href="/profile"
-                className="block rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
-              >
-                Profile
-              </Link>
-              <div className="mt-1">
-                <Logout />
-              </div>
-            </div>
-          </details>
+          <ProfileMenu userName={session.user.name} />
         </div>
       </div>
     </header>

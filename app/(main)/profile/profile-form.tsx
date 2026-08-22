@@ -12,6 +12,7 @@ import {
   type CountryCode,
 } from "@/lib/country-config";
 import type { PlaceResult } from "@/lib/geocode";
+import BackLink from "@/components/BackLink";
 
 type TravelPriority = "time" | "cost" | "comfort";
 
@@ -229,6 +230,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
       <div>
+        <BackLink href="/" label="Back to planner" className="mb-4" />
         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Profile</h1>
         <p className="mt-2 text-sm text-muted-foreground">Manage your account and travel defaults.</p>
       </div>
@@ -340,7 +342,10 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
         <div className="mt-8">
           <span className="mb-1 block text-sm font-medium">Saved Places</span>
           <p className="mb-3 text-xs text-muted-foreground">
-            These appear as one-tap shortcuts when searching for an origin or destination.
+            These appear as one-tap shortcuts when searching for an origin or
+            destination. Only places inside {COUNTRY_CONFIG[country].serviceAreaName} are
+            offered while that is your country — the rest stay saved here and come back
+            when you switch.
           </p>
 
           <div className="space-y-2.5">

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Repeat2 } from "lucide-react";
+import { useCountryConfig } from "@/components/country/CountryProvider";
 import type { RouteFormValues } from "@/components/map/RouteFinderForm";
 
 // Plain-serializable version of FrequentTripSuggestion — this crosses the
@@ -18,9 +19,25 @@ type Props = {
 };
 
 export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
-  // Nothing to show until the user has an actual repeated pattern —
-  // no empty-state clutter on a fresh account.
-  if (trips.length === 0) return null;
+  // The list the server sent is already scoped to the active country, so the
+  // empty state has to name it: a bare "nothing here" would read as "you have
+  // no history at all" to someone who has just switched away from their trips.
+  const { serviceAreaName } = useCountryConfig();
+
+  if (trips.length === 0) {
+    return (
+      <div className="mt-10">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Repeat2 className="size-4 text-primary" />
+          Plan again
+        </h2>
+        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          No trips to show in {serviceAreaName} yet. Plan a route above and the
+          ones you repeat will turn up here.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-10">

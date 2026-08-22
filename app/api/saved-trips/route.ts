@@ -48,7 +48,10 @@ export async function GET(req: NextRequest) {
 
   if (!session) return unauthorized();
 
-  const trips = await listSavedTrips(session.user.id);
+  // Scoped to the country the user is planning in — the same one POST below
+  // stamps onto new trips.
+  const country = await getUserCountry(session.user.id);
+  const trips = await listSavedTrips(session.user.id, country);
 
   return NextResponse.json({ success: true, trips, maxTrips: MAX_SAVED_TRIPS });
 }
