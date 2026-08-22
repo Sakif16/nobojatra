@@ -1,3 +1,5 @@
+import type { CountryCode } from "@/lib/country-config";
+
 export type LatLng = { lat: number; lng: number; name?: string };
 
 export type RouteLeg = {
@@ -55,6 +57,8 @@ export type TrafficLegResult = {
 export type TripTrafficResult = {
   departureTime: string;
   isPeakHour: boolean;
+  /** The country whose peak-hour windows `isPeakHour` was judged against. */
+  country: CountryCode;
   legs: TrafficLegResult[];
   totals: Omit<TrafficLegResult, "legIndex" | "distanceMeters"> & {
     distanceMeters: number;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getUserCountry } from "@/lib/user-country";
 import {
   getTrafficForTrip,
   TrafficServiceError,
@@ -61,9 +62,13 @@ export async function POST(req: Request) {
       body.departureMode === "scheduled" && body.scheduledAt
         ? { mode: "scheduled" as const, scheduledAt: body.scheduledAt }
         : { mode: "now" as const };
+    // This is the live planner preview — the trip is not stored yet, so the
+    // profile's country is the one being planned in.
+    const country = await getUserCountry(session.user.id);
     const traffic = await getTrafficForTrip(
       [body.origin, ...stops, body.destination],
-      departure
+      departure,
+      country
     );
 
     return NextResponse.json(

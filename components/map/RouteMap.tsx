@@ -9,6 +9,7 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import { COUNTRY_CONFIG } from "@/lib/country-config";
 import {
   INACTIVE_ROUTE_COLOR,
   MARKER_COLOR,
@@ -80,7 +81,9 @@ function TrafficLegend({
           ))}
           {traffic?.isPeakHour && (
             <span className="mt-0.5 border-t border-border pt-1 font-medium text-orange-700">
-              Dhaka peak-hour departure
+              {/* Read off the traffic result, not the active profile: a stored
+                  trip keeps the country it was planned in. */}
+              {COUNTRY_CONFIG[traffic.country].label} peak-hour departure
             </span>
           )}
         </>

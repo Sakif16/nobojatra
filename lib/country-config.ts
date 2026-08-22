@@ -60,7 +60,31 @@ export type CountryConfig = {
   currencySymbol: string;
   /** Used when a route has no usable midpoint to read weather at. */
   fallbackWeatherPoint: { lat: number; lng: number };
+  /**
+   * The IANA zone the peak windows below are written in, and the one a
+   * departure time is converted to before being tested against them.
+   *
+   * One zone per country is an approximation for the US, which spans six.
+   * It is still far closer than the alternative this replaced — every
+   * country was previously tested against Asia/Dhaka — and fixing it
+   * properly needs a coordinate-to-timezone lookup, which is a dependency
+   * this app does not otherwise need.
+   */
+  timeZone: string;
+  /**
+   * Local-time windows when demand is high, as minutes from midnight.
+   * `isPeakHour` feeds a fare multiplier, so these are pricing inputs:
+   * treat them as estimates and tune them against real data.
+   */
+  peakWindows: Array<{ startMinute: number; endMinute: number }>;
+  /** Weekdays exempt from the windows above. 0 = Sunday, 6 = Saturday. */
+  nonPeakWeekdays: number[];
 };
+
+/** Readable minute-of-day, so the windows below stay legible. */
+function at(hour: number, minute = 0) {
+  return hour * 60 + minute;
+}
 
 export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
   /**
@@ -84,6 +108,16 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "BDT",
     currencySymbol: "৳",
     fallbackWeatherPoint: { lat: 23.8103, lng: 90.4125 },
+    timeZone: "Asia/Dhaka",
+    peakWindows: [
+      { startMinute: at(8), endMinute: at(10, 30) },
+      { startMinute: at(17), endMinute: at(20, 30) },
+    ],
+    // Friday only, carried over verbatim from the constants this replaced so
+    // BD pricing does not shift with this change. Bangladesh's weekend is
+    // Friday *and* Saturday, so [5, 6] is arguably the right value — that is a
+    // pricing decision, not a refactor, so it is left to be made deliberately.
+    nonPeakWeekdays: [5],
   },
   /**
    * Wide enough to contain Alaska (west to -179.15) and Hawaii (south to
@@ -101,6 +135,14 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "USD",
     currencySymbol: "$",
     fallbackWeatherPoint: { lat: 40.7128, lng: -74.006 },
+    // Eastern time covers the largest share of the population; a Pacific trip
+    // is judged three hours out until the caveat on `timeZone` is addressed.
+    timeZone: "America/New_York",
+    peakWindows: [
+      { startMinute: at(7), endMinute: at(9, 30) },
+      { startMinute: at(16), endMinute: at(19) },
+    ],
+    nonPeakWeekdays: [0, 6],
   },
   /** Shetland in the north, the Isles of Scilly in the south-west. */
   UK: {
@@ -112,6 +154,12 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "GBP",
     currencySymbol: "£",
     fallbackWeatherPoint: { lat: 51.5072, lng: -0.1276 },
+    timeZone: "Europe/London",
+    peakWindows: [
+      { startMinute: at(7), endMinute: at(9, 30) },
+      { startMinute: at(16), endMinute: at(19) },
+    ],
+    nonPeakWeekdays: [0, 6],
   },
 };
 

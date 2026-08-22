@@ -301,6 +301,8 @@ function sampleTrafficPoints(coords: LatLngTuple[]): TrafficPoint[] | null {
 async function getRouteTraffic(
   coords: LatLngTuple[],
   departure: DepartureOptions,
+  // The trip's own country — see the same argument in ../fares/route.ts.
+  country: CountryCode,
 ): Promise<{ traffic: TripTrafficResult | null; trafficUnavailable: boolean }> {
   const points = sampleTrafficPoints(coords);
 
@@ -309,7 +311,7 @@ async function getRouteTraffic(
   }
 
   try {
-    const traffic = await getTrafficForTrip(points, departure);
+    const traffic = await getTrafficForTrip(points, departure, country);
     return { traffic, trafficUnavailable: false };
   } catch (error) {
     if (error instanceof TrafficServiceError) {
@@ -405,7 +407,7 @@ export async function POST(req: NextRequest) {
 
   // Step 6: fetch REAL live traffic for this route from TomTom
   const departure = getDepartureOptions(trip);
-  const { traffic, trafficUnavailable } = await getRouteTraffic(routeCoords, departure);
+  const { traffic, trafficUnavailable } = await getRouteTraffic(routeCoords, departure, country);
 
   // The car-baseline duration used for scoring: live TomTom duration when
   // available, otherwise the ORS estimate stored on the trip. This is the

@@ -1,6 +1,8 @@
 
 import "server-only";
 
+import { getCountryConfig, type CountryCode } from "@/lib/country-config";
+
 const TOMTOM_ROUTING_URL =
   "https://api.tomtom.com/routing/1/calculateRoute";
 
@@ -11,25 +13,6 @@ const CONGESTION_CUTOFFS = {
   moderate: 50,
   high: 100,
 };
-
-const DHAKA_PEAK_WINDOWS: Array<{
-  startMinute: number;
-  endMinute: number;
-}> = [
-  {
-    startMinute: 8 * 60,
-    endMinute: 10 * 60 + 30,
-  }, // 08:00 - 10:30
-
-  {
-    startMinute: 17 * 60,
-    endMinute: 20 * 60 + 30,
-  }, // 17:00 - 20:30
-];
-
-const DHAKA_NON_PEAK_WEEKDAY = 5; // Friday
-
-const DHAKA_TZ = "Asia/Dhaka";
 
 export type CongestionLevel =
   | "low"
@@ -73,6 +56,14 @@ export type TripTrafficResult = {
   departureTime: string;
 
   isPeakHour: boolean;
+
+  /**
+   * The country whose peak-hour windows `isPeakHour` was judged against.
+   * Carried on the result so the UI can name it — a stored trip keeps the
+   * country it was planned in, which is not necessarily the viewer's current
+   * one.
+   */
+  country: CountryCode;
 
   legs: TrafficLegResult[];
 
@@ -182,11 +173,11 @@ export function getCongestionLevel(
 }
 
 /**
- * Gets the current Dhaka time information.
+ * The weekday and minute-of-day a moment falls on, in one country's zone.
  */
-function getDhakaMinuteOfDay(date: Date) {
+function getLocalTimeParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: DHAKA_TZ,
+    timeZone,
 
     hour: "2-digit",
 
@@ -232,26 +223,23 @@ function getDhakaMinuteOfDay(date: Date) {
 }
 
 /**
- * Determines whether a departure time falls
- * inside one of the configured Dhaka peak-hour windows.
+ * Whether a departure falls inside one of a country's peak-hour windows.
+ *
+ * The country is required rather than defaulted. This used to be
+ * `isDhakaPeakHour(date)`, applied to every trip in every country — so a
+ * London departure was judged against Dhaka's clock, surcharged on Dhaka's
+ * rush hours and given a free pass on Friday. A default here would let that
+ * bug back in the moment a new caller forgot the argument.
  */
-export function isDhakaPeakHour(
-  date: Date
-): boolean {
-  const {
-    minuteOfDay,
-    weekdayIndex,
-  } = getDhakaMinuteOfDay(date);
+export function isPeakHour(date: Date, country: CountryCode): boolean {
+  const { timeZone, peakWindows, nonPeakWeekdays } = getCountryConfig(country);
+  const { minuteOfDay, weekdayIndex } = getLocalTimeParts(date, timeZone);
 
-  // Friday is considered non-peak.
-  if (
-    weekdayIndex ===
-    DHAKA_NON_PEAK_WEEKDAY
-  ) {
+  if (nonPeakWeekdays.includes(weekdayIndex)) {
     return false;
   }
 
-  return DHAKA_PEAK_WINDOWS.some(
+  return peakWindows.some(
     (window) =>
       minuteOfDay >= window.startMinute &&
       minuteOfDay <= window.endMinute
@@ -581,7 +569,8 @@ export async function fetchLiveTrafficForLegs(
  */
 export async function getTrafficForTrip(
   points: TrafficPoint[],
-  departure: DepartureOptions
+  departure: DepartureOptions,
+  country: CountryCode
 ): Promise<TripTrafficResult> {
   /*
    * Determine actual departure date.
@@ -651,10 +640,12 @@ export async function getTrafficForTrip(
     departureTime:
       departureDate.toISOString(),
 
-    isPeakHour:
-      isDhakaPeakHour(
-        departureDate
-      ),
+    isPeakHour: isPeakHour(
+      departureDate,
+      country
+    ),
+
+    country,
 
     legs,
 

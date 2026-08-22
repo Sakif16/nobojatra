@@ -2,7 +2,7 @@
 //
 // Each is a pure function of (condition, context) — no I/O — so the thresholds
 // and messages can be reasoned about and tested without touching a provider.
-import { formatFare } from "@/lib/country-config";
+import { COUNTRY_CONFIG, formatFare } from "@/lib/country-config";
 import { TRAFFIC_LEVEL_LABELS } from "@/lib/routing";
 import type { TrafficLevel } from "@/models/SavedTrip";
 import type {
@@ -90,7 +90,9 @@ const evaluateTrafficLevel: ConditionEvaluator = (
     message:
       `Congestion is ${current} (${Math.round(context.traffic.totals.congestionIndexPercent)}% over free-flow)` +
       (delayMin > 0 ? `, about ${delayMin} min slower than usual.` : ".") +
-      (context.traffic.isPeakHour ? " Departure falls in Dhaka peak hours." : ""),
+      (context.traffic.isPeakHour
+        ? ` Departure falls in ${COUNTRY_CONFIG[context.traffic.country].label} peak hours.`
+        : ""),
     thresholdLabel: `traffic at ${target} or worse`,
   };
 };

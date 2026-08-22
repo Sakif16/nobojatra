@@ -332,13 +332,16 @@ function sampleTrafficPoints(coords: LatLngTuple[]): TrafficPoint[] | null {
 async function getFareTraffic(
   coords: LatLngTuple[],
   departure: DepartureOptions,
+  // The trip's own country, not the profile's: peak-hour windows belong to
+  // where the trip was planned, and its fare is denominated there too.
+  country: CountryCode,
 ): Promise<{ traffic: TripTrafficResult | null; trafficUnavailable: boolean }> {
   const points = sampleTrafficPoints(coords);
 
   if (!points) return { traffic: null, trafficUnavailable: true };
 
   try {
-    const traffic = await getTrafficForTrip(points, departure);
+    const traffic = await getTrafficForTrip(points, departure, country);
     return { traffic, trafficUnavailable: false };
   } catch (error) {
     if (error instanceof TrafficServiceError) {
@@ -437,7 +440,7 @@ export async function POST(req: NextRequest) {
   const [{ weather, weatherUnavailable }, { traffic, trafficUnavailable }] =
     await Promise.all([
       getFareWeather(routeMidpoint, country),
-      getFareTraffic(routeCoords, getDepartureOptions(trip)),
+      getFareTraffic(routeCoords, getDepartureOptions(trip), country),
     ]);
   const rates = (await VehicleRate.find({
     country,

@@ -108,12 +108,15 @@ export async function buildEvaluationContext(
   }
 
   const departure = toDepartureOptions(trip);
+  // Snapshotted on the trip at creation, so an evaluation keeps using the
+  // country the trip was planned in even after the user switches profile.
+  const tripCountry = resolveCountry(trip.country);
   const trafficPoints = getTrafficPoints(best.coords);
   const midpoint = getMidpoint(best.coords) ?? trip.origin;
 
   const [traffic, weather, rate] = await Promise.all([
     trafficPoints
-      ? getTrafficForTrip(trafficPoints, departure).catch((error: unknown) => {
+      ? getTrafficForTrip(trafficPoints, departure, tripCountry).catch((error: unknown) => {
           notes.push(
             `Traffic unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
           );
@@ -183,7 +186,7 @@ export async function buildEvaluationContext(
   return {
     context: {
       tripName: trip.name,
-      country: resolveCountry(trip.country),
+      country: tripCountry,
       distanceKm: best.distanceKm,
       durationMin: best.durationMin,
       weather,

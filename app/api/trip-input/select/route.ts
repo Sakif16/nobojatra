@@ -305,7 +305,11 @@ export async function POST(req: NextRequest) {
   const trafficPoints = sampleTrafficPoints(routeCoords);
   if (trafficPoints) {
     try {
-      const result = await getTrafficForTrip(trafficPoints, getDepartureOptions(trip));
+      const result = await getTrafficForTrip(
+        trafficPoints,
+        getDepartureOptions(trip),
+        country,
+      );
       traffic = {
         congestionIndexPercent: result.totals.congestionIndexPercent,
         congestionLevel: result.totals.congestionLevel,

@@ -7,6 +7,7 @@ import {
   type TripTrafficResult,
 } from "@/lib/routing";
 import { AlertTriangle, Clock3, Gauge } from "lucide-react";
+import { COUNTRY_CONFIG } from "@/lib/country-config";
 
 type Props = {
   routes: RouteResult[];
@@ -214,7 +215,8 @@ function TrafficSummary({
       </div>
       {traffic.isPeakHour && (
         <p className="mt-2 text-xs font-medium text-orange-700">
-          Planned departure falls in a Dhaka peak-hour window.
+          Planned departure falls in a{" "}
+          {COUNTRY_CONFIG[traffic.country].label} peak-hour window.
         </p>
       )}
     </div>
