@@ -1,84 +1,96 @@
 # NoboJatra
 
-NoboJatra is a Next.js travel planner app with Better Auth, MongoDB, route/traffic APIs, and password reset emails through Resend.
+## Intro
+A smart travel-planning web app for comparing routes, estimating fares, checking live conditions, and saving repeat journeys — all in one place.
 
-## Setup
+---
 
-Install dependencies, then run the dev server:
+## Description
+NoboJatra is a full-stack travel planning application built for everyday commuters who want a simpler way to choose the best route for their trip. Users can search from one place to another, compare route options, review traffic and weather conditions, estimate fares for different transport modes, and revisit saved trips whenever needed.
 
+The app combines route intelligence, fare estimation, map visualization, and trip history into a single experience that helps users make faster and more informed travel decisions.
+
+### What you can do:
+- Sign up and sign in with email and password
+- Search for trips between locations with route suggestions
+- Compare multiple route options based on travel time and practicality
+- View route details on a map and inspect trip segments
+- Estimate fares across supported transport providers and vehicle types
+- Check weather-aware fare restrictions and route conditions
+- Save frequently used locations and repeat journeys
+- Manage scheduled trips and trip history
+- View upcoming trips and travel summaries on the dashboard
+- Explore live camera feeds for route monitoring
+- Review best option rankings based on travel and fare factors
+
+---
+
+## Tech Stack
+- **Next.js** (App Router)
+- **TypeScript**
+- **Tailwind CSS**
+- **BetterAuth** (authentication & session management)
+- **MongoDB** (database)
+- **Mongoose** (schemas & models)
+- **OpenRouteService** (routing data)
+- **OpenWeatherMap** (weather-aware fare logic)
+- **Resend** (password reset emails)
+
+---
+
+## Contributions
+Contributions are welcome!
+
+### You can contribute by:
+- Reporting bugs or issues
+- Suggesting new features or improvements
+- Refactoring code for better performance or readability
+- Improving the UI or making it more responsive
+- Enhancing documentation and onboarding
+
+### How to contribute:
+
+### 1) Fork the repository
+
+### 2) Clone your fork
 ```bash
-pnpm install
-pnpm dev
+git clone https://github.com/YOUR_USERNAME/nobojatra.git
 ```
 
-If package managers are not available but `node_modules` already exists:
-
+### 3) Create a new branch
 ```bash
-./node_modules/.bin/next dev
+git checkout -b feature-name
 ```
 
-Open `http://localhost:3000`.
-
-## Environment
-
-Create/update `.env` with:
-
-```env
-MONGODB_URI=your_mongodb_connection_string
-BETTER_AUTH_SECRET=your_auth_secret
-BETTER_AUTH_URL=http://localhost:3000
-RESEND_API_KEY=your_resend_api_key
-RESEND_FROM_EMAIL=NoboJatra <your_verified_sender@yourdomain.com>
-ORS_API_KEY=your_openrouteservice_api_key
-PATHAO_FARE_API=https://pathao-fare-api.onrender.com
-OPENWEATHER_API_KEY=your_openweather_api_key
-OPENWEATHER_BASE_URL=https://api.openweathermap.org/data/2.5
-```
-
-`RESEND_FROM_EMAIL` must be a sender/domain verified in Resend. For quick Resend sandbox testing, `NoboJatra <onboarding@resend.dev>` can work only with Resend's allowed test-recipient rules.
-
-`ORS_API_KEY` is used only by backend route APIs. Do not expose it as `NEXT_PUBLIC_ORS_API_KEY`.
-
-`OPENWEATHER_API_KEY` is used only by backend weather/fare APIs. Do not expose it as `NEXT_PUBLIC_OPENWEATHER_API_KEY`.
-
-`PATHAO_FARE_API` is the base URL of the Pathao fare-estimate service used by `/api/fares` and `/api/best-options`. It is optional: all fare maths lives in `lib/fare-providers.ts`, and when the service is unset, unreachable, slow (6s timeout), or answers with anything unusable, that vehicle falls back to its seeded `VehicleRate` rate card. Fallback estimates are returned with `fareSource: "rate_card"` and a `fareSourceNote`, so a provider outage degrades the two Pathao cards instead of removing them or failing the request.
-
-Weather data is an enhancement for fare restrictions. If OpenWeatherMap is unavailable or the key is missing, fare estimates should still render without weather restrictions.
-
-## Testing Password Reset Email
-
-1. Start the app:
-
+### 4) Make your changes and commit
 ```bash
-pnpm dev
+git commit -m "Add: your feature description"
 ```
 
-If package managers are not available but `node_modules` exists:
-
+### 5) Push to your fork
 ```bash
-./node_modules/.bin/next dev
+git push origin feature-name
 ```
 
-2. Open `http://localhost:3000/forgot-password`.
-3. Enter the email of an existing account.
-4. Check the inbox for the Resend email.
-5. Open the reset link and set a new password.
+### 6) Open a Pull Request on GitHub
 
-The reset link expires after 1 hour. New passwords must be at least 8 characters and include at least one number.
+---
 
-## Auth Features
+## ⚠️ Known Issues
+- Some route and fare features depend on external APIs being available
+- Weather and traffic data may fall back gracefully when providers are unavailable
+- Map-driven experiences are best validated with a configured environment and provider keys
+- Large route requests may be rate-limited depending on usage
 
-- Email/password signup and signin
-- Server-side duplicate email error
-- Password rule: at least 8 characters and at least one number
-- Forgot password flow at `/forgot-password`
-- Reset password flow at `/reset-password`
-- One-hour reset tokens
-- Existing sessions are revoked after password reset
+---
 
-## Checks
+## Future Development
+- Better route comparison filters and smarter ranking logic
+- More detailed trip analytics and monthly travel summaries
+- Improved saved trip management and automated trip reminders
+- Expanded live traffic and camera integrations
+- Additional fare providers and region coverage
+- Better loading, empty, and error states across the app
+- Mobile-first polish and more accessible interaction design
+- Exporting trip history and fare summaries for users
 
-```bash
-./node_modules/.bin/eslint
-./node_modules/.bin/next build
-```
