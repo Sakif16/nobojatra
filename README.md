@@ -94,3 +94,5 @@ git push origin feature-name
 - Mobile-first polish and more accessible interaction design
 - Exporting trip history and fare summaries for users
 
+### Fun fact
+The app was named after Bangladesh's only naval submarine unit "BNS Nobojatra"
