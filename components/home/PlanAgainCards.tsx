@@ -66,10 +66,13 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
                   scheduledAt: null,
                 })
               }
-              className="group flex flex-col items-start gap-1.5 rounded-2xl border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted"
+              // min-w-0: a grid item's automatic minimum size is its
+              // min-content width, so without this a long address label widens
+              // its column past the viewport instead of being truncated.
+              className="group flex min-w-0 flex-col items-start gap-1.5 rounded-2xl border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted"
             >
-              <div className="flex w-full items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
+              <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
                   {trip.origin.label}
                 </span>
                 <ArrowRight className="size-3.5 flex-shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />

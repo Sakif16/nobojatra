@@ -219,7 +219,10 @@ export default function SavedTripsManager({
               <h3 className="truncate text-sm font-semibold text-foreground">
                 {trip.name}
               </h3>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {/* Two lines rather than one truncated one: on a phone the
+                  column is narrow enough that truncating cuts the route off
+                  inside the origin, never reaching the destination. */}
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                 {trip.origin.label} → {trip.destination.label}
               </p>
             </div>

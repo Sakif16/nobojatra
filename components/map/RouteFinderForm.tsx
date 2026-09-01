@@ -469,16 +469,22 @@ export default function RouteFinderForm({
           </button>
         </div>
 
+        {/* Each row wraps on narrow screens: the search field, the wait stepper
+            and the reorder controls together exceed a phone's width, so the
+            controls drop to a second line rather than squeezing the field to
+            nothing. min-w-0 on the field wrapper is what lets it shrink at all
+            — an input has an intrinsic width that would otherwise hold the row
+            open. */}
         <div className="space-y-2">
           {stops.map((stop, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 rounded-xl border border-input bg-secondary/40 px-3 py-2"
+              className="flex flex-wrap items-center gap-2 rounded-xl border border-input bg-secondary/40 px-3 py-2"
             >
               <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
                 {i + 1}
               </span>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1 basis-40">
                 <PlaceAutocomplete
                   placeholder={`Stop ${i + 1} - search place`}
                   value={stop.label}
@@ -487,48 +493,50 @@ export default function RouteFinderForm({
                   className="border-none bg-transparent px-0 py-0 focus:bg-transparent"
                 />
               </div>
-              <label className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-1 text-xs text-muted-foreground">
-                <span>Wait</span>
-                <input
-                  type="number"
-                  min={MIN_STOP_DWELL_MINUTES}
-                  max={MAX_STOP_DWELL_MINUTES}
-                  value={stop.dwellMinutes}
-                  onChange={(event) =>
-                    updateStopDwell(i, Number(event.target.value))
-                  }
-                  className="w-10 bg-transparent text-center text-foreground outline-none"
-                  aria-label={`Wait time at stop ${i + 1}`}
-                />
-                <span>min</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => removeStop(i)}
-                aria-label={`Remove stop ${i + 1}`}
-                className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <X size={16} />
-              </button>
-              <div className="flex flex-shrink-0 flex-col gap-1">
+              <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+                <label className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-1 text-xs text-muted-foreground">
+                  <span>Wait</span>
+                  <input
+                    type="number"
+                    min={MIN_STOP_DWELL_MINUTES}
+                    max={MAX_STOP_DWELL_MINUTES}
+                    value={stop.dwellMinutes}
+                    onChange={(event) =>
+                      updateStopDwell(i, Number(event.target.value))
+                    }
+                    className="w-10 bg-transparent text-center text-foreground outline-none"
+                    aria-label={`Wait time at stop ${i + 1}`}
+                  />
+                  <span>min</span>
+                </label>
                 <button
                   type="button"
-                  onClick={() => moveStop(i, -1)}
-                  disabled={i === 0}
-                  className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-                  aria-label={`Move stop ${i + 1} up`}
+                  onClick={() => removeStop(i)}
+                  aria-label={`Remove stop ${i + 1}`}
+                  className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <ArrowUp size={14} />
+                  <X size={16} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => moveStop(i, 1)}
-                  disabled={i === stops.length - 1}
-                  className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-                  aria-label={`Move stop ${i + 1} down`}
-                >
-                  <ArrowDown size={14} />
-                </button>
+                <div className="flex flex-shrink-0 flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveStop(i, -1)}
+                    disabled={i === 0}
+                    className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                    aria-label={`Move stop ${i + 1} up`}
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveStop(i, 1)}
+                    disabled={i === stops.length - 1}
+                    className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                    aria-label={`Move stop ${i + 1} down`}
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

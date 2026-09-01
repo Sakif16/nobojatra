@@ -441,7 +441,7 @@ export default function BestOptionsResults({
           </div>
 
           {/* Manual refresh — re-runs weather/traffic/scoring and updates the timestamp */}
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
             <button
               type="button"
               onClick={handleRefresh}
@@ -584,8 +584,11 @@ export default function BestOptionsResults({
                                 {ICONS[key] ?? "🚘"}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-medium text-foreground">
+                                {/* Wraps rather than truncating: on a phone the
+                                    tag squeezed longer names down to
+                                    "CNG Auto-ri…". */}
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="min-w-0 truncate text-sm font-medium text-foreground">
                                     {option.displayName}
                                   </span>
                                   {option.bestFor && (

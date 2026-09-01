@@ -28,47 +28,57 @@ export default function AuthedHome({
   return (
     <main className="flex-1">
       <div className="border-b border-border bg-card/60">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
-          <span className="font-semibold text-foreground">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-2 sm:px-6 lg:px-8">
+          <span className="truncate font-semibold text-foreground">
             Welcome back, {userName}
           </span>
           {upcomingCount > 0 ? (
             <Link
               href="/scheduled-trips"
-              className="inline-flex items-center gap-2 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 self-start rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <CalendarClock className="size-4" />
+              <CalendarClock className="size-4 shrink-0" />
               {upcomingLabel}
             </Link>
           ) : (
             <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CalendarClock className="size-4" />
+              <CalendarClock className="size-4 shrink-0" />
               {upcomingLabel}
             </span>
           )}
-          <div className="ml-auto flex items-center gap-5">
-            <CountrySwitcher />
-            <Link
-              href="/trip-history"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <History className="size-4" />
-              Trip History
-            </Link>
-            <Link
-              href="/live-cams"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <TrafficCone className="size-4" />
-              Live Traffic
-            </Link>
-            <Link
-              href="/saved-trips"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <BookmarkCheck className="size-4" />
-              Saved Trips
-            </Link>
+          {/* On a phone the switcher takes a line of its own and the three
+              links sit centred on the line below it — together they are wider
+              than the viewport, and forcing them onto one row put the whole
+              page into a horizontal scroll. From sm up they rejoin a single
+              right-aligned row. nowrap on each link keeps "Trip History" from
+              breaking in two. */}
+          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-5">
+            <CountrySwitcher className="self-start sm:self-auto" />
+            {/* gap-4 rather than gap-5: the three links come to ~290px, which
+                needs the tighter gap to stay on one line at 360px. */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-start sm:gap-5">
+              <Link
+                href="/trip-history"
+                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <History className="size-4" />
+                Trip History
+              </Link>
+              <Link
+                href="/live-cams"
+                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <TrafficCone className="size-4" />
+                Live Traffic
+              </Link>
+              <Link
+                href="/saved-trips"
+                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <BookmarkCheck className="size-4" />
+                Saved Trips
+              </Link>
+            </div>
           </div>
         </div>
       </div>
