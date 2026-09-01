@@ -20,8 +20,10 @@ export default function ProfileMenu({ userName }: { userName: string }) {
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
-        {userName}
+      {/* max-w + truncate: a long display name would otherwise push the bell
+          and the wordmark apart until the navbar overflowed a phone. */}
+      <Popover.Trigger className="inline-flex max-w-40 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+        <span className="truncate">{userName}</span>
         <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
       </Popover.Trigger>
 

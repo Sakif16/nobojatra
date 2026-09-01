@@ -45,7 +45,7 @@ export default async function Navbar() {
           NoboJatra
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Server component rendering a client child — the bell owns its own
               polling, so the navbar stays static. */}
           <NotificationBell />

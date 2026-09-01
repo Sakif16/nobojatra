@@ -112,8 +112,11 @@ export default function ImageLocationModal({ open, onClose, onConfirm }: Props) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+    // Scrolls rather than clipping: with a preview loaded the card is taller
+    // than a phone's viewport in landscape, and my-auto still centres it
+    // whenever there is room.
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-background/80 p-4 backdrop-blur-sm sm:items-center">
+      <div className="my-auto w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Identify location from a photo</h2>
           <button

@@ -215,9 +215,11 @@ export default function TripSummary({
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             {title}
           </h1>
-          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+          {/* Stacked on a phone: side by side, two long addresses truncate to
+              a few characters each and name neither place. */}
+          <p className="mt-2 flex min-w-0 flex-col text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-2">
             <span className="truncate">{trip.originLabel}</span>
-            <ArrowRight className="size-3.5 shrink-0" />
+            <ArrowRight className="my-0.5 size-3 shrink-0 rotate-90 sm:my-0 sm:size-3.5 sm:rotate-0" />
             <span className="truncate">{trip.destinationLabel}</span>
           </p>
         </div>

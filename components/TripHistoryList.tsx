@@ -80,13 +80,33 @@ function formatActivityMetrics(trip: RecentTrip) {
   return parts.join(' · ')
 }
 
+/**
+ * Origin → destination, stacked on a phone.
+ *
+ * Side by side, two long addresses each truncate to a handful of characters in
+ * a 400px row — "শ্যামলী… → BracU Regist…" names neither place. One per line
+ * gives each the full column, with the arrow turned to point down the stack.
+ */
+function RouteLine({ from, to }: { from: string; to: string }) {
+  return (
+    <p className="flex min-w-0 flex-col text-sm font-medium text-foreground sm:flex-row sm:items-center sm:gap-2">
+      <span className="truncate">{from}</span>
+      <ArrowRight className="my-0.5 size-3 shrink-0 rotate-90 text-muted-foreground sm:my-0 sm:size-3.5 sm:rotate-0" />
+      <span className="truncate">{to}</span>
+    </p>
+  )
+}
+
 function ActivityRows({ trips }: { trips: RecentTrip[] }) {
   return (
     <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
       {trips.map((trip) => (
+        // flex-wrap + a basis on the text column: the timestamp drops to its
+        // own line on a phone instead of squeezing the addresses, and stays
+        // inline on the right once there is room for it.
         <li
           key={trip.id}
-          className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
+          className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-4 transition-colors hover:bg-muted/50 sm:px-5"
         >
           <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-primary">
             {trip.departureMode === 'scheduled' ? (
@@ -96,18 +116,14 @@ function ActivityRows({ trips }: { trips: RecentTrip[] }) {
             )}
           </span>
 
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <span className="truncate">{trip.originLabel}</span>
-              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate">{trip.destinationLabel}</span>
-            </p>
+          <div className="min-w-0 flex-1 basis-40">
+            <RouteLine from={trip.originLabel} to={trip.destinationLabel} />
             <p className="mt-1 text-xs text-muted-foreground">
               {formatActivityMetrics(trip)}
             </p>
           </div>
 
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span className="shrink-0 text-xs text-muted-foreground max-sm:w-full max-sm:pl-13">
             {dateFormatter.format(new Date(trip.scheduledAt ?? trip.createdAt))}
           </span>
         </li>
@@ -310,14 +326,18 @@ export default function TripHistoryList({ activityData }: Props) {
         {/* Summary header */}
         {summary && summary.tripCount > 0 && (
           <div className="mb-6 rounded-2xl border border-border bg-card px-4 py-4">
-          <div className="grid grid-cols-3 gap-3 text-center">
+          {/* Two up on a phone, with the vehicle name given the full row
+              underneath — at three across its cell is too narrow to show more
+              than "Uber Pre…". order-last keeps the DOM order (and so the
+              three-across order) intact from sm up. */}
+          <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">Total cost</p>
               <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
                 {formatAmount(summary.totalCost, summary.costCountry)}
               </p>
             </div>
-            <div>
+            <div className="order-last col-span-2 sm:order-none sm:col-span-1">
               <p className="text-xs text-muted-foreground">Most-used vehicle</p>
               <p className="mt-0.5 truncate text-lg font-bold text-foreground">
                 {summary.mostUsedVehicle ?? '—'}
@@ -370,20 +390,17 @@ export default function TripHistoryList({ activityData }: Props) {
                 <li key={trip.id}>
                   <Link
                     href={`/trip-summary?tripHistoryId=${trip.id}&source=history`}
-                    className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-4 transition-colors hover:bg-muted/50 sm:px-5"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
                       {ICONS[key] ?? '🚘'}
                     </span>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                        <span className="truncate">{trip.originLabel}</span>
-                        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{trip.destinationLabel}</span>
-                      </p>
-                      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <CalendarClock className="size-3" aria-hidden />
+                    <div className="min-w-0 flex-1 basis-40">
+                      <RouteLine from={trip.originLabel} to={trip.destinationLabel} />
+                      {/* Wraps: date, vehicle and distance run past one line on a phone */}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                        <CalendarClock className="size-3 shrink-0" aria-hidden />
                         {dateFormatter.format(new Date(trip.selectedAt ?? trip.createdAt))}
                         {trip.vehicleDisplayName && <span>· {trip.vehicleDisplayName}</span>}
                         {trip.distanceKm != null && <span>· {trip.distanceKm} km</span>}
