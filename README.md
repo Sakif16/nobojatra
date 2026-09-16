@@ -10,6 +10,13 @@ NoboJatra is a full-stack travel planning application built for everyday commute
 
 The app combines route intelligence, fare estimation, map visualization, and trip history into a single experience that helps users make faster and more informed travel decisions.
 
+---
+
+## Website-
+Live at: https://nobojatra.onrender.com
+
+---
+
 ### What you can do:
 - Sign up and sign in with email and password
 - Search for trips between locations with route suggestions
