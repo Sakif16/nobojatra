@@ -1,0 +1,66 @@
+
+/Users/orghodas/Documents/workstuff/nobojatra/app/(main)/page.tsx
+  10:1  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/orghodas/Documents/workstuff/nobojatra/app/api/camera/route.ts
+  4:1  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/orghodas/Documents/workstuff/nobojatra/app/api/places/[userId]/route.ts
+  4:1  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/orghodas/Documents/workstuff/nobojatra/app/api/places/route.ts
+  4:1  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/orghodas/Documents/workstuff/nobojatra/components/map/ImageLocationModal.tsx
+  39:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/orghodas/Documents/workstuff/nobojatra/components/map/ImageLocationModal.tsx:39:5
+  37 |   useEffect(() => {
+  38 |     if (!open) return;
+> 39 |     setPreviewUrl(null);
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  40 |     setStatus("idle");
+  41 |     setTopPrediction(null);
+  42 |     setErrorMessage(null);  react-hooks/set-state-in-effect
+
+/Users/orghodas/Documents/workstuff/nobojatra/components/map/MapDashboardSection.tsx
+  273:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/orghodas/Documents/workstuff/nobojatra/components/map/MapDashboardSection.tsx:273:5
+  271 |     if (!planAgainTrip) return;
+  272 |
+> 273 |     setRestoredTrip(planAgainTrip);
+      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  274 |     void findRoutes(planAgainTrip);
+  275 |     onPlanAgainHandled?.();
+  276 |     // eslint-disable-next-line react-hooks/exhaustive-deps  react-hooks/set-state-in-effect
+
+/Users/orghodas/Documents/workstuff/nobojatra/lib/traffic-service.ts
+  440:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/orghodas/Documents/workstuff/nobojatra/models/Camera.ts
+  1:8  warning  'mongoose' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/orghodas/Documents/workstuff/nobojatra/models/Map_route.ts
+  1:8  warning  'mongoose' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/orghodas/Documents/workstuff/nobojatra/models/Place.ts
+  1:8  warning  'mongoose' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/orghodas/Documents/workstuff/nobojatra/models/TrafficData.ts
+  1:8  warning  'mongoose' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 11 problems (7 errors, 4 warnings)
+

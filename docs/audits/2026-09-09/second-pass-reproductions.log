@@ -1,0 +1,8 @@
+Cross-user route cache label reuse {"secondUserInput":"B public meeting point","returnedLegLabel":"A private appointment label","persistedLegLabel":"A private appointment label","cache":"HIT","syntheticProviderCalls":1}
+Weather clears then returns as severe in same hour [{"time":"10:00","score":4,"alertsCreated":1,"lastState":true},{"time":"10:15","score":1,"alertsCreated":0,"lastState":false},{"time":"10:30","score":8,"alertsCreated":0,"lastState":true},{"time":"11:00","score":8,"alertsCreated":0,"lastState":true}]
+Fare changes from 20 percent below to 20 percent above baseline [{"time":"12:00","mid":80,"alertsCreated":1,"lastState":true},{"time":"13:00","mid":120,"alertsCreated":0,"lastState":true}]
+Alert visibility has no resolution or validity cutoff {"readAt":null,"$or":[{"snoozedUntil":null},{"snoozedUntil":{"$lte":"2026-09-09T13:00:00.000Z"}}]}
+All conditions disabled still builds provider context {"contextBuilds":1,"conditionsEvaluated":0}
+Expired saved departure remains a scheduled provider input {"mode":"scheduled","scheduledAt":"2026-09-08T10:00:00.000Z"}
+Timestamp-only notification cursor drops tied row {"totalFixtures":21,"firstPage":20,"hasMore":true,"secondPage":0}
+Diagnostic checks "All expected current-source behaviors reproduced; no fixes applied."
