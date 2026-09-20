@@ -1,0 +1,9 @@
+Stored Date schedule app/api/fares/route.ts {"mode":"now"}
+Stored Date schedule app/api/best-options/route.ts {"mode":"now"}
+Stored Date schedule app/api/trip-input/select/route.ts {"mode":"now"}
+null validation {"exception":"TypeError"}
+Toronto accepted by US rectangular service area true
+Round trip A-B-A {"success":false,"errors":{"destination":"Origin and destination cannot be the same."}}
+Distinct geometries same rounded metrics {"input":2,"output":1}
+30 mm/hour rain model {"severityScore":5,"severityBand":"moderate","weatherRestricted":true,"weatherBlocked":false,"restrictionReason":"Rain, wind, or low visibility may affect two-wheelers."}
+Missing weather and traffic modeled as low [{"provider":"uber","vehicleType":"go","displayName":"Example car","maxPassengers":4,"comfortScore":4,"eligible":true,"weatherBlocked":false,"weatherRestricted":false,"restrictionReason":null,"fare":{"low":90,"mid":100,"high":110},"fareSource":"rate_card","fareSourceNote":null,"fareAdjustment":null,"adjustedDurationMin":30,"riskBand":"low","score":1,"bestFor":"Speed","pros":["Cheapest option","Fastest in current traffic","Most comfortable option"],"cons":["Higher cost than alternatives"]}]

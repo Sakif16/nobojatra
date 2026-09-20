@@ -1,0 +1,72 @@
+$ next build
+▲ Next.js 16.2.9 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 5.3s
+  Running TypeScript ...
+  Finished TypeScript in 3.4s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/40) ...
+  Generating static pages using 9 workers (10/40) 
+  Generating static pages using 9 workers (20/40) 
+  Generating static pages using 9 workers (30/40) 
+✓ Generating static pages using 9 workers (40/40) in 134ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /api/alerts
+├ ƒ /api/alerts/[alertId]
+├ ƒ /api/alerts/count
+├ ƒ /api/alerts/evaluate
+├ ƒ /api/alerts/read-all
+├ ƒ /api/auth/[...all]
+├ ƒ /api/best-options
+├ ƒ /api/camera
+├ ƒ /api/fares
+├ ƒ /api/map_routes
+├ ƒ /api/map_routes/[routeId]
+├ ƒ /api/map_routes/[routeId]/bounds
+├ ƒ /api/places
+├ ƒ /api/places/[userId]
+├ ƒ /api/profile
+├ ƒ /api/saved-trips
+├ ƒ /api/saved-trips/[savedTripId]
+├ ƒ /api/saved-trips/[savedTripId]/conditions
+├ ƒ /api/saved-trips/[savedTripId]/conditions/[conditionId]
+├ ƒ /api/test-mongo
+├ ƒ /api/tiles/tomtom/[z]/[x]/[y]
+├ ƒ /api/traffic
+├ ƒ /api/traffic/[routeId]
+├ ƒ /api/traffic/[routeId]/peak-hours
+├ ƒ /api/traffic/batch
+├ ƒ /api/traffic/live
+├ ƒ /api/trip-input/autocomplete
+├ ƒ /api/trip-input/current-location
+├ ƒ /api/trip-input/history
+├ ƒ /api/trip-input/history/[tripHistoryId]
+├ ƒ /api/trip-input/routes
+├ ƒ /api/trip-input/select
+├ ƒ /api/trip-input/validate
+├ ○ /apple-icon.png
+├ ƒ /best-options
+├ ƒ /dashboard
+├ ƒ /fares
+├ ○ /forgot-password
+├ ○ /icon.png
+├ ƒ /live-cams
+├ ƒ /profile
+├ ƒ /reset-password
+├ ƒ /saved-trips
+├ ƒ /scheduled-trips
+├ ○ /signin
+├ ○ /signup
+├ ƒ /trip-history
+└ ƒ /trip-summary
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
