@@ -41,7 +41,56 @@ Live at: https://nobojatra.onrender.com
 - **Mongoose** (schemas & models)
 - **OpenRouteService** (routing data)
 - **OpenWeatherMap** (weather-aware fare logic)
+- **TomTom** (live traffic delays and traffic map overlay)
+- **Nominatim / OpenStreetMap** (place search and map tiles)
+- **Leaflet** (maps)
 - **Resend** (password reset emails)
+
+---
+
+## Local Setup
+
+### Requirements
+- Node.js 20.9 or later (developed on Node 24)
+- pnpm
+- A MongoDB database (for example, a free MongoDB Atlas cluster)
+
+### 1) Install dependencies
+```bash
+pnpm install
+```
+
+### 2) Create your `.env`
+Copy `.env.example` to `.env` and fill in the values:
+
+| Variable | Required | What it's for |
+|---|---|---|
+| `MONGODB_URI` | Yes | MongoDB connection string |
+| `MONGODB_DB` | No | Database for app and auth data. Defaults to `nobojatra`. Changing it on an existing database hides every existing account |
+| `BETTER_AUTH_SECRET` | Yes | Random string used to sign sessions (for example `openssl rand -base64 32`) |
+| `BETTER_AUTH_URL` | Yes | The app's URL, for example `http://localhost:3000` |
+| `ORS_API_KEY` | Yes | OpenRouteService key for route search |
+| `OPENWEATHER_API_KEY` | Recommended | Weather conditions and weather-based fare rules |
+| `TOMTOM_API_KEY` | Optional | Live traffic. Without it, traffic is unavailable |
+| `RESEND_API_KEY` | Optional | Sending password reset emails |
+| `RESEND_FROM_EMAIL` | Optional | Sender address. Must be on a domain verified in Resend (see Known Issues) |
+| `PATHAO_FARE_API` | Optional | Live fare quotes. Without it, fares come from the built-in rate card |
+| `ALERT_EVALUATION_SECRET` | Optional | Protects the scheduled alert-check endpoint |
+| `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Include a contact email |
+| `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search |
+
+Never commit `.env` or put a real key in the code. A secret scan runs on every pull request and on every push to `main`.
+
+### 3) Seed the fare rates
+```bash
+pnpm seed:rates
+```
+
+### 4) Start the app
+```bash
+pnpm dev
+```
+Then open http://localhost:3000.
 
 ---
 
@@ -89,6 +138,7 @@ git push origin feature-name
 - Map-driven experiences are best validated with a configured environment and provider keys
 - Large route requests may be rate-limited depending on usage
 - Password reset emails are only delivered to the Resend account owner's address. The app sends from Resend's testing sender, because this is a demo without a verified email domain. For any other address the page reports success, but no email is sent.
+- TomTom has no live traffic data for Bangladesh, so in Dhaka the traffic overlay is blank and traffic delays show as zero. Traffic works in cities TomTom covers, such as London.
 
 ---
 

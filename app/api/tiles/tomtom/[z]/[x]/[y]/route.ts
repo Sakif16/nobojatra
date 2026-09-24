@@ -28,7 +28,9 @@ export async function GET(
     );
   }
 
-  const tileUrl = `https://api.tomtom.com/maps/orbis/traffic/tile/flow/${z}/${x}/${y}.png?apiVersion=1&key=${apiKey}&style=light&tileSize=512`;
+  // 256 matches Leaflet's default grid. A 512 tile covers the same area, so
+  // Leaflet would squeeze it into a 256 slot: 2.5x the bytes, half-width lines.
+  const tileUrl = `https://api.tomtom.com/maps/orbis/traffic/tile/flow/${z}/${x}/${y}.png?apiVersion=1&key=${apiKey}&style=light&tileSize=256`;
 
   let response: Response;
   try {
