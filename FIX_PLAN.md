@@ -7,7 +7,7 @@
 This plan turns every **issue and caveat** in the assessment into a fix step. It covers:
 
 - the G-series defects (G01–G38);
-- the C-series configuration and auth findings (C01–C11);
+- the C-series configuration and auth findings (C01–C10; C11 is out of scope for this demo project);
 - the P-series finish issues (P01–P14);
 - the R-series refinements (R01–R30);
 - the verification checks and product decisions that the fixes depend on.
@@ -60,9 +60,8 @@ These are suggested groupings, not commitments.
 | Step | Assessment IDs | Issue | Severity | Depends on |
 |---|---|---|---|---|
 | **Tier 0 — verify and decide** | | | | |
-| 0.2 | C11 | Whether password-reset email is delivered is unknown | P1 | — |
-| 0.3 | G24 | Which database holds auth data is unknown | P1 | — |
-| 0.4 | G01, R20 | Whether anyone still uses the legacy endpoints is unknown | P0 | — |
+| 0.3 | G24 | Which database holds auth data is unknown (done: `nobojatra`) | P1 | — |
+| 0.4 | G01, R20 | Whether anyone still uses the legacy endpoints is unknown (done: none) | P0 | — |
 | 0.5 | G03 | Rotation of the key leaked in `2f57aca` is unconfirmed | P0 | — |
 | 0.6 | R26 | Whether map tiles are fetched at the wrong size is unconfirmed | — | — |
 | 0.7 | C05, C07, G02, G05, G07, G09, G10, G17, P12 | Product decisions that gate fixes | — | — |
@@ -81,7 +80,6 @@ These are suggested groupings, not commitments.
 | 1.12 | G21 | Password digit rule skips `/change-password` | P1 | — |
 | 1.13 | G13 | Distinct routes discarded on matching rounded metrics | P1 | — |
 | 1.14 | G27 | Model load failure is cached; photo search offered outside Bangladesh | P2 | — |
-| 1.15 | C11 | Resend calls have no timeout | P1 | — |
 | 1.16 | Section 22.1 | Secret comparison leaks length; comment wrong | — | — |
 | 1.17 | R01, G25 | Older search responses overwrite newer ones | P1 | — |
 | 1.18 | R04 | Stops keyed by array index | — | — |
@@ -98,10 +96,10 @@ These are suggested groupings, not commitments.
 | 1.29 | P12 | Scaffolding assets, no robots file, weekend pricing value | — | 0.7 |
 | **Tier 2 — small** | | | | |
 | 2.1 | G30 | Shared route cache leaks one user's labels to another | P0 | — |
-| 2.2 | G01, R20 | Unprotected legacy APIs and collections | P0 | 0.4 |
+| 2.2 | G01, R20 | Unprotected legacy APIs and collections (routes removed; models and collections remain) | P0 | 0.4 |
 | 2.3 | G38, G02, G19 | Public geocoding and tile proxies; reverse geocoding unlimited | P1 | 2.19 |
-| 2.5 | C02, C11, G24 | No startup environment validation | P1 | 0.2 |
-| 2.6 | G24 | Auth database name implicit | P1 | 0.3 |
+| 2.5 | C02, G24 | No startup environment validation | P1 | — |
+| 2.6 | G24 | Auth database name implicit (done) | P1 | 0.3 |
 | 2.7 | G06 | Route change keeps a stale confirmed vehicle | P1 | — |
 | 2.8 | G16 | Fare alerts compare different calculations | P1 | — |
 | 2.9 | G33 | Disabled and expired conditions still cost provider calls | P1 | — |
@@ -176,20 +174,7 @@ These are suggested groupings, not commitments.
 
 These are the caveats the assessment could not settle from the repository. None needs code, but later steps depend on the answers.
 
-### 0.2 · C11 — Confirm password-reset email is delivered · P1
-
-**Issue.** If `RESEND_FROM_EMAIL` is unset, reset emails come from Resend's shared testing sender, which only delivers to the Resend account owner. Better Auth hides the failure and still reports success.
-
-**Approach.**
-- Check `RESEND_FROM_EMAIL` in the production environment, and the sender domain's verification status in Resend.
-- Request a reset for an address outside the team and confirm it arrives.
-- Check production logs for "Failed to run background task".
-
-**Acceptance criteria.**
-- [ ] A reset email reaches an external address.
-- [ ] If it does not, step 2.5 is treated as urgent and the sender is fixed the same day.
-
-### 0.3 · G24 — Confirm which database holds auth data · P1
+### 0.3 · G24 — Confirm which database holds auth data · P1 (done)
 
 **Issue.** `authMongoClient.db()` takes the database name from `MONGODB_URI`. If the URI has no path, the driver uses `test`, while Mongoose writes to `MONGODB_DB` or `nobojatra`.
 
@@ -197,11 +182,20 @@ These are the caveats the assessment could not settle from the repository. None 
 - Check whether the production `MONGODB_URI` has a database path.
 - In Atlas, list the databases that contain the `user`, `session`, `account` and `verification` collections.
 
-**Acceptance criteria.**
-- [ ] The database that holds production auth data is recorded for step 2.6.
-- [ ] Nobody changes the database name before step 2.6. Changing it without a migration would orphan every account.
+**Result (24 September 2026).** The local `MONGODB_URI` has the path `/nobojatra`, so auth data and app data share one database. The cluster holds:
 
-### 0.4 · G01, R20 — Confirm nobody uses the legacy endpoints, and export their data · P0
+| Database | `user` | `session` | `account` | `verification` |
+|---|---|---|---|---|
+| `nobojatra` | 12 | 30 | 13 | 2 |
+| `test` | 1 | 0 | 1 | — |
+
+The single user in `test` is left over from early development, when the URI had no path. Still to confirm: that the `MONGODB_URI` on Render points at the same cluster (`main.zutwim7`) with the `/nobojatra` path.
+
+**Acceptance criteria.**
+- [x] The database that holds production auth data is recorded for step 2.6.
+- [x] Nobody changes the database name before step 2.6. Changing it without a migration would orphan every account.
+
+### 0.4 · G01, R20 — Confirm nobody uses the legacy endpoints, and export their data · P0 (done)
 
 **Issue.** Nine unauthenticated legacy handlers read and write `places`, map routes, traffic readings and cameras. No code in the repository calls them, but an external script or old client might.
 
@@ -209,9 +203,22 @@ These are the caveats the assessment could not settle from the repository. None 
 - Search Render request logs for the last 30 days for `/api/places`, `/api/map_routes`, `/api/traffic` (excluding `/api/traffic/live`), `/api/camera` and `/api/test-mongo`.
 - List the actual collection names with `db.getCollectionNames()`, count documents in each, and export them to backup storage.
 
+**Result (24 September 2026).**
+- No code in the repository or its git history calls the legacy routes. The only remaining caller of `/api/traffic*` is [lib/routing.ts](lib/routing.ts), which uses `/api/traffic/live`.
+- Every legacy document was created on 15 July 2026, between 11:41 and 16:58 UTC, and nothing has been written since. This looks like one afternoon of manual testing.
+- The app was tested by hand before the routes were removed.
+- The legacy collections were exported as Extended JSON to `nobojatra-backups/legacy-2026-09-24/`, outside the repository:
+
+| Collection | Documents |
+|---|---|
+| `places` | 1 |
+| `map_routes` | 3 |
+| `trafficdatas` | 3 |
+| `cameras` | 1 |
+
 **Acceptance criteria.**
-- [ ] Every legacy route's consumers are listed, or confirmed as none.
-- [ ] An export of each legacy collection exists, with document counts recorded.
+- [x] Every legacy route's consumers are listed, or confirmed as none.
+- [x] An export of each legacy collection exists, with document counts recorded.
 
 ### 0.5 · G03 — Confirm the leaked TomTom key was revoked · P0
 
@@ -446,15 +453,6 @@ The full schema work is step 3.4.
 - [ ] A 20 MB file shows a size error.
 - [ ] No camera button appears in US or UK mode.
 
-### 1.15 · C11 — Add timeouts to the Resend calls · P1
-
-**Issue.** Both email functions in [lib/auth.ts](lib/auth.ts) call Resend with no timeout, and Better Auth awaits the call.
-
-**Approach.** Add `signal: AbortSignal.timeout(8000)` to both fetches, and merge the two near-identical functions into one `sendEmail` helper. The startup check for the sender is step 2.5.
-
-**Acceptance criteria.**
-- [ ] With Resend unreachable, a reset request returns within about 10 seconds and the failure is logged.
-
 ### 1.16 · Section 22.1 — Compare the evaluation secret properly · —
 
 **Issue.** [app/api/alerts/evaluate/route.ts:25-34](app/api/alerts/evaluate/route.ts#L25-L34) returns early on a length mismatch, which reveals the secret's length, while the comment claims the opposite. The risk is small for a long random secret.
@@ -667,9 +665,14 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
 - Delete `models/Place.ts`, `Map_route.ts`, `TrafficData.ts` and `Camera.ts`. Remove the unused `ref: "Map_route"` fields from `TripHistory` and `Alert`.
 - In [lib/account-cleanup.ts](lib/account-cleanup.ts), delete legacy rows by raw collection name, using the names found in 0.4. Alternatively, drop the collections once the export is confirmed and remove those steps.
 
+**Progress (24 September 2026).** The 11 route files are deleted, and `pnpm build` passes. Against the built app, every deleted path returns 404 to anonymous `GET` and `POST` calls, and `/api/traffic/live` returns 401 to anonymous callers. No `/api/health` was added. Still to do:
+- delete the four models;
+- rework [lib/account-cleanup.ts](lib/account-cleanup.ts), which still imports `Place`, `Map_route` and `TrafficData`;
+- drop the collections.
+
 **Acceptance criteria.**
-- [ ] Every deleted path returns 404 to anonymous and signed-in callers.
-- [ ] `/api/traffic/live` still works.
+- [x] Every deleted path returns 404 to anonymous callers. Signed-in callers were not tested.
+- [x] `/api/traffic/live` still works.
 - [ ] Account deletion still removes any remaining legacy rows (tested with disposable data).
 - [ ] Lint has no warnings from the removed models.
 
@@ -695,21 +698,17 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
 - [ ] A burst of 100 reverse-geocode calls produces at most 60 upstream requests a minute.
 - [ ] A stalled upstream returns within about 6 seconds.
 
-### 2.5 · C02, C11, G24 — Validate the environment at startup · P1
+### 2.5 · C02, G24 — Validate the environment at startup · P1
 
-**Depends on:** 0.2.
-
-**Issue.** Only `MONGODB_URI` is checked at startup. A missing sender, secret or provider key surfaces later as a silent degradation.
+**Issue.** Only `MONGODB_URI` is checked at startup. A missing secret or provider key surfaces later as a silent degradation.
 
 **Approach.**
 - Add `lib/env.ts`, called from `register()` in [instrumentation.ts](instrumentation.ts) for the Node runtime.
-- In production, fail startup when any of these is missing: `MONGODB_URI`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ORS_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `OPENWEATHER_API_KEY`.
+- In production, fail startup when any of these is missing: `MONGODB_URI`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `ORS_API_KEY`, `OPENWEATHER_API_KEY`.
 - Log one line for each missing optional variable, naming the degradation (for example, "TOMTOM_API_KEY unset: traffic unavailable").
-- Reject the Resend testing sender (`onboarding@resend.dev`) in production.
-- Remove the in-code fallback to the testing sender.
 
 **Acceptance criteria.**
-- [ ] A production start without `RESEND_FROM_EMAIL` fails with a clear message.
+- [ ] A production start without `BETTER_AUTH_SECRET` fails with a clear message.
 - [ ] A development start lists the missing optional variables.
 - [ ] No request path needs to discover a missing variable.
 
@@ -726,8 +725,10 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
   - in a maintenance window, copy the auth collections into the app database, verify, then switch.
 - Take a backup either way, and never change the name without the migration.
 
+**Done (24 September 2026).** Step 0.3 found auth data in `nobojatra`. `MONGODB_DB` is now exported from [lib/mongodb.ts](lib/mongodb.ts), and [lib/auth.ts](lib/auth.ts) calls `authMongoClient.db(MONGODB_DB)`. Both clients now read the same setting, and no data moves.
+
 **Acceptance criteria.**
-- [ ] The auth database name is explicit in code and documented.
+- [x] The auth database name is explicit in code and documented.
 - [ ] Existing users can sign in after deployment.
 - [ ] Local, staging and production each use the intended database.
 
