@@ -10,6 +10,10 @@
     "seed:rates": "node --env-file=.env scripts/seed-vehicle-rates.mts",
     "test:tomtom": "node --env-file=.env scripts/test-tomtom.js"
   },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "packageManager": "pnpm@11.18.0",
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@teachablemachine/image": "^0.8.5",

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
+import PlanAgainCards, { type FrequentTripCard } from "@/components/home/PlanAgainCards";
 import RouteResults from "./RouteResults";
 import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
@@ -57,13 +58,11 @@ type Props = {
   /** Home/Work/custom shortcuts shown when origin or destination is empty. */
   savedPlaces?: SavedPlaceOption[];
   /**
-   * Set by a "Plan Again" card to replay a frequent trip. A new object
-   * reference (even for the same trip) re-triggers the effect below — the
-   * parent is expected to reset this to null via onPlanAgainHandled after
-   * each use so a second click on the same card still fires.
+   * Frequent trips shown as "Plan Again" cards below the planner. They are
+   * rendered here so a card click runs the search directly as an event,
+   * rather than being relayed through a parent prop and an effect.
    */
-  planAgainTrip?: RouteFormValues | null;
-  onPlanAgainHandled?: () => void;
+  frequentTrips?: FrequentTripCard[];
 };
 
 function getFirstValidationError(errors: TripValidationErrors) {
@@ -93,8 +92,7 @@ export default function MapDashboardSection({
   defaultPassengerCount,
   aside,
   savedPlaces,
-  planAgainTrip,
-  onPlanAgainHandled,
+  frequentTrips,
 }: Props) {
   const country = useCountry();
   const router = useRouter();
@@ -116,7 +114,12 @@ export default function MapDashboardSection({
   >("idle");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [restoredTrip, setRestoredTrip] = useState<RouteFormValues | null>(null);
+  // The revision keys the form, so every Plan Again click remounts it with
+  // that trip, even when a trip was already restored.
+  const [restoredTrip, setRestoredTrip] = useState<{
+    values: RouteFormValues;
+    revision: number;
+  } | null>(null);
 
   async function handleRouteSelect(routeId: string) {
     setActiveRouteId(routeId);
@@ -263,18 +266,14 @@ export default function MapDashboardSection({
     void findRoutes(values);
   }
 
-  // "Plan Again" — a frequent-trip card sets this from the home screen. Any
-  // new non-null value (even for a repeat click on the same trip) re-fills
-  // the form and re-runs the search, then hands control back to the parent
-  // so the trigger can be armed again for the next click.
-  useEffect(() => {
-    if (!planAgainTrip) return;
-
-    setRestoredTrip(planAgainTrip);
-    void findRoutes(planAgainTrip);
-    onPlanAgainHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planAgainTrip]);
+  // "Plan Again": refill the form with the trip and re-run the search.
+  function handlePlanAgain(values: RouteFormValues) {
+    setRestoredTrip((previous) => ({
+      values,
+      revision: (previous?.revision ?? 0) + 1,
+    }));
+    void findRoutes(values);
+  }
 
   const hasResults = origin !== null && destination !== null && routes.length > 0;
 
@@ -292,87 +291,92 @@ export default function MapDashboardSection({
   }
 
   return (
-    <div
-      className={
-        hasResults
-          ? "flex w-full flex-col gap-6 lg:h-[70vh] lg:flex-row"
-          : "grid w-full gap-8 lg:grid-cols-2 lg:items-start"
-      }
-    >
+    <>
       <div
         className={
           hasResults
-            ? "flex flex-col gap-4 lg:w-[380px] lg:flex-shrink-0 lg:overflow-y-auto lg:pr-2"
-            : "flex w-full max-w-md flex-col gap-6"
+            ? "flex w-full flex-col gap-6 lg:h-[70vh] lg:flex-row"
+            : "grid w-full gap-8 lg:grid-cols-2 lg:items-start"
         }
       >
-        <RouteFinderForm
-          key={restoredTrip ? "restored" : "fresh"}
-          onSubmit={handleSubmit}
-          loading={loading}
-          defaultPassengerCount={defaultPassengerCount}
-          initialValues={restoredTrip}
-          submitLabel="Find best route"
-          savedPlaces={savedPlaces}
-        />
+        <div
+          className={
+            hasResults
+              ? "flex flex-col gap-4 lg:w-[380px] lg:flex-shrink-0 lg:overflow-y-auto lg:pr-2"
+              : "flex w-full max-w-md flex-col gap-6"
+          }
+        >
+          <RouteFinderForm
+            key={restoredTrip ? `restored-${restoredTrip.revision}` : "fresh"}
+            onSubmit={handleSubmit}
+            loading={loading}
+            defaultPassengerCount={defaultPassengerCount}
+            initialValues={restoredTrip?.values ?? null}
+            submitLabel="Find best route"
+            savedPlaces={savedPlaces}
+          />
 
-        {error && (
-          <p className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
-        )}
+          {error && (
+            <p className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
-        {loading && (
-          <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-            Finding route options...
-          </p>
-        )}
+          {loading && (
+            <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+              Finding route options...
+            </p>
+          )}
 
-        {hasResults && (
-          <>
-            <RouteResults
+          {hasResults && (
+            <>
+              <RouteResults
+                routes={routes}
+                activeRouteId={activeRouteId}
+                onSelect={handleRouteSelect}
+                savedMessage={historyMessage}
+                routeSaveStatus={routeSaveStatus}
+                traffic={traffic}
+                trafficLoading={trafficLoading}
+                trafficError={trafficError}
+              />
+
+
+              <button
+                type="button"
+                onClick={handleViewFares}
+                className={buttonVariants({
+                  variant: "outline_primary",
+                  size: "form",
+                })}
+              >
+                View fare estimates
+                <ArrowRight />
+              </button>
+            </>
+          )}
+        </div>
+
+        {!hasResults && aside}
+
+        {hasResults && origin && destination && (
+          <div className="h-[500px] w-full flex-shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
+            <RouteMap
+              origin={origin}
+              destination={destination}
+              stops={stops}
               routes={routes}
               activeRouteId={activeRouteId}
-              onSelect={handleRouteSelect}
-              savedMessage={historyMessage}
-              routeSaveStatus={routeSaveStatus}
+              onSelectRoute={handleRouteSelect}
               traffic={traffic}
               trafficLoading={trafficLoading}
-              trafficError={trafficError}
             />
-
-
-            <button
-              type="button"
-              onClick={handleViewFares}
-              className={buttonVariants({
-                variant: "outline_primary",
-                size: "form",
-              })}
-            >
-              View fare estimates
-              <ArrowRight />
-            </button>
-          </>
+          </div>
         )}
       </div>
-
-      {!hasResults && aside}
-
-      {hasResults && origin && destination && (
-        <div className="h-[500px] w-full flex-shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
-          <RouteMap
-            origin={origin}
-            destination={destination}
-            stops={stops}
-            routes={routes}
-            activeRouteId={activeRouteId}
-            onSelectRoute={handleRouteSelect}
-            traffic={traffic}
-            trafficLoading={trafficLoading}
-          />
-        </div>
+      {frequentTrips && (
+        <PlanAgainCards trips={frequentTrips} onPlanAgain={handlePlanAgain} />
       )}
-    </div>
+    </>
   );
 }

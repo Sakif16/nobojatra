@@ -61,7 +61,12 @@ pnpm install
 ```
 
 ### 2) Create your `.env`
-Copy `.env.example` to `.env` and fill in the values:
+Copy `.env.example` to `.env` and fill in the values. The file groups the variables as required, recommended and optional, and explains each one.
+
+```bash
+cp .env.example .env
+```
+
 
 | Variable | Required | What it's for |
 |---|---|---|
@@ -71,13 +76,16 @@ Copy `.env.example` to `.env` and fill in the values:
 | `BETTER_AUTH_URL` | Yes | The app's URL, for example `http://localhost:3000` |
 | `ORS_API_KEY` | Yes | OpenRouteService key for route search |
 | `OPENWEATHER_API_KEY` | Recommended | Weather conditions and weather-based fare rules |
+| `OPENWEATHER_BASE_URL` | Optional | OpenWeatherMap API URL. Defaults to the standard one |
 | `TOMTOM_API_KEY` | Optional | Live traffic. Without it, traffic is unavailable |
 | `RESEND_API_KEY` | Optional | Sending password reset emails |
 | `RESEND_FROM_EMAIL` | Optional | Sender address. Must be on a domain verified in Resend (see Known Issues) |
 | `PATHAO_FARE_API` | Optional | Live fare quotes. Without it, fares come from the built-in rate card |
 | `ALERT_EVALUATION_SECRET` | Optional | Protects the scheduled alert-check endpoint |
-| `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Include a contact email |
-| `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search |
+| `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Defaults to the app name and this repository's URL. Set it only to add a contact email |
+| `NOMINATIM_BASE_URL` | Optional | Place-search server. Defaults to the public OpenStreetMap one |
+| `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search fails |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Leave unset | Mapbox is not used. Setting it switches to Mapbox map layers that aren't configured correctly |
 
 Never commit `.env` or put a real key in the code. A secret scan runs on every pull request and on every push to `main`.
 
