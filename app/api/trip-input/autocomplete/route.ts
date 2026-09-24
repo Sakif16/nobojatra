@@ -9,6 +9,7 @@ import {
   MAX_AUTOCOMPLETE_RESULTS,
   MIN_AUTOCOMPLETE_QUERY_LENGTH,
 } from "@/lib/trip-input";
+import { getNominatimConfig } from "@/lib/nominatim";
 import { NextRequest, NextResponse } from "next/server";
 
 // This endpoint is unauthenticated so the landing-page hero can offer place
@@ -27,13 +28,6 @@ type NominatimSearchResult = {
   type?: string;
   importance?: number;
 };
-
-function getNominatimConfig() {
-  return {
-    baseUrl: process.env.NOMINATIM_BASE_URL ?? "https://nominatim.openstreetmap.org",
-    userAgent: process.env.NOMINATIM_USER_AGENT ?? "NoboJatra/1.0",
-  };
-}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

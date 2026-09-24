@@ -67,11 +67,11 @@ These are suggested groupings, not commitments.
 | 0.7 | C05, C07, G02, G05, G07, G09, G10, G17, P12 | Product decisions that gate fixes (decided) | — | — |
 | **Tier 1 — trivial** | | | | |
 | 1.1 | C01, G24 | Auth client hardcodes the production URL (done) | P1 | — |
-| 1.2 | C02, P14 | No environment or setup documentation in the repository | P1 | — |
-| 1.3 | C03, G02 | Nominatim User-Agent has no contact details | P0 (interim) | — |
+| 1.2 | C02, P14 | No environment or setup documentation in the repository (done; latest version not committed) | P1 | — |
+| 1.3 | C03, G02 | Nominatim User-Agent has no contact details (done) | P0 (interim) | — |
 | 1.4 | P08, G24 | Four files override DNS for the whole process | P1 | — |
-| 1.5 | P14, Appendix B | Lint picks up audit scripts; `any` and unused imports | — | — |
-| 1.6 | P10, G29 | CI runs no type-check, lint or build | P1 | 1.5 |
+| 1.5 | P14, Appendix B | Lint picks up audit scripts; `any` and unused imports (done) | — | — |
+| 1.6 | P10, G29 | CI runs no type-check, lint or build (done; lint non-blocking) | P1 | 1.5 |
 | 1.7 | G03 | `shadcn` CLI is a runtime dependency (14 advisories) | P0 | — |
 | 1.8 | C04 | No security headers | P1 | — |
 | 1.9 | G18 | Saved trips accept another country's rate | P1 | — |
@@ -108,7 +108,7 @@ These are suggested groupings, not commitments.
 | 2.12 | G12 | Ranking language claims certainty with missing data | P1 | — |
 | 2.13 | G14 | Round trips rejected; long trips fail on alternatives | P1 | — |
 | 2.14 | G15 | Nothing evaluates alerts while the app is closed | P1 | — |
-| 2.15 | G25 | Planner form and results drift apart | P1 | 1.17 |
+| 2.15 | G25 | Planner form and results drift apart (Plan Again part done) | P1 | 1.17 |
 | 2.16 | G27 | Stale photo inference; no decode limits | P2 | 1.14 |
 | 2.17 | G28 | Camera embed over-permissioned; no offline state | P2 | — |
 | 2.18 | G32 | Notification list skips records and misses updates | P2 | — |
@@ -119,7 +119,7 @@ These are suggested groupings, not commitments.
 | 2.23 | P13 | Session and profile read several times per render | P2 | 2.19 |
 | 2.24 | P01 | No persistent navigation | — | — |
 | 2.25 | P03 | No loading, error or not-found boundaries | — | — |
-| 2.26 | R22, G26 | Both modals inaccessible | — | — |
+| 2.26 | R22, G26 | Both modals inaccessible (photo-modal reset done) | — | — |
 | 2.27 | P04 | Saved trips and conditions deleted without confirmation | — | 2.26 |
 | 2.28 | R08 | Stop validation not shown per field | — | — |
 | 2.29 | R10, R11 | No map recenter; unlabeled markers | — | 1.23 |
@@ -296,7 +296,7 @@ Settings for each tile source:
 
 Each step should take under an hour.
 
-### 1.1 · C01, G24 — Stop hardcoding the auth URL · P1
+### 1.1 · C01, G24 — Stop hardcoding the auth URL · P1 (done)
 
 **Issue.** [lib/auth-client.ts](lib/auth-client.ts) sets `baseURL: "https://nobojatra.onrender.com"`. Sign-in, sign-up, sign-out and password reset therefore fail on every other origin: local, staging, previews and any custom domain.
 
@@ -310,11 +310,11 @@ Each step should take under an hour.
 - against the local server, `/api/auth/sign-in/email` answers wrong credentials with `401 INVALID_EMAIL_OR_PASSWORD`, and `/api/auth/get-session` returns `200`.
 
 **Acceptance criteria.**
-- [ ] Sign-in, sign-out and password reset work on `localhost:3000` against a local database. The auth server responds; a full browser sign-in has not been tested yet.
-- [ ] Production sign-in still works. Check after deployment.
+- [x] Sign-in and sign-out work in a browser on `localhost:3000` (confirmed 24 September 2026). Password reset was not tested separately, because its email reaches only the Resend account owner.
+- [x] Production sign-in still works (confirmed 24 September 2026).
 - [x] No production hostname appears in `lib/`.
 
-### 1.2 · C02, P14 — Commit environment and setup documentation · P1
+### 1.2 · C02, P14 — Commit environment and setup documentation · P1 (done)
 
 **Issue.** `.gitignore` (`.env*`) excludes `.env.example`, which has never been committed. The current README names no environment variables and has no setup steps.
 
@@ -323,11 +323,17 @@ Each step should take under an hour.
 - Commit `.env.example` with all sixteen variables, grouped as required or optional, each with a one-line note on what happens when it is unset (the C02 table in the assessment has the wording).
 - Add a README "Local setup" section covering Node version, `pnpm install`, `.env`, `pnpm seed:rates`, `pnpm dev`, and the Resend sender caveat.
 
+**Progress (24 September 2026).**
+- `.gitignore` now has `!.env.example`.
+- `.env.example` lists all sixteen variables, grouped as required, recommended and optional, with a note on each saying what happens when it is unset. `NEXT_PUBLIC_MAPBOX_TOKEN` is listed commented out, because the team does not use Mapbox (0.6).
+- The README has a "Local Setup" section with a matching variable table, and the Resend sender caveat is under Known Issues.
+- An earlier version of `.env.example` is committed. The sixteen-variable version is not committed yet.
+
 **Acceptance criteria.**
-- [ ] `git ls-files .env.example` lists the file, and it names all sixteen variables.
+- [ ] `git ls-files .env.example` lists the file, and it names all sixteen variables. The file is tracked; this passes once the sixteen-variable version is committed.
 - [ ] A new contributor can follow the README from a fresh clone to a running planner.
 
-### 1.3 · C03, G02 — Identify the app to Nominatim · P0 (interim)
+### 1.3 · C03, G02 — Identify the app to Nominatim · P0 (interim) (done)
 
 **Issue.** Both geocoding routes fall back to the User-Agent `NoboJatra/1.0`, which has no contact route, as Nominatim's policy requires.
 
@@ -337,8 +343,15 @@ Each step should take under an hour.
 - Document `NOMINATIM_USER_AGENT` and `NOMINATIM_BASE_URL` (done in 1.2).
 
 **Acceptance criteria.**
-- [ ] Requests to Nominatim carry a User-Agent with a working contact.
-- [ ] One helper defines the configuration.
+**Done (24 September 2026).**
+- The default User-Agent is now `NoboJatra/1.0 (+https://github.com/Sakif16/nobojatra)`. The team chose the public repository URL as the contact route, through GitHub Issues, so no email address is published in the code.
+- A private email can be added through `NOMINATIM_USER_AGENT` in the deployment environment.
+- `getNominatimConfig` now lives in [lib/nominatim.ts](lib/nominatim.ts), and both geocoding routes import it.
+- A reverse-geocode request with the new User-Agent returned `200`.
+
+**Acceptance criteria.**
+- [x] Requests to Nominatim carry a User-Agent with a working contact. This holds wherever `NOMINATIM_USER_AGENT` is unset; check Render's value.
+- [x] One helper defines the configuration.
 
 ### 1.4 · P08, G24 — Remove the process-wide DNS overrides · P1
 
@@ -361,8 +374,17 @@ Each step should take under an hour.
 - Remove the unused `mongoose` default imports from the four legacy models (or delete the models in step 2.2).
 - The remaining two `set-state-in-effect` errors are fixed in steps 2.15 and 2.26.
 
+**Done (25 September 2026).** Lint went from 11 errors and 4 warnings to 3 errors and no warnings:
+- `docs/**` is added to `globalIgnores` in [eslint.config.mjs](eslint.config.mjs), which clears 7 errors from the audit scripts.
+- The TomTom response in [lib/traffic-service.ts](lib/traffic-service.ts) is typed with `TomTomRouteResponse`, which clears 1 error.
+- The unused `mongoose` default imports are removed from the four legacy models, which clears 4 warnings.
+
+The remaining errors:
+- the two `set-state-in-effect` errors (`ImageLocationModal.tsx:39` and `MapDashboardSection.tsx:273`), which steps 2.15 and 2.26 fix;
+- the `require()` at `app/(main)/page.tsx:10`, which step 1.4 deletes.
+
 **Acceptance criteria.**
-- [ ] Lint reports only the two `set-state-in-effect` errors until 2.15 and 2.26 land, then none.
+- [ ] Lint reports only the two `set-state-in-effect` errors until 2.15 and 2.26 land, then none. The `set-state-in-effect` errors are gone, fixed in 2.15 and 2.26. One error remains: the `require()` at `app/(main)/page.tsx:10`, which step 1.4 removes.
 
 ### 1.6 · P10, G29 — Add a CI quality gate · P1
 
@@ -374,9 +396,18 @@ Each step should take under an hour.
 - Add `engines` and `packageManager` to `package.json` so CI and local installs match.
 - Add a `permissions: contents: read` block to both workflows, and pin the gitleaks image to a digest rather than `latest`.
 
+**Done (25 September 2026).**
+- [.github/workflows/ci.yml](.github/workflows/ci.yml) runs install (`--frozen-lockfile`), type-check, lint and build on pull requests and on pushes to `main`. It uses Node 24 and placeholder values for `MONGODB_URI`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`.
+- Lint has `continue-on-error: true`.
+- `package.json` now has `engines.node: ">=20.9.0"` and `packageManager: "pnpm@11.18.0"`.
+- Both workflows have `permissions: contents: read`.
+- Gitleaks is pinned to `v8.30.1@sha256:c00b6bd0…abbb7f`.
+
+This was simulated locally in a copy of the project without `.env`. Install, type-check and build passed. Lint failed, but did not block, on the known `require()` in `app/(main)/page.tsx`. A planted type error made the type-check exit with code 2.
+
 **Acceptance criteria.**
-- [ ] A pull request with a type error fails CI.
-- [ ] After 2.15 and 2.26, a pull request with a lint error fails CI.
+- [ ] A pull request with a type error fails CI. The local simulation fails as expected; confirm on the first real pull request.
+- [ ] After 2.15 and 2.26, a pull request with a lint error fails CI. Lint stays non-blocking until then. To make it blocking, remove `continue-on-error` from the Lint step. Lint also needs step 1.4's `page.tsx` line gone before it can pass.
 
 ### 1.7 · G03 — Move the `shadcn` CLI out of runtime dependencies · P0
 
@@ -902,10 +933,17 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
 - In `HomeContent`, key `MapDashboardSection` by the active country, so a country switch resets the planner.
 - Clear results when the user edits origin, destination or stops after a search.
 
+**Progress (25 September 2026).** The Plan Again part is done:
+- [MapDashboardSection](components/map/MapDashboardSection.tsx) now takes `frequentTrips` and renders the Plan Again cards itself.
+- A card click calls `handlePlanAgain`, which runs the search as an event. The effect and the `planAgainTrip` and `onPlanAgainHandled` hand-off are gone.
+- The form is keyed by a revision that increases on every click.
+
+Keying by country and clearing results after edits are not done yet.
+
 **Acceptance criteria.**
-- [ ] Clicking two different Plan Again cards in turn fills the form with each trip.
+- [ ] Clicking two different Plan Again cards in turn fills the form with each trip. The code is in place; confirm it in a browser.
 - [ ] Switching country clears results and inputs.
-- [ ] The `set-state-in-effect` lint error in this file is gone.
+- [x] The `set-state-in-effect` lint error in this file is gone.
 
 ### 2.16 · G27 — Guard photo inference against stale results · P2
 
@@ -1074,7 +1112,7 @@ If the decision is not to enforce, keep the status hidden. Keep the verification
 **Acceptance criteria.**
 - [ ] Both dialogs announce themselves to a screen reader, trap focus, close on Escape, lock page scroll, and return focus to their trigger.
 - [ ] The drop zone works from the keyboard.
-- [ ] Lint reports no `set-state-in-effect` errors (together with 2.15).
+- [x] Lint reports no `set-state-in-effect` errors (together with 2.15). The photo modal now mounts only while open, so each opening starts from fresh state without the reset effect (25 September 2026). The Dialog rebuild is still to do.
 
 ### 2.27 · P04 — Confirm before deleting saved trips and conditions · —
 

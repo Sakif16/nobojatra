@@ -3,6 +3,19 @@ import "server-only";
 
 import { getCountryConfig, type CountryCode } from "@/lib/country-config";
 
+// The fields of TomTom's calculateRoute response that this module reads.
+// Everything is optional because the response is checked before use.
+type TomTomRouteResponse = {
+  routes?: Array<{
+    summary?: {
+      lengthInMeters?: number;
+      travelTimeInSeconds?: number;
+      noTrafficTravelTimeInSeconds?: number;
+      trafficDelayInSeconds?: number;
+    };
+  }>;
+};
+
 const TOMTOM_ROUTING_URL =
   "https://api.tomtom.com/routing/1/calculateRoute";
 
@@ -437,7 +450,7 @@ export async function fetchLiveTrafficForLegs(
     /*
      * Parse JSON response.
      */
-    let data: any;
+    let data: TomTomRouteResponse;
 
     try {
       data = await response.json();

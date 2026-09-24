@@ -17,7 +17,14 @@ type Props = {
 
 type Status = "idle" | "loading-model" | "classifying" | "done" | "error";
 
-export default function ImageLocationModal({ open, onClose, onConfirm }: Props) {
+// Mounted only while open, so every opening (origin, destination, or after a
+// cancel) starts from fresh state without resetting it in an effect.
+export default function ImageLocationModal({ open, ...props }: Props) {
+  if (!open) return null;
+  return <ImageLocationModalContent {...props} />;
+}
+
+function ImageLocationModalContent({ onClose, onConfirm }: Omit<Props, "open">) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [topPrediction, setTopPrediction] = useState<LocationPrediction | null>(null);
@@ -32,18 +39,6 @@ export default function ImageLocationModal({ open, onClose, onConfirm }: Props) 
   const imgRef = useRef<HTMLImageElement>(null);
   const objectUrlRef = useRef<string | null>(null);
 
-  // Fresh state every time the modal is opened, whether it's being reused
-  // for origin, destination, or reopened after a previous cancel
-  useEffect(() => {
-    if (!open) return;
-    setPreviewUrl(null);
-    setStatus("idle");
-    setTopPrediction(null);
-    setErrorMessage(null);
-    setLocationLabel("");
-    setLocationPlace(null);
-  }, [open]);
-
   // Revoke the object URL when it's replaced or the modal unmounts, so
   // repeated uploads don't leak memory
   useEffect(() => {
@@ -51,8 +46,6 @@ export default function ImageLocationModal({ open, onClose, onConfirm }: Props) 
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     };
   }, []);
-
-  if (!open) return null;
 
   function handleFile(file: File | undefined) {
     if (!file || !file.type.startsWith("image/")) return;

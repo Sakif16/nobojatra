@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Audit evidence scripts: CommonJS snapshots kept as-is, not app code.
+    "docs/**",
   ]),
 ]);
 

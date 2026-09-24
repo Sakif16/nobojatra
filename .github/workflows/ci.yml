@@ -1,0 +1,48 @@
+# Quality gate: type-check, lint and build on every pull request and every
+# push to main, so broken code is caught before Render tries to deploy it.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders only: the build needs these to be set, but nothing here
+      # connects to a real service. Never put real keys in this file.
+      MONGODB_URI: mongodb://127.0.0.1:27017/ci-placeholder
+      BETTER_AUTH_SECRET: ci-placeholder-secret-not-used-anywhere
+      BETTER_AUTH_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Uses the pnpm version pinned in package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      # Non-blocking until FIX_PLAN steps 2.15 and 2.26 land. After that,
+      # delete continue-on-error so a lint error fails the pull request.
+      - name: Lint
+        run: pnpm lint
+        continue-on-error: true
+
+      - name: Build
+        run: pnpm build

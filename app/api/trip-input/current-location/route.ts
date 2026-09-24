@@ -1,4 +1,5 @@
 import { isValidLatitude, isValidLongitude } from "@/lib/trip-input";
+import { getNominatimConfig } from "@/lib/nominatim";
 import { NextRequest, NextResponse } from "next/server";
 
 type NominatimReverseResult = {
@@ -7,13 +8,6 @@ type NominatimReverseResult = {
   lon?: string;
   error?: string;
 };
-
-function getNominatimConfig() {
-  return {
-    baseUrl: process.env.NOMINATIM_BASE_URL ?? "https://nominatim.openstreetmap.org",
-    userAgent: process.env.NOMINATIM_USER_AGENT ?? "NoboJatra/1.0",
-  };
-}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
