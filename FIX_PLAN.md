@@ -62,11 +62,11 @@ These are suggested groupings, not commitments.
 | **Tier 0 — verify and decide** | | | | |
 | 0.3 | G24 | Which database holds auth data is unknown (done: `nobojatra`) | P1 | — |
 | 0.4 | G01, R20 | Whether anyone still uses the legacy endpoints is unknown (done: none) | P0 | — |
-| 0.5 | G03 | Rotation of the key leaked in `2f57aca` is unconfirmed | P0 | — |
-| 0.6 | R26 | Whether map tiles are fetched at the wrong size is unconfirmed | — | — |
-| 0.7 | C05, C07, G02, G05, G07, G09, G10, G17, P12 | Product decisions that gate fixes | — | — |
+| 0.5 | G03 | Rotation of the key leaked in `2f57aca` is unconfirmed (key revoked; history decision open) | P0 | — |
+| 0.6 | R26 | Whether map tiles are fetched at the wrong size is unconfirmed (done: TomTom only) | — | — |
+| 0.7 | C05, C07, G02, G05, G07, G09, G10, G17, P12 | Product decisions that gate fixes (decided) | — | — |
 | **Tier 1 — trivial** | | | | |
-| 1.1 | C01, G24 | Auth client hardcodes the production URL | P1 | — |
+| 1.1 | C01, G24 | Auth client hardcodes the production URL (done) | P1 | — |
 | 1.2 | C02, P14 | No environment or setup documentation in the repository | P1 | — |
 | 1.3 | C03, G02 | Nominatim User-Agent has no contact details | P0 (interim) | — |
 | 1.4 | P08, G24 | Four files override DNS for the whole process | P1 | — |
@@ -113,7 +113,7 @@ These are suggested groupings, not commitments.
 | 2.17 | G28 | Camera embed over-permissioned; no offline state | P2 | — |
 | 2.18 | G32 | Notification list skips records and misses updates | P2 | — |
 | 2.19 | C09 | Session and cookie behavior entirely default | — | — |
-| 2.20 | C05 | Email verification implemented but never used | P1 | 0.7 |
+| 2.20 | C05 | Email verification implemented but never used (decision: do not enforce for now) | P1 | 0.7 |
 | 2.21 | C06 | Auth limits only per IP | P1 | — |
 | 2.22 | C07 | Sign-up confirms which emails exist | P1 | 2.21 |
 | 2.23 | P13 | Session and profile read several times per render | P2 | 2.19 |
@@ -125,7 +125,7 @@ These are suggested groupings, not commitments.
 | 2.29 | R10, R11 | No map recenter; unlabeled markers | — | 1.23 |
 | 2.30 | R16, R17 | Fares unsortable; exclusions give no remedy | — | — |
 | 2.31 | R21 | Saved trips: no sort, search or limit indicator | — | — |
-| 2.32 | R26 | Tile size mismatch | — | 0.6 |
+| 2.32 | R26 | Tile size mismatch (done) | — | 0.6 |
 | 2.33 | R28 | Non-JSON responses break client code | — | — |
 | 2.34 | G09 | Rain alone can never reach "severe" | P1 | 0.7 |
 | 2.35 | P12 | No manifest; one title for every page | — | — |
@@ -220,26 +220,42 @@ The single user in `test` is left over from early development, when the URI had 
 - [x] Every legacy route's consumers are listed, or confirmed as none.
 - [x] An export of each legacy collection exists, with document counts recorded.
 
-### 0.5 · G03 — Confirm the leaked TomTom key was revoked · P0
+### 0.5 · G03 — Confirm the leaked TomTom key was revoked · P0 (done)
 
 **Issue.** The secret-scan workflow records that a live TomTom key was committed in `2f57aca` and is still in history. The source comment says it was rotated, but there is no evidence.
 
 **Approach.** In the TomTom developer portal, confirm the old key is deleted or disabled and the current key differs. Decide whether to rewrite history; if not, keep the key revoked permanently.
 
+**Result (24 September 2026).** The key's owner deleted it in the TomTom developer portal. A test request with the leaked key then returned `401`. The same request with the current key returned `200` and a valid tile, which confirms the two keys differ and the app is unaffected.
+
 **Acceptance criteria.**
-- [ ] The old key is confirmed revoked, with the date recorded (not the key).
+- [x] The old key is confirmed revoked, with the date recorded (not the key).
 - [ ] A decision on history rewriting is recorded.
 
-### 0.6 · R26 — Confirm map tile sizing · —
+### 0.6 · R26 — Confirm map tile sizing · — (done)
 
 **Issue.** The TomTom proxy requests 512-pixel tiles, and Mapbox's styles tile API also returns 512-pixel tiles by default, but the Leaflet layers use the 256-pixel grid. That likely means four times the bytes and half-size labels.
 
 **Approach.** In a browser, compare one tile's network size and label size with and without `tileSize={512}` and `zoomOffset={-1}`, for OSM, Mapbox (if a token is set) and TomTom.
 
-**Acceptance criteria.**
-- [ ] The correct settings for each tile source are recorded for step 2.32.
+**Result (24 September 2026).** The same TomTom flow tile (z13, central London) was fetched at both sizes:
 
-### 0.7 · Product decisions that gate fixes · —
+| Tile size | Transfer size | Result in Leaflet's 256 grid |
+|---|---|---|
+| `tileSize=512` | 163 KB | Squeezed into the slot, so lines draw at half width |
+| `tileSize=256` | 66 KB | Drawn at its intended size |
+
+Both sizes cover the same area.
+
+Settings for each tile source:
+- **OpenStreetMap:** 256 is native. No change.
+- **TomTom:** request `tileSize=256` from the proxy.
+- **Mapbox:** not used. The team decided on 24 September 2026 not to set `NEXT_PUBLIC_MAPBOX_TOKEN`. If Mapbox is ever enabled, it needs `tileSize={512}` and `zoomOffset={-1}`. Its `traffic-day-v2` layer is also a full map style rather than a transparent overlay, so it cannot be stacked over the base map.
+
+**Acceptance criteria.**
+- [x] The correct settings for each tile source are recorded for step 2.32.
+
+### 0.7 · Product decisions that gate fixes · — (done)
 
 **Issue.** Several fixes need a decision the code cannot make.
 
@@ -257,8 +273,22 @@ The single user in `test` is left over from early development, when the URI had 
 | Bangladesh traffic source (G07) | 3.5, 5.2 | Hide traffic in Bangladesh, or pursue a licensed or fleet source |
 | Launch service areas (G17) | 4.7 | Which cities or corridors are supported at launch |
 
+**Decisions (24 September 2026).** The owner for every row is the team.
+
+| Decision | Needed by | Decision | What it means for the step |
+|---|---|---|---|
+| Enforce email verification (C05) | 2.20 | **Do not enforce, for now.** | While emails come from Resend's testing sender, they reach only the Resend account owner, so enforcing would lock every other user out. Revisit once the team has a domain to verify in Resend. The preferred option then is to enforce for everyone, with existing users verifying at their next sign-in. |
+| Account-enumeration trade-off (C07) | 2.22 | **Keep the message** ("An account with this email already exists"). | Do not build the neutral response. Rely on the per-account limits in 2.21. |
+| Bangladesh weekend for pricing (P12) | 1.29 | **Friday and Saturday**: `nonPeakWeekdays: [5, 6]`. | Change the value in [lib/country-config.ts](lib/country-config.ts), and delete the comment that defers the decision. |
+| Wording for "Confirm" (G05) | 1.27 | **Reword** the button and the pages so nothing implies a ride was booked. | For example: "Confirm" → "Save this option", "Trip confirmed" → "Plan saved", "Confirmed trips" → "Saved plans". Keep the wording consistent across the fares, best-options, summary and history pages. |
+| Who reviews weather hazard rules (G09) | 2.34 | **Keep the rules as they are,** with wording that presents them as guidance. | No threshold changes, and no reviewer needed. Word warnings as advice (for example "may be unsafe"), and make clear the rules are general guidance, not an official weather warning. |
+| Pathao-named estimator ownership and terms (G10) | 5.1 | **Keep as is.** | No relabelling. The team accepts the naming risk while the project is a demo. Revisit before any public launch. |
+| Place-search provider shortlist (G02) | 4.1 | **Keep Nominatim.** | No provider change. If the public server blocks the app, first reduce the request rate (debounce and cache, step 2.3). |
+| Bangladesh traffic source (G07) | 3.5, 5.2 | **Show "not available".** | In Bangladesh, hide the traffic overlay and the delay figures, and show "Live traffic isn't available in this area" instead of zero delays. No new source for now (5.2 on hold). |
+| Launch service areas (G17) | 4.7 | **Not applicable for now.** | There is no launch planned. Revisit if the project goes to production. |
+
 **Acceptance criteria.**
-- [ ] Each row has a named owner and a recorded decision, or a date by which one will be made.
+- [x] Each row has a named owner and a recorded decision, or a date by which one will be made.
 
 ---
 
@@ -275,10 +305,14 @@ Each step should take under an hour.
 - Keep `BETTER_AUTH_URL` set on the server for each environment.
 - If the Render problem that commit `796ef7f` fixed comes back, set `NEXT_PUBLIC_BETTER_AUTH_URL` in Render's environment rather than in code.
 
+**Done (24 September 2026).** The `baseURL` line was removed from [lib/auth-client.ts](lib/auth-client.ts). Commit `796ef7f` had only swapped one hardcoded URL (`localhost:3000`) for another, so same-origin covers both environments. After a clean build:
+- the client bundle contains no `onrender.com` URL;
+- against the local server, `/api/auth/sign-in/email` answers wrong credentials with `401 INVALID_EMAIL_OR_PASSWORD`, and `/api/auth/get-session` returns `200`.
+
 **Acceptance criteria.**
-- [ ] Sign-in, sign-out and password reset work on `localhost:3000` against a local database.
-- [ ] Production sign-in still works.
-- [ ] No production hostname appears in `lib/`.
+- [ ] Sign-in, sign-out and password reset work on `localhost:3000` against a local database. The auth server responds; a full browser sign-in has not been tested yet.
+- [ ] Production sign-in still works. Check after deployment.
+- [x] No production hostname appears in `lib/`.
 
 ### 1.2 · C02, P14 — Commit environment and setup documentation · P1
 
@@ -938,7 +972,7 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
 
 ### 2.20 · C05 — Apply the email-verification decision · P1
 
-**Depends on:** 0.7.
+**Depends on:** 0.7. The decision is not to enforce for now, so follow the "not enforced" path below.
 
 **Issue.** A complete verification email exists, but `sendOnSignUp` and `requireEmailVerification` are unset, so no address is ever verified. Every existing account is unverified.
 
@@ -949,7 +983,7 @@ Each step should take up to a day. Steps 2.1–2.6 are the P0 and security items
 - Add a "Send verification email" action to the profile page, and show the verification status again (hidden in 1.28).
 - Take a backup before any bulk update.
 
-If the decision is not to enforce, remove the dead configuration and keep the status hidden.
+If the decision is not to enforce, keep the status hidden. Keep the verification email code too, since the decision is to be revisited once a domain exists (0.7), and enforcing then becomes a configuration change.
 
 **Acceptance criteria.**
 - [ ] A new sign-up receives the email and cannot sign in until verified (if enforced).
@@ -1115,9 +1149,11 @@ If the decision is not to enforce, remove the dead configuration and keep the st
 
 **Approach.** Apply the settings recorded in 0.6. Either set `tileSize={512}` and `zoomOffset={-1}` on the 512-pixel layers, or request 256-pixel tiles from TomTom (`tileSize=256`) and from Mapbox (`/tiles/256/{z}/{x}/{y}`).
 
+**Done (24 September 2026).** The TomTom proxy at [app/api/tiles/tomtom/[z]/[x]/[y]/route.ts](app/api/tiles/tomtom/[z]/[x]/[y]/route.ts) now requests `tileSize=256`. No Leaflet change was needed.
+
 **Acceptance criteria.**
-- [ ] Map labels are normal size.
-- [ ] Each tile's transfer size is about a quarter of before for the affected layers.
+- [x] Traffic lines draw at their intended width. The OSM labels were already normal size.
+- [x] The TomTom tile is about 40% of its previous transfer size, not the expected quarter, because PNG compression does not scale with pixel count.
 
 ### 2.33 · R28 — Handle non-JSON responses in one place · —
 
