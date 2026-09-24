@@ -3,6 +3,7 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { MongoClient } from "mongodb";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { deleteAccountData } from "@/lib/account-cleanup";
+import { MONGODB_DB } from "@/lib/mongodb";
 
 const PASSWORD_REQUIREMENT_MESSAGE =
   "Password must be at least 8 characters and include at least one number.";
@@ -126,7 +127,9 @@ if (!uri) {
 }
 
 export const authMongoClient = new MongoClient(uri);
-export const authDb = authMongoClient.db();
+// Named explicitly so auth data never follows the URI path. Without a path the
+// driver falls back to `test`, which would hide every existing account.
+export const authDb = authMongoClient.db(MONGODB_DB);
 
 export const auth = betterAuth({
   database: mongodbAdapter(authDb, { client: authMongoClient }),

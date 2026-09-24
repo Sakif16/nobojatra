@@ -88,6 +88,7 @@ git push origin feature-name
 - Weather and traffic data may fall back gracefully when providers are unavailable
 - Map-driven experiences are best validated with a configured environment and provider keys
 - Large route requests may be rate-limited depending on usage
+- Password reset emails are only delivered to the Resend account owner's address. The app sends from Resend's testing sender, because this is a demo without a verified email domain. For any other address the page reports success, but no email is sent.
 
 ---
 
