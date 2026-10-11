@@ -48,7 +48,12 @@ type Props = {
   activityData: TripHistoryActivityData
 }
 
-const CONFIRMED_VIEW = 'confirmed-trips'
+// The two kinds of record this page holds. A saved plan is a trip a vehicle was
+// chosen for; a route search is every time routes were looked up, whether or
+// not anything came of it. They are separate tabs so a search is never read as
+// a plan, let alone as a journey taken.
+const SAVED_PLANS_TAB = 'saved-plans'
+const SEARCHES_TAB = 'searches'
 const LAST_SEVEN_DAYS_VIEW = 'last-7-days'
 
 const ICONS: Record<string, string> = {
@@ -136,10 +141,12 @@ export default function TripHistoryList({ activityData }: Props) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [vehicleKey, setVehicleKey] = useState('')
-  const [historyView, setHistoryView] = useState(CONFIRMED_VIEW)
+  const [tab, setTab] = useState(SAVED_PLANS_TAB)
+  const [searchPeriod, setSearchPeriod] = useState(LAST_SEVEN_DAYS_VIEW)
+  const [plansTruncated, setPlansTruncated] = useState<number | null>(null)
 
   const hasFilters = Boolean(from || to || vehicleKey)
-  const showingConfirmedTrips = historyView === CONFIRMED_VIEW
+  const showingConfirmedTrips = tab === SAVED_PLANS_TAB
 
   useEffect(() => {
     let active = true
@@ -166,6 +173,7 @@ export default function TripHistoryList({ activityData }: Props) {
         if (!active) return
         if (!d?.success) throw new Error(d?.message ?? 'History lookup failed')
         setTrips(Array.isArray(d.trips) ? d.trips : [])
+        setPlansTruncated(d.truncated ? (d.limit ?? null) : null)
         setSummary(d.summary ?? null)
         setVehicles(Array.isArray(d.vehicles) ? d.vehicles : [])
         setError(null)
@@ -192,22 +200,25 @@ export default function TripHistoryList({ activityData }: Props) {
   )
 
   const selectedMonth = useMemo(
-    () => activityData.monthlyGroups.find((group) => group.monthKey === historyView) ?? null,
-    [activityData.monthlyGroups, historyView],
+    () => activityData.monthlyGroups.find((group) => group.monthKey === searchPeriod) ?? null,
+    [activityData.monthlyGroups, searchPeriod],
   )
 
-  const selectedActivityTrips =
-    historyView === LAST_SEVEN_DAYS_VIEW
-      ? activityData.lastSevenDays
-      : selectedMonth?.trips ?? []
-  const selectedActivityLabel =
-    historyView === LAST_SEVEN_DAYS_VIEW
-      ? 'Last 7 days'
-      : selectedMonth?.monthLabel ?? 'Route searches'
-  const selectedActivityEmpty =
-    historyView === LAST_SEVEN_DAYS_VIEW
-      ? 'No route searches in the last 7 days.'
-      : 'No route searches found for this month.'
+  const showingLastSevenDays = searchPeriod === LAST_SEVEN_DAYS_VIEW
+  const selectedActivityTrips = showingLastSevenDays
+    ? activityData.lastSevenDays
+    : selectedMonth?.trips ?? []
+  const selectedActivityLabel = showingLastSevenDays
+    ? 'Last 7 days'
+    : selectedMonth?.monthLabel ?? 'Route searches'
+  const selectedActivityEmpty = showingLastSevenDays
+    ? 'No route searches in the last 7 days.'
+    : 'No route searches found for this month.'
+  // Each list is capped; say so when the cap was reached, so a missing older
+  // search reads as "not loaded" and not as "never happened".
+  const searchesTruncated = showingLastSevenDays
+    ? activityData.lastSevenDaysTruncated
+    : activityData.monthlyTruncated
 
   function clearFilters() {
     setFrom('')
@@ -224,41 +235,75 @@ export default function TripHistoryList({ activityData }: Props) {
             Trip History
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Saved plans and route searches in one place.
+            Plans you saved, and the route searches you made, kept apart.
           </p>
         </div>
 
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <label className="relative inline-flex items-center">
-            <span className="sr-only">Trip history view</span>
-            <select
-              value={historyView}
-              onChange={(e) => setHistoryView(e.target.value)}
-              className="h-10 appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-3 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted focus:border-primary"
+        <div
+          role="tablist"
+          aria-label="Trip history"
+          className="mb-6 inline-flex overflow-hidden rounded-xl border border-border bg-secondary p-0.5"
+        >
+          {[
+            { value: SAVED_PLANS_TAB, label: 'Saved plans' },
+            { value: SEARCHES_TAB, label: 'Route searches' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={tab === option.value}
+              onClick={() => setTab(option.value)}
+              className={
+                tab === option.value
+                  ? 'rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground'
+                  : 'rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+              }
             >
-              <option value={CONFIRMED_VIEW}>Saved plans</option>
-              <option value={LAST_SEVEN_DAYS_VIEW}>Last 7 days searches</option>
-              {activityData.monthlyGroups.map((group) => (
-                <option key={group.monthKey} value={group.monthKey}>
-                  {group.monthLabel}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 size-4 text-muted-foreground" />
-          </label>
-
-          {!showingConfirmedTrips && (
-            <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-              {selectedActivityTrips.length} trip{selectedActivityTrips.length === 1 ? '' : 's'}
-            </span>
-          )}
+              {option.label}
+            </button>
+          ))}
         </div>
 
         {!showingConfirmedTrips ? (
           <>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Every time you looked up routes, whether or not you went on to save a plan. A
+              search is not a trip taken.
+            </p>
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <label className="relative inline-flex items-center">
+                <span className="sr-only">Period</span>
+                <select
+                  value={searchPeriod}
+                  onChange={(e) => setSearchPeriod(e.target.value)}
+                  className="h-10 appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-3 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted focus:border-primary"
+                >
+                  <option value={LAST_SEVEN_DAYS_VIEW}>Last 7 days</option>
+                  {activityData.monthlyGroups.map((group) => (
+                    <option key={group.monthKey} value={group.monthKey}>
+                      {group.monthLabel}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 size-4 text-muted-foreground" />
+              </label>
+
+              <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+                {selectedActivityTrips.length} search{selectedActivityTrips.length === 1 ? '' : 'es'}
+              </span>
+            </div>
+
             <h2 className="mb-3 text-xl font-semibold text-foreground">
               {selectedActivityLabel}
             </h2>
+            {searchesTruncated && (
+              <p className="mb-3 rounded-xl border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                Only your most recent searches are loaded here. Older ones are kept but not
+                shown.
+              </p>
+            )}
             {selectedActivityTrips.length > 0 ? (
               <ActivityRows trips={selectedActivityTrips} />
             ) : (
@@ -316,6 +361,13 @@ export default function TripHistoryList({ activityData }: Props) {
             </button>
           )}
         </div>
+
+        {plansTruncated !== null && (
+          <p className="mb-6 rounded-xl border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Showing your latest {plansTruncated} saved plans. The figures below cover these
+            only; use the filters to reach older ones.
+          </p>
+        )}
 
         {/* Summary header */}
         {summary && summary.tripCount > 0 && (

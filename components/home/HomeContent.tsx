@@ -2,6 +2,7 @@
 
 import MapDashboardSection from "@/components/map/MapDashboardSection";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
+import type { RouteFormValues } from "@/components/map/RouteFinderForm";
 import type { FrequentTripCard } from "./PlanAgainCards";
 import SuggestionTiles from "./SuggestionTiles";
 
@@ -9,6 +10,7 @@ type Props = {
   defaultPassengerCount: number;
   savedPlaces: SavedPlaceOption[];
   frequentTrips: FrequentTripCard[];
+  tripToPlan?: RouteFormValues | null;
 };
 
 /**
@@ -20,6 +22,7 @@ export default function HomeContent({
   defaultPassengerCount,
   savedPlaces,
   frequentTrips,
+  tripToPlan,
 }: Props) {
   return (
     <div className="mt-8">
@@ -28,6 +31,7 @@ export default function HomeContent({
         savedPlaces={savedPlaces}
         aside={<SuggestionTiles />}
         frequentTrips={frequentTrips}
+        initialTrip={tripToPlan}
       />
     </div>
   );

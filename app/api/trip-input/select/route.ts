@@ -129,11 +129,15 @@ export async function POST(req: NextRequest) {
       estimatedFareHigh: fareEstimate.fare.high,
       estimatedDurationMin,
       currency: COUNTRY_CONFIG[country].currency,
+      fareSource: fareEstimate.fareSource,
+      fareSourceNote: fareEstimate.fareSourceNote,
     },
     snapshot: {
       weather: weather
         ? {
             source: weather.source,
+            kind: weather.kind,
+            forecastFor: weather.forecastFor,
             temperatureCelsius: weather.temperatureCelsius,
             precipitationMmPerHour: weather.precipitationMmPerHour,
             windKmh: weather.windKmh,

@@ -33,10 +33,15 @@ export interface ScorableOption {
   fareAdjustment: FareAdjustment | null;
 }
 export interface RankedOption extends ScorableOption {
-  adjustedDurationMin: number;              // real traffic duration × per-vehicle multiplier
+  // An estimate, not a reading: the car-route time (with traffic when there is
+  // a reading) scaled by a fixed factor for the vehicle class. Nothing measures
+  // how long a bike or a CNG actually takes, so the UI labels it as estimated.
+  adjustedDurationMin: number;
   riskBand: RiskBand;                        // risk from whichever of weather/traffic was readable
   riskBasis: RiskBasis;                      // which of them that was
-  bestFor: BestForTag;                       // strongest normalized metric for this option
+  // The metric this option leads the others on, or null when it leads none —
+  // including when it is the only option, which leads nothing.
+  bestFor: BestForTag | null;
   pros: string[];                            // up to 3 short chips
   cons: string[];                            // up to 2 short chips
   score: number;                             // internal weighted score used only for ranking
@@ -90,19 +95,35 @@ function normalizeHigherBetter(value: number, min: number, max: number): number 
   return (value - min) / (max - min);
 }
 
+/**
+ * The share of the score each metric carries for a priority, so the screen can
+ * state the rule that produced the order instead of implying something more.
+ */
+export function getPriorityWeights(priority: TravelPriority | null | undefined): MetricScores {
+  return PRIORITY_WEIGHTS[normalizePriority(priority)];
+}
+
 function normalizePriority(priority: TravelPriority | null | undefined): TravelPriority {
   return priority && priority in PRIORITY_WEIGHTS ? priority : DEFAULT_PRIORITY;
 }
 
-function getBestForTag(scores: MetricScores, priority: TravelPriority): BestForTag {
-  const tieBreaker: Array<keyof MetricScores> = [priority, "time", "cost", "comfort"];
-  const orderedMetrics = Array.from(new Set(tieBreaker));
+/**
+ * The "Best for" tag: a metric this option actually comes top on.
+ *
+ * It used to name the option's own strongest metric, so the slowest, dearest
+ * option still read "Best for Speed" if speed was the least bad thing about
+ * it. A tag is now a claim about the comparison: the option has the top value
+ * for that metric and at least one other option is worse on it. An option that
+ * leads several is tagged with the one the user asked to prioritise.
+ */
+function getBestForTag(
+  leads: Record<keyof MetricScores, boolean>,
+  priority: TravelPriority,
+): BestForTag | null {
+  const preference: Array<keyof MetricScores> = [priority, "time", "cost", "comfort"];
+  const metric = preference.find((candidate) => leads[candidate]);
 
-  return BEST_FOR_BY_METRIC[
-    orderedMetrics.reduce((bestMetric, metric) =>
-      scores[metric] > scores[bestMetric] ? metric : bestMetric,
-    )
-  ];
+  return metric ? BEST_FOR_BY_METRIC[metric] : null;
 }
 
 function compareRankedOptions(
@@ -244,25 +265,29 @@ export function rankRouteOptions({
       metricScores.comfort * weights.comfort -
       riskPenalty * 0.15;
 
-    return { ...option, metricScores, riskBand, riskBasis, score };
+    return { ...option, riskBand, riskBasis, score };
   });
 
-  // find the single winner in each individual metric — used to assign
-  // the one-per-card "Best for" tag
-  const cheapest = scored.reduce((a, b) => (b.fare.mid < a.fare.mid ? b : a));
-  const fastest  = scored.reduce((a, b) => (b.adjustedDurationMin < a.adjustedDurationMin ? b : a));
-  const comfiest = scored.reduce((a, b) => (b.comfortScore > a.comfortScore ? b : a));
-
-  const maxFareValue = Math.max(...fares); // reused below to flag "higher cost" as a con
+  // A comparative claim needs something to compare with and a real difference.
+  // One option alone is not the cheapest of anything, and when every fare is
+  // equal none of them is either cheapest or dearest.
+  const faresDiffer = maxFare > minFare;
+  const durationsDiffer = maxDur > minDur;
+  const comfortsDiffer = maxComf > minComf;
 
   // attach the Best-for tag and generate pros/cons chips per candidate
   const withTags: RankedOption[] = scored.map((option) => {
     const pros: string[] = [];
     const cons: string[] = [];
+    const leads = {
+      cost: faresDiffer && option.fare.mid === minFare,
+      time: durationsDiffer && option.adjustedDurationMin === minDur,
+      comfort: comfortsDiffer && option.comfortScore === maxComf,
+    };
 
-    if (option === cheapest) pros.push("Cheapest option");
-    if (option === fastest) pros.push("Shortest estimated time");
-    if (option === comfiest) pros.push("Most comfortable option");
+    if (leads.cost) pros.push("Lowest estimated fare");
+    if (leads.time) pros.push("Shortest estimated time");
+    if (leads.comfort) pros.push("Most comfortable option");
     if (option.comfortScore >= 4) pros.push("High comfort");
     // Only a band built from both readings can vouch for the whole trip.
     if (option.riskBand === "low" && riskBasis === "weather_and_traffic") {
@@ -270,9 +295,10 @@ export function rankRouteOptions({
     } else if (option.riskBand === "low" && riskBasis === "weather") {
       pros.push("Low weather score");
     }
-    if (!option.weatherRestricted) pros.push("No weather caution");
+    // "No caution" is a statement about the weather, so it needs a reading.
+    if (weatherBand && !option.weatherRestricted) pros.push("No weather caution");
 
-    if (option.fare.mid === maxFareValue) cons.push("Higher cost than alternatives");
+    if (faresDiffer && option.fare.mid === maxFare) cons.push("Highest estimated fare");
     if (option.weatherRestricted) cons.push(option.restrictionReason ?? "Weather caution advised");
     if (option.riskBand === "high") {
       cons.push(
@@ -285,11 +311,9 @@ export function rankRouteOptions({
     }
     if (option.comfortScore <= 2) cons.push("Lower comfort rating");
 
-    const { metricScores, ...rankedOption } = option;
-
     return {
-      ...rankedOption,
-      bestFor: getBestForTag(metricScores, normalizedPriority),
+      ...option,
+      bestFor: getBestForTag(leads, normalizedPriority),
       // Set + slice de-duplicates then caps the chip count per the SRS's
       // "up to 3 pros / 2 cons" limit
       pros: Array.from(new Set(pros)).slice(0, 3),

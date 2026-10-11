@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { BookmarkCheck, CalendarClock, History, TrafficCone } from "lucide-react";
+import { CalendarClock } from "lucide-react";
 import CountrySwitcher from "@/components/country/CountrySwitcher";
 import HomeContent from "./HomeContent";
 import type { FrequentTripCard } from "./PlanAgainCards";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
+import type { RouteFormValues } from "@/components/map/RouteFinderForm";
 
 type Props = {
   userName: string;
@@ -11,6 +12,8 @@ type Props = {
   defaultPassengerCount: number;
   savedPlaces: SavedPlaceOption[];
   frequentTrips: FrequentTripCard[];
+  /** A saved trip to open the planner with, from "Plan this trip". */
+  tripToPlan?: RouteFormValues | null;
 };
 
 export default function AuthedHome({
@@ -19,6 +22,7 @@ export default function AuthedHome({
   defaultPassengerCount,
   savedPlaces,
   frequentTrips,
+  tripToPlan,
 }: Props) {
   const upcomingLabel =
     upcomingCount === 0
@@ -46,40 +50,9 @@ export default function AuthedHome({
               {upcomingLabel}
             </span>
           )}
-          {/* On a phone the switcher takes a line of its own and the three
-              links sit centred on the line below it — together they are wider
-              than the viewport, and forcing them onto one row put the whole
-              page into a horizontal scroll. From sm up they rejoin a single
-              right-aligned row. nowrap on each link keeps "Trip History" from
-              breaking in two. */}
-          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-5">
-            <CountrySwitcher className="self-start sm:self-auto" />
-            {/* gap-4 rather than gap-5: the three links come to ~290px, which
-                needs the tighter gap to stay on one line at 360px. */}
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-start sm:gap-5">
-              <Link
-                href="/trip-history"
-                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <History className="size-4" />
-                Trip History
-              </Link>
-              <Link
-                href="/live-cams"
-                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <TrafficCone className="size-4" />
-                Live Traffic
-              </Link>
-              <Link
-                href="/saved-trips"
-                className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <BookmarkCheck className="size-4" />
-                Saved Trips
-              </Link>
-            </div>
-          </div>
+          {/* The page links that used to sit here are in the navbar now, on
+              every page. */}
+          <CountrySwitcher className="self-start sm:ml-auto sm:self-auto" />
         </div>
       </div>
 
@@ -92,6 +65,7 @@ export default function AuthedHome({
           defaultPassengerCount={defaultPassengerCount}
           savedPlaces={savedPlaces}
           frequentTrips={frequentTrips}
+          tripToPlan={tripToPlan}
         />
       </section>
 

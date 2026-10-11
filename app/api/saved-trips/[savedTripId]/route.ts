@@ -19,20 +19,12 @@ type RouteContext = { params: Promise<{ savedTripId: string }> };
 
 type SavedTripUpdateBody = TripValidationPayload & {
   name?: unknown;
-  isActive?: unknown;
-  preferredVehicleRateId?: unknown;
+  /** The `updatedAt` the caller last saw; the edit is refused if it is stale. */
+  expectedUpdatedAt?: unknown;
 };
 
 /** Fields that, if present, mean the trip itself has to be re-validated. */
-const TRIP_FIELDS = [
-  "origin",
-  "destination",
-  "stops",
-  "passengerCount",
-  "departureMode",
-  "scheduledLocal",
-  "scheduledAt",
-] as const;
+const TRIP_FIELDS = ["origin", "destination", "stops", "passengerCount"] as const;
 
 function unauthorized() {
   return NextResponse.json(
@@ -126,31 +118,6 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     patch.name = name;
   }
 
-  if (body.isActive !== undefined) {
-    if (typeof body.isActive !== "boolean") {
-      return NextResponse.json(
-        { success: false, message: "isActive must be true or false." },
-        { status: 400 },
-      );
-    }
-
-    patch.isActive = body.isActive;
-  }
-
-  if (body.preferredVehicleRateId !== undefined) {
-    if (
-      body.preferredVehicleRateId !== null &&
-      typeof body.preferredVehicleRateId !== "string"
-    ) {
-      return NextResponse.json(
-        { success: false, message: "That vehicle selection is not valid." },
-        { status: 400 },
-      );
-    }
-
-    patch.preferredVehicleRateId = body.preferredVehicleRateId;
-  }
-
   // A partial trip edit (say, passenger count alone) is merged over the stored
   // trip and the whole thing re-validated, so the saved record can never end up
   // in a state validateTripInput would reject.
@@ -162,9 +129,8 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       destination: body.destination ?? existing.destination,
       stops: body.stops ?? existing.stops,
       passengerCount: body.passengerCount ?? existing.passengerCount,
-      departureMode: body.departureMode ?? existing.departureMode,
-      scheduledLocal: body.scheduledLocal,
-      scheduledAt: body.scheduledAt ?? existing.scheduledAt ?? undefined,
+      // A saved trip has no departure of its own; see the POST route.
+      departureMode: "now",
     };
 
     // Validated against the country the trip was SAVED in, not the user's
@@ -198,6 +164,20 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     );
   }
 
+  if (body.expectedUpdatedAt !== undefined) {
+    if (
+      typeof body.expectedUpdatedAt !== "string" ||
+      Number.isNaN(Date.parse(body.expectedUpdatedAt))
+    ) {
+      return NextResponse.json(
+        { success: false, message: "expectedUpdatedAt must be a date." },
+        { status: 400 },
+      );
+    }
+
+    patch.expectedUpdatedAt = body.expectedUpdatedAt;
+  }
+
   try {
     const trip = await updateSavedTrip({
       userId: session.user.id,
@@ -207,22 +187,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
     if (!trip) return notFound();
 
-    // The edit was valid but left the stored vehicle unusable, so it was
-    // dropped. Say so: otherwise a fare alert goes quiet with no explanation.
-    const vehicleCleared =
-      patch.preferredVehicleRateId === undefined &&
-      existing.preferredVehicle !== null &&
-      trip.preferredVehicle === null;
-
-    return NextResponse.json({
-      success: true,
-      trip,
-      ...(vehicleCleared
-        ? {
-            message: `${existing.preferredVehicle?.displayName ?? "The saved vehicle"} no longer fits this trip, so it was removed. Choose a vehicle again to keep fare alerts.`,
-          }
-        : {}),
-    });
+    return NextResponse.json({ success: true, trip });
   } catch (error) {
     if (error instanceof SavedTripError) {
       return NextResponse.json(

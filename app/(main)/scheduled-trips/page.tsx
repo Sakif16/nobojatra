@@ -1,11 +1,13 @@
-import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import ScheduledTripsList from "@/components/ScheduledTripsList";
-import { auth } from "@/lib/auth";
+import { getRequestSession } from "@/lib/request-context";
 import { getScheduledTrips } from "@/lib/trip-history";
 
+export const metadata: Metadata = { title: "Scheduled trips" };
+
 export default async function ScheduledTripsPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getRequestSession();
 
   if (!session) {
     redirect("/signin");

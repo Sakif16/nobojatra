@@ -11,6 +11,7 @@
 // caller passes both fields through to the client, so a degraded estimate is
 // visible rather than silently indistinguishable from a live one.
 import "server-only";
+import { isConfigured } from "@/lib/env";
 
 import { ProviderBudgetError, spendProviderBudget } from "@/lib/provider-budget";
 
@@ -249,7 +250,8 @@ function toPathaoVehicle(vehicleType: string): PathaoVehicle {
 }
 
 function getPathaoBaseUrl() {
-  return process.env.PATHAO_FARE_API?.replace(/\/$/, "");
+  const value = process.env.PATHAO_FARE_API;
+  return isConfigured(value) ? value?.trim().replace(/\/$/, "") : undefined;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   Cloud,
   CloudOff,
   CloudRain,
+  Copy,
   History,
   MapPin,
   TrafficCone,
@@ -21,7 +22,11 @@ import {
   liveTrafficUnavailableMessage,
   type CountryCode,
 } from '@/lib/country-config'
+import { buttonVariants } from '@/components/ui/button'
+import { getFareSourceLabel } from '@/lib/fare-source'
+import { buildPlanSummary } from '@/lib/plan-summary'
 import { formatTripDateTime } from '@/lib/trip-time'
+import { getWeatherReadingLabel } from '@/lib/weather-reading'
 import BackLink from "@/components/BackLink";
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
@@ -35,10 +40,14 @@ interface SummaryVehicle {
   fareLow: number
   fareHigh: number
   currency: string
+  fareSource?: 'pathao_api' | 'rate_card' | null
+  fareSourceNote?: string | null
 }
 
 interface SummaryWeather {
   source: 'route_midpoint' | 'dhaka_fallback'
+  kind?: 'current' | 'forecast'
+  forecastFor?: string | null
   temperatureCelsius: number
   precipitationMmPerHour: number
   windKmh: number
@@ -140,6 +149,7 @@ export default function TripSummary({
 }) {
   const [trip, setTrip] = useState<TripSummaryDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [copyStatus, setCopyStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -197,6 +207,36 @@ export default function TripSummary({
   const vehicleKey = trip.vehicle ? `${trip.vehicle.provider}-${trip.vehicle.vehicleType}` : ''
   const title = getTripTitle(trip, viewMode)
 
+  async function copyPlan() {
+    if (!trip) return
+
+    const text = buildPlanSummary({
+      originLabel: trip.originLabel,
+      destinationLabel: trip.destinationLabel,
+      stopCount: trip.stopCount,
+      passengerCount: trip.passengerCount,
+      distanceKm: trip.distanceKm,
+      durationMin: trip.durationMin,
+      vehicleName: trip.vehicle?.displayName ?? null,
+      fare: trip.vehicle
+        ? formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)
+        : null,
+      departure:
+        trip.departureMode === 'scheduled' && trip.estimatedDepartureAt
+          ? formatTripDateTime(trip.estimatedDepartureAt, trip.timeZone)
+          : null,
+    })
+
+    // The clipboard is refused in some browsers and on plain http, so the
+    // failure is said rather than left looking like success.
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyStatus('Plan copied. Paste it into a message to share it.')
+    } catch {
+      setCopyStatus('Could not copy the plan from this browser.')
+    }
+  }
+
   return (
     <main className="flex-1">
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
@@ -248,9 +288,14 @@ export default function TripSummary({
                   <div className="text-lg font-bold tabular-nums text-foreground">
                     {formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">Estimated</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {getFareSourceLabel(trip.vehicle.fareSource) ?? 'Estimated'}
+                  </div>
                 </div>
               </div>
+              {trip.vehicle.fareSourceNote && (
+                <p className="mt-3 text-xs text-muted-foreground">{trip.vehicle.fareSourceNote}</p>
+              )}
             </div>
 
             {/* Time */}
@@ -330,7 +375,9 @@ export default function TripSummary({
                 Conditions when you saved this plan
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                A snapshot from the moment you saved — not a live reading.
+                {trip.weather?.kind === 'forecast'
+                  ? 'The forecast and traffic as they stood when you saved. The forecast can change before you leave.'
+                  : 'A snapshot from the moment you saved — not a live reading, and not a forecast.'}
               </p>
 
               <div className="mt-3 flex flex-col gap-2.5 sm:flex-row">
@@ -353,6 +400,9 @@ export default function TripSummary({
                       <>
                         <p className="font-medium">
                           {trip.weather.temperatureCelsius}°C · {trip.weather.precipitationMmPerHour} mm/h rain
+                        </p>
+                        <p className="text-xs opacity-75">
+                          {getWeatherReadingLabel(trip.weather, trip.timeZone)}
                         </p>
                         <p className="text-xs opacity-75">
                           Wind {trip.weather.windKmh} km/h · {trip.weather.severityBand} impact
@@ -391,22 +441,31 @@ export default function TripSummary({
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/" className={buttonVariants({ variant: 'outline', size: 'md' })}>
                 <MapPin className="size-4" />
                 Plan another trip
               </Link>
-              <Link
-                href="/trip-history"
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-              >
+              <Link href="/trip-history" className={buttonVariants({ size: 'md' })}>
                 <History className="size-4" />
                 View trip history
               </Link>
+              {/* Puts the plan on the clipboard as a few lines of text, to
+                  paste into a message. Nothing is sent anywhere. */}
+              <button
+                type="button"
+                onClick={() => void copyPlan()}
+                className={buttonVariants({ variant: 'outline', size: 'md' })}
+              >
+                <Copy className="size-4" />
+                Copy plan
+              </button>
             </div>
+            {copyStatus && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {copyStatus}
+              </p>
+            )}
           </div>
         )}
       </div>

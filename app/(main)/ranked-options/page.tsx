@@ -1,15 +1,17 @@
-import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import BestOptionsResults from "@/components/BestOptionsResults";
-import { auth } from "@/lib/auth";
+import { getRequestSession } from "@/lib/request-context";
+
+export const metadata: Metadata = { title: "Ranked options" };
 
 // searchParams is a Promise in Next.js 15 — must be awaited before reading
 interface Props {
   searchParams: Promise<{ tripHistoryId?: string; routeId?: string }>;
 }
 
-export default async function BestOptionsPage({ searchParams }: Props) {
-  const session = await auth.api.getSession({ headers: await headers() });
+export default async function RankedOptionsPage({ searchParams }: Props) {
+  const session = await getRequestSession();
 
   if (!session) redirect("/signin");
 

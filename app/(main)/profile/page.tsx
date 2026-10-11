@@ -1,10 +1,10 @@
-import { auth } from "@/lib/auth";
+import type { Metadata } from "next";
 import { DEFAULT_COUNTRY, resolveCountry } from "@/lib/country-config";
-import dbConnect from "@/lib/mongodb";
-import UserProfile from "@/models/UserProfile";
-import { headers } from "next/headers";
+import { getRequestProfile, getRequestSession } from "@/lib/request-context";
 import { redirect } from "next/navigation";
 import ProfileForm from "./profile-form";
+
+export const metadata: Metadata = { title: "Profile" };
 
 type SavedPlaceDoc = {
   label: string;
@@ -12,30 +12,15 @@ type SavedPlaceDoc = {
 };
 
 export default async function ProfilePage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getRequestSession();
 
   if (!session) {
     redirect("/signin");
   }
 
-  await dbConnect();
+  const profile = await getRequestProfile(session.user.id);
 
-  const profile = await UserProfile.findOneAndUpdate(
-    { userId: session.user.id },
-    {
-      $setOnInsert: {
-        userId: session.user.id,
-        country: DEFAULT_COUNTRY,
-        defaultTravelPriority: "time",
-        defaultPassengerCount: 1,
-      },
-    },
-    { returnDocument: "after", upsert: true },
-  );
-
-  const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile.savedPlaces)
+  const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile?.savedPlaces)
     ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
         label: sp.label,
         place: { label: sp.place.label, lat: sp.place.lat, lng: sp.place.lng },
@@ -51,9 +36,9 @@ export default async function ProfilePage() {
         createdAt: new Date(session.user.createdAt).toISOString(),
       }}
       initialProfile={{
-        country: resolveCountry(profile.country),
-        defaultTravelPriority: profile.defaultTravelPriority,
-        defaultPassengerCount: profile.defaultPassengerCount,
+        country: resolveCountry(profile?.country ?? DEFAULT_COUNTRY),
+        defaultTravelPriority: profile?.defaultTravelPriority ?? "time",
+        defaultPassengerCount: profile?.defaultPassengerCount ?? 1,
         savedPlaces,
       }}
     />

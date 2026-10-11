@@ -13,8 +13,6 @@ import { useCountryConfig } from "@/components/country/CountryProvider";
 type Feature = {
   label: string;
   description: string;
-  /** Used instead of `description` where the country has no live traffic. */
-  descriptionWithoutTraffic?: string;
   icon: React.ReactNode;
 };
 
@@ -26,7 +24,7 @@ const features: Feature[] = [
   },
   {
     label: "Scheduled trips",
-    description: "Plan departures up to 7 days ahead",
+    description: "Plan departures up to 5 days ahead",
     icon: <CalendarClock className="size-6" />,
   },
   {
@@ -40,9 +38,8 @@ const features: Feature[] = [
     icon: <History className="size-6" />,
   },
   {
-    label: "Saved trips & alerts",
-    description: "Track weather, traffic, and fare changes",
-    descriptionWithoutTraffic: "Track weather and fare changes",
+    label: "Saved trips",
+    description: "Keep the trips you repeat and plan them in one tap",
     icon: <BookmarkCheck className="size-6" />,
   },
   {
@@ -54,7 +51,7 @@ const features: Feature[] = [
   },
 ];
 
-function TileBody({ feature, liveTraffic }: { feature: Feature; liveTraffic: boolean }) {
+function TileBody({ feature }: { feature: Feature }) {
   return (
     <>
       <span className="text-primary">{feature.icon}</span>
@@ -62,9 +59,7 @@ function TileBody({ feature, liveTraffic }: { feature: Feature; liveTraffic: boo
         {feature.label}
       </span>
       <span className="mt-1 text-xs text-muted-foreground">
-        {liveTraffic
-          ? feature.description
-          : (feature.descriptionWithoutTraffic ?? feature.description)}
+        {feature.description}
       </span>
     </>
   );
@@ -73,7 +68,7 @@ function TileBody({ feature, liveTraffic }: { feature: Feature; liveTraffic: boo
 export default function SuggestionTiles() {
   // Follows the country switcher — the tiles describe what you can plan where
   // you are planning, so the blurb must not keep saying Dhaka in London.
-  const { serviceAreaName, liveTraffic } = useCountryConfig();
+  const { serviceAreaName } = useCountryConfig();
 
   return (
     <div className="w-full">
@@ -89,7 +84,7 @@ export default function SuggestionTiles() {
             key={feature.label}
             className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_rgba(249,151,57,0.18)]"
           >
-            <TileBody feature={feature} liveTraffic={liveTraffic} />
+            <TileBody feature={feature} />
           </div>
         ))}
       </div>

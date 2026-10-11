@@ -1,6 +1,14 @@
 import type { CountryCode } from "@/lib/country-config";
+import { readJson } from "@/lib/read-json";
+import type { RouteAccessGap } from "@/lib/route-access";
 
-export type LatLng = { lat: number; lng: number; name?: string };
+export type LatLng = {
+  lat: number;
+  lng: number;
+  name?: string;
+  /** The place's name as the user knows it, when the caller has one. */
+  label?: string;
+};
 
 export type RouteLeg = {
   startIndex: number;
@@ -22,6 +30,12 @@ export type RouteResult = {
   dwellDurationMin?: number;
   durationMin: number;
   legs: RouteLeg[];
+  /**
+   * Places whose pin is a noticeable distance from where this route meets the
+   * road. Positions only, never labels: routes are cached by coordinate and
+   * shared, and a label belongs to the user who typed it.
+   */
+  accessGaps?: RouteAccessGap[];
 };
 
 
@@ -152,9 +166,10 @@ export async function fetchTripTraffic(
     }),
     signal: options.signal,
   });
-  const payload = (await response.json()) as
+  const payload = await readJson<
     | { success: true; data: TripTrafficResult }
-    | { success: false; message?: string };
+    | { success: false; message?: string }
+  >(response);
 
   if (!response.ok || !payload.success) {
     throw new Error(
@@ -214,7 +229,7 @@ export async function fetchRoutes(
     signal: options.signal,
   });
 
-  const payload = (await response.json()) as RoutesApiResponse;
+  const payload = await readJson<RoutesApiResponse>(response);
 
   if (!response.ok || !payload.success) {
     throw new Error(getRoutesErrorMessage(payload));

@@ -106,6 +106,17 @@ const SelectedVehicleSchema = new Schema(
       type: String,
       default: "BDT",
     },
+    // Where the saved fare came from, and why if it is a fallback. Null on
+    // plans saved before this was recorded.
+    fareSource: {
+      type: String,
+      enum: ["pathao_api", "rate_card", null],
+      default: null,
+    },
+    fareSourceNote: {
+      type: String,
+      default: null,
+    },
   },
   { _id: false },
 );
@@ -122,6 +133,14 @@ const SelectionWeatherSchema = new Schema(
       type: String,
       enum: ["route_midpoint", "dhaka_fallback"],
     },
+    // Whether this was the weather at the time or a forecast for the
+    // departure. Absent on older snapshots, which were always current.
+    kind: {
+      type: String,
+      enum: ["current", "forecast"],
+      default: "current",
+    },
+    forecastFor: { type: Date, default: null },
     temperatureCelsius: { type: Number },
     precipitationMmPerHour: { type: Number },
     windKmh: { type: Number },
@@ -246,14 +265,27 @@ const TripHistorySchema = new Schema(
       type: Number,
       default: null,
     },
+    // No longer written. It used to default to the moment of the search,
+    // which recorded every search as a finished journey. Older rows keep the
+    // value; nothing reads it.
     completedAt: {
       type: Date,
-      default: Date.now,
+      default: null,
     },
   },
   {
     timestamps: true,
   },
 );
+
+// Every list of a user's history is "this user's rows, newest first", with or
+// without a date range: recent searches, the monthly groups, saved plans and
+// the home page's suggestions. Without this each one scans the user's rows and
+// sorts them in memory.
+TripHistorySchema.index({ userId: 1, createdAt: -1 });
+
+// Upcoming trips: the home page's count and the scheduled-trips list both ask
+// for this user's scheduled rows after now, in departure order.
+TripHistorySchema.index({ userId: 1, departureMode: 1, scheduledAt: 1 });
 
 export default models.TripHistory || model("TripHistory", TripHistorySchema);

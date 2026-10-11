@@ -94,7 +94,7 @@ test("a place search can be cancelled, so a superseded query cannot answer", asy
       init?.signal?.addEventListener("abort", () =>
         reject(new DOMException("Aborted", "AbortError")),
       );
-      setTimeout(() => resolve({ ok: true, json: async () => ({ success: true, data: [{ label: "late" }] }) }), 20);
+      setTimeout(() => resolve({ ok: true, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ success: true, data: [{ label: "late" }] }) }), 20);
     });
   };
 

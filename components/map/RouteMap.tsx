@@ -6,10 +6,14 @@ import {
   TileLayer,
   Polyline,
   Marker,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
-import { COUNTRY_CONFIG, hasLiveTraffic, type CountryCode } from "@/lib/country-config";
+import { escapeHtml } from "@/lib/escape-html";
+import { useServerFeatures } from "@/components/features/FeatureProvider";
+import { COUNTRY_CONFIG, type CountryCode } from "@/lib/country-config";
+import { canRequestTraffic } from "@/lib/feature-messages";
 import {
   INACTIVE_ROUTE_COLOR,
   MARKER_COLOR,
@@ -23,11 +27,15 @@ import {
 
 // Leaflet's default marker icons reference image files that don't resolve
 // correctly under Next.js bundling — we build our own numbered markers instead.
+//
+// `divIcon` takes a raw HTML string, so both values are escaped on the way in.
+// The labels are "A", "B" and stop numbers today; escaping here means that
+// stays safe whatever a later change passes.
 function numberedIcon(label: string | number, color: string) {
   return L.divIcon({
     className: "",
     html: `<div style="
-        background:${color};
+        background:${escapeHtml(color)};
         color:white;
         width:28px;height:28px;
         border-radius:50%;
@@ -35,13 +43,32 @@ function numberedIcon(label: string | number, color: string) {
         font-size:13px;font-weight:600;
         border:2px solid white;
         box-shadow:0 1px 4px rgba(0,0,0,0.35);
-      ">${label}</div>`,
+      ">${escapeHtml(label)}</div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   });
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+// Each layer credits the provider whose tiles it shows, and only that one.
+// Leaflet adds a layer's credit when the layer is added and removes it with
+// the layer, so the traffic credit appears only while the overlay is on.
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const MAPBOX_ATTRIBUTION = '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a>';
+const TOMTOM_ATTRIBUTION = '&copy; <a href="https://www.tomtom.com/">TomTom</a>';
+
+/** The place's own name, without the address a search result appends to it. */
+function placeName(point: LatLng) {
+  return (point.label ?? point.name)?.split(",")[0]?.trim() || null;
+}
+
+function markerTitle(role: string, point: LatLng) {
+  const name = placeName(point);
+
+  return name ? `${role}: ${name}` : role;
+}
 
 type Props = {
   /**
@@ -103,7 +130,11 @@ function FitBounds({
   destination,
   stops,
   routes,
-}: Pick<Props, "origin" | "destination" | "stops" | "routes">) {
+  fitRequest,
+}: Pick<Props, "origin" | "destination" | "stops" | "routes"> & {
+  /** Bumped by the "Fit route" button to refit after the user has panned away. */
+  fitRequest: number;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -116,9 +147,10 @@ function FitBounds({
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points);
     map.fitBounds(bounds, { padding: [48, 48] });
-    // Re-run whenever the route set or waypoints change (initial load + route changes)
+    // Re-run whenever the route set or any waypoint changes, and when the user
+    // asks for the route back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [origin.lat, origin.lng, destination.lat, destination.lng, routes]);
+  }, [origin.lat, origin.lng, destination.lat, destination.lng, stops, routes, fitRequest]);
 
   return null;
 }
@@ -135,7 +167,11 @@ export default function RouteMap({
   trafficLoading,
 }: Props) {
   const [showTrafficTiles, setShowTrafficTiles] = useState(false);
-  const trafficAvailable = hasLiveTraffic(country);
+  const [fitRequest, setFitRequest] = useState(0);
+  // Off where the country has no live traffic, and where this server has no
+  // traffic key: the overlay would only load blank tiles.
+  const trafficAvailable = canRequestTraffic(country, useServerFeatures());
+  const isRoundTrip = destination.lat === origin.lat && destination.lng === origin.lng;
   const mapRef = useRef<L.Map | null>(null);
 
   const activeRoute =
@@ -192,18 +228,23 @@ export default function RouteMap({
         ref={mapRef}
         style={{ height: "100%", width: "100%", borderRadius: "1rem" }}
       >
+        {/* Mapbox's tiles are drawn from OpenStreetMap data, so they credit
+            both; OpenStreetMap's own tiles credit OpenStreetMap alone. */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://www.mapbox.com/">Mapbox</a>'
+          attribution={
+            MAPBOX_TOKEN ? `${MAPBOX_ATTRIBUTION} ${OSM_ATTRIBUTION}` : OSM_ATTRIBUTION
+          }
           url={
             MAPBOX_TOKEN
               ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
-              : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              : "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           }
         />
 
         {/* Traffic tile overlay (Mapbox or TomTom) */}
         {trafficAvailable && trafficTileUrl && showTrafficTiles && (
           <TileLayer
+            attribution={MAPBOX_TOKEN ? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION}
             url={trafficTileUrl}
             opacity={0.9}
           />
@@ -258,29 +299,61 @@ export default function RouteMap({
               </Fragment>
             ))}
 
+        {/* Each marker says which place it is, on hover or tap and to a screen
+            reader. The name is rendered by React inside the tooltip, so it is
+            text, never markup. */}
         <Marker
           position={[origin.lat, origin.lng]}
           icon={numberedIcon("A", MARKER_COLOR)}
-        />
+          title={markerTitle(isRoundTrip ? "Origin and destination" : "Origin", origin)}
+          alt={markerTitle(isRoundTrip ? "Origin and destination" : "Origin", origin)}
+        >
+          <Tooltip>{markerTitle(isRoundTrip ? "Origin and destination" : "Origin", origin)}</Tooltip>
+        </Marker>
         {stops.map((s, i) => (
           <Marker
             key={`stop-${i}`}
             position={[s.lat, s.lng]}
             icon={numberedIcon(i + 1, MARKER_COLOR)}
-          />
+            title={markerTitle(`Stop ${i + 1}`, s)}
+            alt={markerTitle(`Stop ${i + 1}`, s)}
+          >
+            <Tooltip>{markerTitle(`Stop ${i + 1}`, s)}</Tooltip>
+          </Marker>
         ))}
-        <Marker
-          position={[destination.lat, destination.lng]}
-          icon={numberedIcon("B", MARKER_COLOR)}
-        />
+        {/* A round trip ends where it starts. Drawing "B" there would cover
+            "A", so the one marker stands for both. */}
+        {!isRoundTrip && (
+          <Marker
+            position={[destination.lat, destination.lng]}
+            icon={numberedIcon("B", MARKER_COLOR)}
+            title={markerTitle("Destination", destination)}
+            alt={markerTitle("Destination", destination)}
+          >
+            <Tooltip>{markerTitle("Destination", destination)}</Tooltip>
+          </Marker>
+        )}
 
         <FitBounds
           origin={origin}
           destination={destination}
           stops={stops}
           routes={routes}
+          fitRequest={fitRequest}
         />
       </MapContainer>
+
+      {/* Once the user pans or zooms away there was no way back to the route
+          short of searching again. */}
+      <div className="absolute right-3 bottom-6 z-1000">
+        <button
+          type="button"
+          onClick={() => setFitRequest((request) => request + 1)}
+          className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm"
+        >
+          Fit route
+        </button>
+      </div>
 
       {trafficAvailable && (
         <>

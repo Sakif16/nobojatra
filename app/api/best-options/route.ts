@@ -12,7 +12,12 @@ import {
   type VehicleRateDocument,
 } from "@/lib/fare-trip-context";
 import connectMongoDB from "@/lib/mongodb";
-import { rankRouteOptions, type ScorableOption, type TravelPriority } from "@/lib/route-scoring";
+import {
+  getPriorityWeights,
+  rankRouteOptions,
+  type ScorableOption,
+  type TravelPriority,
+} from "@/lib/route-scoring";
 import { getWeatherVehicleRestriction } from "@/lib/weather";
 import UserProfile from "@/models/UserProfile";
 import VehicleRate from "@/models/VehicleRate";
@@ -196,7 +201,10 @@ export async function POST(req: NextRequest) {
     },
     weather,
     weatherUnavailable,
+    timeZone: context.timeZone,
     scoringPriority: travelPriority,
+    // The whole ranking rule, for the screen to state alongside the order.
+    scoringWeights: getPriorityWeights(travelPriority),
     // Flattened for the client — only the totals, not the per-leg breakdown,
     // since the banner shows one trip-level reading, not a leg-by-leg table
     congestion: traffic

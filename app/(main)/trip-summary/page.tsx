@@ -1,14 +1,16 @@
-import { headers } from 'next/headers'
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import TripSummary from '@/components/TripSummary'
-import { auth } from '@/lib/auth'
+import { getRequestSession } from '@/lib/request-context'
+
+export const metadata: Metadata = { title: 'Trip plan' }
 
 interface Props {
   searchParams: Promise<{ source?: string; tripHistoryId?: string }>
 }
 
 export default async function TripSummaryPage({ searchParams }: Props) {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getRequestSession()
 
   if (!session) redirect('/signin')
 

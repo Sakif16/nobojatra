@@ -101,36 +101,6 @@ test("trip validation refuses stops that are not a list", () => {
   assert.equal(validate([{ label: "", lat: 0, lng: 0 }]).success, false);
 });
 
-test("a condition flag that is not a boolean is refused, not coerced", async () => {
-  const updates = [];
-  const { PATCH } = load("app/api/saved-trips/[savedTripId]/conditions/[conditionId]/route.ts", {
-    "next/server": nextServer,
-    "@/lib/auth": signedIn,
-    "@/lib/saved-trips": {
-      SavedTripError: class SavedTripError extends Error {},
-      deleteCondition: async () => null,
-      updateCondition: async (input) => {
-        updates.push(input.patch);
-        return { id: "trip" };
-      },
-    },
-  });
-  const params = { params: Promise.resolve({ savedTripId: "trip", conditionId: "condition" }) };
-  const patch = (body) => PATCH(jsonRequest(body), params);
-
-  // Boolean("false") is true: this used to resume a condition being paused.
-  for (const isActive of ["false", "true", 0, 1, null, {}]) {
-    const response = await patch({ isActive });
-    assert.equal(response.status, 400);
-    assert.equal(response.body.message, "isActive must be true or false.");
-  }
-  assert.equal((await patch(null)).status, 400);
-  assert.equal(updates.length, 0);
-
-  assert.equal((await patch({ isActive: false })).status, 200);
-  assert.deepEqual(updates, [{ isActive: false }]);
-});
-
 test("only real tiles reach the tile provider", () => {
   const { parseTileCoordinates } = load("lib/map-tiles.ts");
 

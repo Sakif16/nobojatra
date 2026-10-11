@@ -36,6 +36,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The ranking page used to be called "Best Options". Links saved under the
+  // old address still arrive, query string included.
+  async redirects() {
+    return [{ source: "/best-options", destination: "/ranked-options", permanent: true }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

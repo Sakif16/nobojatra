@@ -8,30 +8,23 @@ import { buttonVariants } from "@/components/ui/button";
 import { fieldClassName } from "@/components/ui/field-styles";
 import type { PlaceResult } from "@/lib/geocode";
 import { MAX_PASSENGER_COUNT, MIN_PASSENGER_COUNT } from "@/lib/trip-input";
-import {
-  clampPassengerCount,
-  keepVehicleIfItFits,
-  seatsPassengers,
-} from "@/lib/vehicle-capacity";
-import type { SavedTripDetail, VehicleOption } from "./types";
+import { clampPassengerCount } from "@/lib/vehicle-capacity";
+import type { SavedTripDetail } from "./types";
+import { readJson } from "@/lib/read-json";
+import StatusMessage from "@/components/ui/status-message";
 
 /**
- * Creates a named trip.
+ * Creates a named trip: a name, two places and a party size.
  *
- * Departure is fixed to "leave now" deliberately. A saved trip exists to be
- * re-evaluated on a schedule, but validateTripInput requires a scheduled time
- * to be in the future — so a trip saved with an absolute departure goes stale
- * the moment it passes, and any later edit then fails validation on a field
- * the user never touched. The API still accepts "scheduled" if that changes.
+ * There is no departure time and no vehicle. Both are chosen in the planner
+ * when the trip is planned, so a saved trip never goes stale.
  */
 export default function SavedTripForm({
   savedPlaces,
-  vehicles,
   onCreated,
   onCancel,
 }: {
   savedPlaces: SavedPlaceOption[];
-  vehicles: VehicleOption[];
   onCreated: (trip: SavedTripDetail) => void;
   onCancel: () => void;
 }) {
@@ -44,16 +37,6 @@ export default function SavedTripForm({
   // count the form acts on is always inside the allowed range.
   const [passengerInput, setPassengerInput] = useState("1");
   const passengerCount = clampPassengerCount(passengerInput);
-  const [vehicleId, setVehicleId] = useState("");
-
-  function handlePassengerInput(value: string) {
-    setPassengerInput(value);
-    // The list below only offers vehicles that seat the party. A selection
-    // that drops out of it is let go, not kept hidden and submitted.
-    setVehicleId((current) =>
-      keepVehicleIfItFits(current, vehicles, clampPassengerCount(value)),
-    );
-  }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,16 +60,14 @@ export default function SavedTripForm({
           destination,
           stops: [],
           passengerCount,
-          departureMode: "now",
-          preferredVehicleRateId: vehicleId || null,
         }),
       });
 
-      const payload = (await response.json()) as {
+      const payload = await readJson<{
         success: boolean;
         trip?: SavedTripDetail;
         message?: string;
-      };
+      }>(response);
 
       if (!response.ok || !payload.success || !payload.trip) {
         throw new Error(payload.message ?? "Could not save this trip.");
@@ -168,39 +149,14 @@ export default function SavedTripForm({
             min={MIN_PASSENGER_COUNT}
             max={MAX_PASSENGER_COUNT}
             value={passengerInput}
-            onChange={(event) => handlePassengerInput(event.target.value)}
+            onChange={(event) => setPassengerInput(event.target.value)}
             onBlur={() => setPassengerInput(String(passengerCount))}
             className={fieldClassName()}
           />
         </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="vehicle" className="text-xs font-medium text-muted-foreground">
-            Vehicle (needed for fare alerts)
-          </label>
-          <select
-            id="vehicle"
-            value={vehicleId}
-            onChange={(event) => setVehicleId(event.target.value)}
-            className={fieldClassName()}
-          >
-            <option value="">No vehicle</option>
-            {vehicles
-              .filter((vehicle) => seatsPassengers(vehicle, passengerCount))
-              .map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.displayName}
-                </option>
-              ))}
-          </select>
-        </div>
       </div>
 
-      {error && (
-        <p className="rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <StatusMessage size="sm">{error}</StatusMessage>}
 
       <div className="flex gap-2">
         <button

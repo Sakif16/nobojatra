@@ -1,11 +1,13 @@
-import { headers } from 'next/headers'
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import TripHistoryList from '@/components/TripHistoryList'
-import { auth } from '@/lib/auth'
+import { getRequestSession } from '@/lib/request-context'
 import { getTripHistoryActivityData } from '@/lib/trip-history'
 
+export const metadata: Metadata = { title: 'Trip history' }
+
 export default async function TripHistoryPage() {
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getRequestSession()
 
   if (!session) {
     redirect('/signin')

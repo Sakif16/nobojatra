@@ -1,59 +1,67 @@
 "use client";
 
-import { MapPin, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowRight, MapPin, Plus, Trash2, Users } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCountryConfig } from "@/components/country/CountryProvider";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import ConditionEditor from "./ConditionEditor";
 import SavedTripForm from "./SavedTripForm";
-import { formatFare } from "@/lib/country-config";
-import type { SavedTripDetail, VehicleOption } from "./types";
+import type { SavedTripDetail } from "./types";
 import BackLink from "@/components/BackLink";
+import { readJson } from "@/lib/read-json";
+import {
+  filterAndSortSavedTrips,
+  SAVED_TRIP_SORT_OPTIONS,
+  type SavedTripSort,
+} from "@/lib/saved-trip-list";
+import StatusMessage from "@/components/ui/status-message";
 
 /**
- * The saved-trips screen: create named trips, attach alert conditions, and
- * trigger an immediate evaluation.
+ * The saved-trips screen: keep the trips you repeat, and open any of them in
+ * the planner with its places already filled in.
  *
- * "Check now" posts to /api/alerts/evaluate in session mode, which respects
- * the evaluator's 15-minute per-trip throttle — so pressing it repeatedly is
- * cheap rather than a way to burn through the routing quota.
+ * A saved trip is only a bookmark. Its route and fares are worked out by the
+ * planner when it is planned, so they are current then.
  */
 export default function SavedTripsManager({
   savedPlaces,
-  vehicles,
 }: {
   savedPlaces: SavedPlaceOption[];
-  vehicles: VehicleOption[];
 }) {
   // The list the API returns is scoped to this country, so both the subtitle
   // and the empty state have to name it — otherwise switching country looks
   // like the saved trips were lost.
-  const { serviceAreaName, liveTraffic } = useCountryConfig();
+  const { serviceAreaName } = useCountryConfig();
   const [trips, setTrips] = useState<SavedTripDetail[]>([]);
+  // How many trips one country's list may hold; told to us by the API.
+  const [maxTrips, setMaxTrips] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SavedTripSort>("newest");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<string | null>(null);
+  // The trip whose delete button was pressed and is waiting to be confirmed.
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     // setState lives in the promise callbacks, never in the effect body — the
     // same shape TripHistoryList uses, and what React's compiler rules want.
     fetch("/api/saved-trips")
       .then(async (response) => {
-        const payload = (await response.json()) as {
+        const payload = await readJson<{
           success: boolean;
           trips?: SavedTripDetail[];
+          maxTrips?: number;
           message?: string;
-        };
+        }>(response);
 
         if (!response.ok || !payload.success) {
           throw new Error(payload.message ?? "Could not load saved trips.");
         }
 
         setTrips(payload.trips ?? []);
+        setMaxTrips(typeof payload.maxTrips === "number" ? payload.maxTrips : null);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Could not load saved trips.");
@@ -61,73 +69,23 @@ export default function SavedTripsManager({
       .finally(() => setLoading(false));
   }, []);
 
-  function replaceTrip(updated: SavedTripDetail) {
-    setTrips((current) =>
-      current.map((trip) => (trip.id === updated.id ? updated : trip)),
-    );
-  }
-
   async function deleteTrip(tripId: string) {
-    const response = await fetch(`/api/saved-trips/${tripId}`, { method: "DELETE" });
-
-    if (response.ok) {
-      setTrips((current) => current.filter((trip) => trip.id !== tripId));
-    } else {
-      setError("Could not delete this trip.");
-    }
-  }
-
-  async function toggleTrip(trip: SavedTripDetail) {
-    const response = await fetch(`/api/saved-trips/${trip.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !trip.isActive }),
-    });
-
-    const payload = (await response.json()) as {
-      success: boolean;
-      trip?: SavedTripDetail;
-    };
-
-    if (payload.success && payload.trip) replaceTrip(payload.trip);
-  }
-
-  async function checkNow() {
-    setChecking(true);
-    setCheckResult(null);
+    setConfirmingDeleteId(null);
+    setError(null);
 
     try {
-      const response = await fetch("/api/alerts/evaluate", { method: "POST" });
-      const payload = (await response.json()) as {
-        success: boolean;
-        evaluated?: number;
-        alertsCreated?: number;
-        message?: string;
-      };
+      const response = await fetch(`/api/saved-trips/${tripId}`, { method: "DELETE" });
 
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.message ?? "Could not run a check.");
-      }
+      if (!response.ok) throw new Error("Delete failed");
 
-      setCheckResult(
-        payload.evaluated === 0
-          ? "Nothing due yet. Trips are checked at most every 15 minutes, and only while the app is open."
-          : `Checked ${payload.evaluated} trip(s), ${payload.alertsCreated ?? 0} new notification(s).`,
-      );
-
-      const refreshed = await fetch("/api/saved-trips");
-      const refreshedPayload = (await refreshed.json()) as {
-        success: boolean;
-        trips?: SavedTripDetail[];
-      };
-
-      if (refreshedPayload.success) setTrips(refreshedPayload.trips ?? []);
-    } catch (err) {
-      setCheckResult(err instanceof Error ? err.message : "Could not run a check.");
-    } finally {
-      setChecking(false);
+      setTrips((current) => current.filter((trip) => trip.id !== tripId));
+    } catch {
+      setError("Could not delete this trip. Please try again.");
     }
   }
+
+  const listFull = maxTrips !== null && trips.length >= maxTrips;
+  const shownTrips = filterAndSortSavedTrips(trips, query, sort);
 
   return (
     <div className="flex flex-col gap-5">
@@ -136,45 +94,62 @@ export default function SavedTripsManager({
         <div>
           <h1 className="text-xl font-semibold text-foreground">Saved trips</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Your trips in {serviceAreaName}. Attach conditions to one and get
-            notified when they are met.
+            Your trips in {serviceAreaName}. Open one in the planner with its
+            places already filled in.
           </p>
         </div>
 
-        <div className="flex gap-2">
+        {!showForm && (
           <button
             type="button"
-            onClick={() => void checkNow()}
-            disabled={checking || trips.length === 0}
-            className={buttonVariants({ variant: "outline", size: "md" })}
+            onClick={() => setShowForm(true)}
+            disabled={listFull}
+            className={buttonVariants({ size: "md" })}
           >
-            <RefreshCw className={cn("size-4", checking && "animate-spin")} aria-hidden />
-            {checking ? "Checking…" : "Check now"}
+            <Plus className="size-4" aria-hidden />
+            New trip
           </button>
-
-          {!showForm && (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className={buttonVariants({ size: "md" })}
-            >
-              <Plus className="size-4" aria-hidden />
-              New trip
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {checkResult && (
-        <p className="rounded-xl border border-border bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground">
-          {checkResult}
+      {/* The limit is shown before it is hit, not discovered when a save fails. */}
+      {!loading && !error && maxTrips !== null && (
+        <p className="text-xs text-muted-foreground">
+          {trips.length} of {maxTrips} saved in {serviceAreaName}.
+          {listFull ? " Delete one to add another." : ""}
         </p>
+      )}
+
+      {trips.length > 1 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name or place"
+            aria-label="Search saved trips"
+            className="min-w-0 flex-1 basis-56 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+          />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Sort
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SavedTripSort)}
+              className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
+            >
+              {SAVED_TRIP_SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       )}
 
       {showForm && (
         <SavedTripForm
           savedPlaces={savedPlaces}
-          vehicles={vehicles}
           onCancel={() => setShowForm(false)}
           onCreated={(trip) => {
             setTrips((current) => [trip, ...current]);
@@ -184,14 +159,12 @@ export default function SavedTripsManager({
       )}
 
       {loading && (
-        <p className="text-xs text-muted-foreground">Loading saved trips…</p>
+        <StatusMessage tone="info" size="sm">
+          Loading saved trips…
+        </StatusMessage>
       )}
 
-      {error && !loading && (
-        <p className="rounded-xl bg-destructive/10 px-4 py-3 text-xs text-destructive">
-          {error}
-        </p>
-      )}
+      {error && !loading && <StatusMessage size="sm">{error}</StatusMessage>}
 
       {!loading && !error && trips.length === 0 && !showForm && (
         <div className="rounded-2xl border border-dashed border-border px-6 py-10 text-center">
@@ -200,20 +173,20 @@ export default function SavedTripsManager({
             No saved trips in {serviceAreaName} yet
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Save a trip to start watching its weather{liveTraffic ? ", traffic," : ""} and fare. Trips
+            Save a trip you make often and plan it again in one tap. Trips
             saved in another country stay there — switch back to see them.
           </p>
         </div>
       )}
 
-      {trips.map((trip) => (
-        <article
-          key={trip.id}
-          className={cn(
-            "rounded-2xl border border-border bg-card p-5",
-            !trip.isActive && "opacity-60",
-          )}
-        >
+      {trips.length > 0 && shownTrips.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-border px-6 py-8 text-center text-xs text-muted-foreground">
+          No saved trip matches “{query.trim()}”.
+        </p>
+      )}
+
+      {shownTrips.map((trip) => (
+        <article key={trip.id} className="rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="truncate text-sm font-semibold text-foreground">
@@ -225,20 +198,36 @@ export default function SavedTripsManager({
               <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                 {trip.origin.label} → {trip.destination.label}
               </p>
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Users className="size-3" aria-hidden />
+                  {trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}
+                </span>
+                {trip.stops.length > 0 && (
+                  <span>
+                    {trip.stops.length} stop{trip.stops.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </p>
             </div>
 
-            <div className="flex shrink-0 gap-1.5">
-              <button
-                type="button"
-                onClick={() => void toggleTrip(trip)}
-                className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted"
+            <div className="flex shrink-0 items-center gap-1.5">
+              {/* Opens the planner with this trip filled in. The search is left
+                  to the user, who may want to set a departure time first. */}
+              <Link
+                href={`/?savedTrip=${trip.id}`}
+                className={buttonVariants({ variant: "outline_primary", size: "md" })}
               >
-                {trip.isActive ? "Pause" : "Resume"}
-              </button>
+                Plan this trip
+                <ArrowRight className="size-4" aria-hidden />
+              </Link>
               <button
                 type="button"
                 aria-label={`Delete ${trip.name}`}
-                onClick={() => void deleteTrip(trip.id)}
+                aria-expanded={confirmingDeleteId === trip.id}
+                onClick={() =>
+                  setConfirmingDeleteId((current) => (current === trip.id ? null : trip.id))
+                }
                 className="rounded-md border border-border p-1.5 text-muted-foreground transition hover:bg-muted hover:text-destructive"
               >
                 <Trash2 className="size-3.5" aria-hidden />
@@ -246,42 +235,31 @@ export default function SavedTripsManager({
             </div>
           </div>
 
-          <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
-            {trip.route && (
-              <div className="flex gap-1">
-                <dt>Route</dt>
-                <dd className="font-medium text-foreground">
-                  {trip.route.distanceKm} km · {trip.route.durationMin} min
-                </dd>
+          {/* Deleting cannot be undone, so the bin only asks. The trip goes
+              when this is confirmed. */}
+          {confirmingDeleteId === trip.id && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
+              <p className="text-xs text-foreground">
+                Delete <span className="font-semibold">{trip.name}</span>? This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDeleteId(null)}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteTrip(trip.id)}
+                  className={buttonVariants({ variant: "destructive", size: "sm" })}
+                >
+                  Delete trip
+                </button>
               </div>
-            )}
-            {trip.preferredVehicle && (
-              <div className="flex gap-1">
-                <dt>Vehicle</dt>
-                <dd className="font-medium text-foreground">
-                  {trip.preferredVehicle.displayName}
-                </dd>
-              </div>
-            )}
-            {trip.baseline && (
-              <div className="flex gap-1">
-                <dt>Baseline</dt>
-                <dd className="font-medium text-foreground">
-                  {formatFare(trip.baseline.fareLow, trip.baseline.fareHigh, trip.country)}
-                </dd>
-              </div>
-            )}
-            <div className="flex gap-1">
-              <dt>Last checked</dt>
-              <dd className="font-medium text-foreground">
-                {trip.lastEvaluatedAt
-                  ? new Date(trip.lastEvaluatedAt).toLocaleString()
-                  : "never"}
-              </dd>
             </div>
-          </dl>
-
-          <ConditionEditor trip={trip} onTripChange={replaceTrip} />
+          )}
         </article>
       ))}
     </div>

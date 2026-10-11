@@ -3,6 +3,8 @@
 // the browser via TensorFlow.js — no server round-trip, no API route.
 "use client";
 
+import { isConfigured } from "@/lib/env";
+
 // Matches the shape @teachablemachine/image returns from model.predict()
 export type LocationPrediction = {
   className: string;
@@ -20,7 +22,7 @@ let modelPromise: Promise<{
 
 function getModelBaseUrl() {
   const baseUrl = process.env.NEXT_PUBLIC_TM_MODEL_URL;
-  if (!baseUrl) {
+  if (!baseUrl || !isConfigured(baseUrl)) {
     throw new Error(
       "NEXT_PUBLIC_TM_MODEL_URL is not set — point it at your Teachable Machine model's shareable link, e.g. https://teachablemachine.withgoogle.com/models/XXXXXXXX/",
     );
