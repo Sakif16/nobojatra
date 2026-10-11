@@ -13,6 +13,8 @@ import { useCountryConfig } from "@/components/country/CountryProvider";
 type Feature = {
   label: string;
   description: string;
+  /** Used instead of `description` where the country has no live traffic. */
+  descriptionWithoutTraffic?: string;
   icon: React.ReactNode;
 };
 
@@ -29,17 +31,18 @@ const features: Feature[] = [
   },
   {
     label: "AI route ranking",
-    description: "Compare the top 3 route options",
+    description: "Scores your options on time, cost and comfort",
     icon: <Route className="size-6" />,
   },
   {
     label: "Trip history",
-    description: "Review confirmed trips and recent searches",
+    description: "Review saved plans and recent searches",
     icon: <History className="size-6" />,
   },
   {
     label: "Saved trips & alerts",
     description: "Track weather, traffic, and fare changes",
+    descriptionWithoutTraffic: "Track weather and fare changes",
     icon: <BookmarkCheck className="size-6" />,
   },
   {
@@ -51,7 +54,7 @@ const features: Feature[] = [
   },
 ];
 
-function TileBody({ feature }: { feature: Feature }) {
+function TileBody({ feature, liveTraffic }: { feature: Feature; liveTraffic: boolean }) {
   return (
     <>
       <span className="text-primary">{feature.icon}</span>
@@ -59,7 +62,9 @@ function TileBody({ feature }: { feature: Feature }) {
         {feature.label}
       </span>
       <span className="mt-1 text-xs text-muted-foreground">
-        {feature.description}
+        {liveTraffic
+          ? feature.description
+          : (feature.descriptionWithoutTraffic ?? feature.description)}
       </span>
     </>
   );
@@ -68,14 +73,14 @@ function TileBody({ feature }: { feature: Feature }) {
 export default function SuggestionTiles() {
   // Follows the country switcher — the tiles describe what you can plan where
   // you are planning, so the blurb must not keep saying Dhaka in London.
-  const { serviceAreaName } = useCountryConfig();
+  const { serviceAreaName, liveTraffic } = useCountryConfig();
 
   return (
     <div className="w-full">
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-foreground">NoboJatra features</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Built-in tools for smarter route planning in {serviceAreaName}.
+          Built-in tools for route planning in {serviceAreaName}.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -84,7 +89,7 @@ export default function SuggestionTiles() {
             key={feature.label}
             className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_rgba(249,151,57,0.18)]"
           >
-            <TileBody feature={feature} />
+            <TileBody feature={feature} liveTraffic={liveTraffic} />
           </div>
         ))}
       </div>

@@ -6,6 +6,7 @@ import {
   SNOOZE_DURATION_MS,
 } from "@/lib/alerts";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/request-body";
 
 type RouteContext = { params: Promise<{ alertId: string }> };
 
@@ -30,15 +31,11 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  let body: { action?: unknown };
-  try {
-    body = (await req.json()) as { action?: unknown };
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Request body must be valid JSON." },
-      { status: 400 },
-    );
+  const parsed = await readJsonObject<{ action?: unknown }>(req);
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, message: parsed.message }, { status: 400 });
   }
+  const body = parsed.body;
 
   if (!isAlertAction(body?.action)) {
     return NextResponse.json(

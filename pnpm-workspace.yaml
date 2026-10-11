@@ -9,3 +9,39 @@ minimumReleaseAgeExclude:
   - '@types/leaflet@1.9.22'
 patchedDependencies:
   react-leaflet@5.0.0: patches/react-leaflet@5.0.0.patch
+# Patched versions of transitive dependencies whose parent has not picked them
+# up yet: nanoid and source-map-js arrive through Next's postcss, ip-address
+# through the MongoDB driver's socks support, and js-yaml and brace-expansion
+# through the lint tooling. Each stays inside the major its parent asked for.
+# Drop an entry once `pnpm audit` is clean without it.
+overrides:
+  # Not an advisory: seedrandom 2.4.4 finds the global object with
+  # `(0, eval)('this')`, which the content security policy refuses, and that
+  # stops the photo-search library from loading at all. 3.x has the same API
+  # without the eval. Only Teachable Machine's image library asks for 2.x.
+  '@teachablemachine/image>seedrandom': ^3.0.5
+  'brace-expansion@>=1.0.0 <1.1.21': ^1.1.21
+  'brace-expansion@>=5.0.0 <5.0.12': ^5.0.12
+  'ip-address@<10.7.1': ^10.7.1
+  'js-yaml@>=4.0.0 <4.3.2': ^4.3.2
+  'nanoid@<3.3.18': ^3.3.18
+  'source-map-js@<1.2.2': ^1.2.2
+# Advisories accepted on purpose, so `pnpm audit` only reports what is new.
+# Each entry needs its reason and what would end it.
+auditConfig:
+  ignoreGhsas:
+    # sprintf-js: a crafted format string can make it build a huge string. No
+    # fixed release exists (latest is 1.1.3; the advisory names 1.1.4). It is
+    # only reached through the command-line tool that ships with TensorFlow.js
+    # (tfjs > argparse > sprintf-js), which this app never runs, and it is not
+    # in the browser bundle. When 1.1.4 is published, delete this entry and add
+    # 'sprintf-js@<1.1.4': ^1.1.4 to the overrides above.
+    - GHSA-hp3w-g68c-fv3c
+    # braces: a deeply nested pattern can exhaust the stack. No fixed release
+    # exists (latest is 3.0.3; the advisory names 3.0.4). It is only reached
+    # through Next's lint plugin (eslint-config-next > @next/eslint-plugin-next
+    # > fast-glob > micromatch > braces), which matches file paths from this
+    # repository's own lint configuration when `pnpm lint` runs. It is never
+    # part of the deployed app. When 3.0.4 is published, delete this entry and
+    # add 'braces@<3.0.4': ^3.0.4 to the overrides above.
+    - GHSA-vfj7-8cjw-p6xm

@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { readJsonObject } from "@/lib/request-body";
+import { MAX_TRAFFIC_SAMPLES } from "@/lib/routing";
 import { getUserCountry } from "@/lib/user-country";
 import {
   getTrafficForTrip,
   TrafficServiceError,
   type TrafficPoint,
 } from "@/lib/traffic-service";
+
+/** A sampled route's points, less its two ends. */
+const MAX_TRAFFIC_STOPS = MAX_TRAFFIC_SAMPLES - 2;
 
 type LiveTrafficBody = {
   origin?: TrafficPoint;
@@ -40,10 +45,37 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    const body = (await req.json()) as LiveTrafficBody;
-    const stops = body.stops ?? [];
+  const parsed = await readJsonObject<LiveTrafficBody>(req);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { success: false, message: parsed.message },
+      { status: 400 }
+    );
+  }
+  const body = parsed.body;
 
+  if (body.stops != null && !Array.isArray(body.stops)) {
+    return NextResponse.json(
+      { success: false, message: "Stops must be a list of coordinates." },
+      { status: 400 }
+    );
+  }
+
+  const stops = body.stops ?? [];
+
+  // Every point after the first is one provider call. The planner never sends
+  // more than a sampled route's worth, so anything longer is not the planner.
+  if (stops.length > MAX_TRAFFIC_STOPS) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: `Traffic can be checked for up to ${MAX_TRAFFIC_STOPS} points between the origin and destination.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  try {
     if (
       !isTrafficPoint(body.origin) ||
       !isTrafficPoint(body.destination) ||

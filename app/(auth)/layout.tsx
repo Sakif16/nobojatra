@@ -86,11 +86,11 @@ export default function AuthLayout({
             {countryNames.join(" · ")}
           </p>
           <h2 className="mt-3 text-4xl font-bold tracking-tight text-balance text-foreground">
-            Plan smarter routes, wherever you are going
+            Compare routes, wherever you are going
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
             Compare real alternatives, watch traffic and weather as they change,
-            and know the fare before you leave.
+            and see a fare estimate before you leave.
           </p>
 
           <ul className="mt-10 grid gap-x-8 gap-y-5 sm:grid-cols-2">
@@ -136,7 +136,7 @@ export default function AuthLayout({
               </p>
               {/* A <p>, not a heading: the form below owns the page's h1. */}
               <p className="mt-2 text-2xl font-bold tracking-tight text-balance text-foreground">
-                Plan smarter routes, wherever you are going
+                Compare routes, wherever you are going
               </p>
               <ul className="mt-4 flex flex-wrap gap-1.5">
                 {highlights.map((highlight) => (

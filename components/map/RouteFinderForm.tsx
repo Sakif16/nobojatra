@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Camera, LocateFixed, Minus, Plus, X } from "lucide-react";
 import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
 import ImageLocationModal from "./ImageLocationModal";
@@ -13,6 +13,8 @@ import {
   getServiceAreaName,
   isInsideServiceArea,
 } from "@/lib/trip-input";
+import { COUNTRY_CONFIG } from "@/lib/country-config";
+import { formatLocalDateTime } from "@/lib/trip-time";
 import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,7 +29,12 @@ export type RouteFormValues = {
   stops: RouteStopValue[];
   passengerCount: number;
   departureMode: "now" | "scheduled";
-  scheduledAt: string | null;
+  /**
+   * The scheduled departure as a wall-clock time at the origin
+   * ("2026-09-20T09:00"). It names no zone: the server reads it in the
+   * origin's zone, never in this browser's.
+   */
+  scheduledLocal: string | null;
 };
 
 type StopField = {
@@ -38,6 +45,12 @@ type StopField = {
 
 type Props = {
   onSubmit: (values: RouteFormValues) => void;
+  /**
+   * Called when a trip input changes after the form first rendered: a place
+   * picked or cleared, a stop, the passenger count, or the departure. Results
+   * already on screen were made for the old inputs and no longer apply.
+   */
+  onInputChange?: () => void;
   loading?: boolean;
   submitLabel?: string;
   loadingLabel?: string;
@@ -53,30 +66,39 @@ const MIN_PASSENGERS = 1;
 const MAX_PASSENGERS = 8;
 const MAX_STOPS = 6;
 const SCHEDULE_WINDOW_DAYS = 7;
+const SCHEDULE_DEFAULT_LEAD_MS = 60 * 60 * 1000;
 
 // Stretches to the field's own height rather than hard-coding one, so the
 // button stays square with the input if the field padding ever changes.
 const cameraButtonClassName =
   "flex w-11 flex-shrink-0 items-center justify-center rounded-xl border border-input bg-secondary/60 text-muted-foreground transition-colors hover:border-ring hover:bg-secondary hover:text-foreground";
 
-function formatDateTimeLocal(date: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
+/**
+ * The earliest and latest times the picker offers, as clock times in the
+ * country being planned in rather than on this browser's clock — someone
+ * planning a Dhaka trip from London is choosing a Dhaka time.
+ *
+ * A country with several zones cannot know the trip's zone until the server
+ * has seen the origin, so the range runs from the earliest clock reading among
+ * them to the latest. The server applies the exact limit in the origin's zone.
+ */
+function getScheduleBounds(nowMs: number, timeZones: string[]) {
+  // "YYYY-MM-DDTHH:mm" strings sort in time order.
+  const clockReadings = (instantMs: number) =>
+    timeZones.map((zone) => formatLocalDateTime(new Date(instantMs), zone)).sort();
 
-  return [
-    date.getFullYear(),
-    "-",
-    pad(date.getMonth() + 1),
-    "-",
-    pad(date.getDate()),
-    "T",
-    pad(date.getHours()),
-    ":",
-    pad(date.getMinutes()),
-  ].join("");
+  return {
+    min: clockReadings(nowMs + 60 * 1000)[0],
+    max: clockReadings(nowMs + SCHEDULE_WINDOW_DAYS * 24 * 60 * 60 * 1000).at(-1) as string,
+    // An hour ahead on the latest of those clocks, so the prefilled time is
+    // still in the future in every zone by the time the form is submitted.
+    initial: clockReadings(nowMs + SCHEDULE_DEFAULT_LEAD_MS).at(-1) as string,
+  };
 }
 
 export default function RouteFinderForm({
   onSubmit,
+  onInputChange,
   loading,
   submitLabel = "Find Best Route",
   loadingLabel = "Finding routes…",
@@ -106,7 +128,7 @@ export default function RouteFinderForm({
     initialValues?.departureMode === "scheduled" ? "schedule" : "now"
   );
   const [scheduledTime, setScheduledTime] = useState(
-    initialValues?.scheduledAt ?? ""
+    initialValues?.scheduledLocal ?? ""
   );
 
   const [stops, setStops] = useState<StopField[]>(
@@ -128,16 +150,13 @@ export default function RouteFinderForm({
     null
   );
 
-  const [scheduleBounds] = useState(() => {
-    const now = Date.now();
-    const min = new Date(now + 60 * 1000);
-    const max = new Date(now + SCHEDULE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-
-    return {
-      min: formatDateTimeLocal(min),
-      max: formatDateTimeLocal(max),
-    };
-  });
+  const [mountedAt] = useState(() => Date.now());
+  const { label: countryLabel, timeZones } = COUNTRY_CONFIG[country];
+  const scheduleBounds = getScheduleBounds(mountedAt, timeZones);
+  const scheduleZoneHint =
+    timeZones.length === 1
+      ? `${countryLabel} time`
+      : "Local time at the pickup point";
 
   async function useCurrentLocation() {
     setLocationPrompt(null);
@@ -266,6 +285,27 @@ export default function RouteFinderForm({
     return selectedStops;
   }, []);
 
+  // Reports edits, not the initial values: a form restored by Plan Again
+  // mounts already filled in, and its search is the one being run. Comparing
+  // against the last values seen, rather than skipping the first run, also
+  // holds when React runs a mount effect twice in development.
+  const inputChangeRef = useRef(onInputChange);
+  const lastInputsRef = useRef<unknown[] | null>(null);
+
+  useEffect(() => {
+    inputChangeRef.current = onInputChange;
+  });
+
+  useEffect(() => {
+    const inputs = [origin, destination, stops, passengers, mode, scheduledTime];
+    const previous = lastInputsRef.current;
+    lastInputsRef.current = inputs;
+
+    if (previous && inputs.some((input, index) => input !== previous[index])) {
+      inputChangeRef.current?.();
+    }
+  }, [origin, destination, stops, passengers, mode, scheduledTime]);
+
   const hasIncompleteStops = stops.some((stop) => stop.place === null);
   const canSubmit =
     origin !== null &&
@@ -297,7 +337,7 @@ export default function RouteFinderForm({
       stops: validStops,
       passengerCount: passengers,
       departureMode: mode === "schedule" ? "scheduled" : "now",
-      scheduledAt: mode === "schedule" && scheduledTime ? scheduledTime : null,
+      scheduledLocal: mode === "schedule" && scheduledTime ? scheduledTime : null,
     });
   }
 
@@ -431,7 +471,7 @@ export default function RouteFinderForm({
           type="button"
           onClick={() => {
             setMode("schedule");
-            if (!scheduledTime) setScheduledTime(scheduleBounds.min);
+            if (!scheduledTime) setScheduledTime(scheduleBounds.initial);
           }}
           className={cn(
             "flex-1 py-2.5 text-sm font-medium transition-colors",
@@ -445,14 +485,20 @@ export default function RouteFinderForm({
       </div>
 
       {mode === "schedule" && (
-        <input
-          type="datetime-local"
-          value={scheduledTime}
-          onChange={(e) => setScheduledTime(e.target.value)}
-          min={scheduleBounds.min}
-          max={scheduleBounds.max}
-          className="w-full rounded-xl border border-input bg-secondary/60 px-4 py-2.5 text-sm text-foreground outline-none focus:border-ring"
-        />
+        <div className="space-y-1.5">
+          <input
+            type="datetime-local"
+            aria-describedby="schedule-zone-hint"
+            value={scheduledTime}
+            onChange={(e) => setScheduledTime(e.target.value)}
+            min={scheduleBounds.min}
+            max={scheduleBounds.max}
+            className="w-full rounded-xl border border-input bg-secondary/60 px-4 py-2.5 text-sm text-foreground outline-none focus:border-ring"
+          />
+          <p id="schedule-zone-hint" className="px-1 text-xs text-muted-foreground">
+            {scheduleZoneHint}
+          </p>
+        </div>
       )}
 
       <div>

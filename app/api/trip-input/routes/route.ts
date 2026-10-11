@@ -10,8 +10,10 @@ import {
   type TripValidationPayload,
   type ValidatedTripInput,
 } from "@/lib/trip-input";
-import type { RouteResult } from "@/lib/routing";
+import { resolveTripTimeZone } from "@/lib/trip-time-zone";
+import type { RouteLeg, RouteResult } from "@/lib/routing";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/request-body";
 
 const ROUTE_RATE_LIMIT_WINDOW_MS = 60_000;
 const ROUTE_RATE_LIMIT_MAX_REQUESTS = 20;
@@ -24,23 +26,15 @@ type RateLimitEntry = {
 
 type RouteCacheEntry = {
   expiresAt: number;
-  routes: RouteResult[];
+  routes: CachedRoute[];
+};
+
+type CachedRoute = Omit<RouteResult, "legs"> & {
+  legs: Omit<RouteLeg, "fromLabel" | "toLabel">[];
 };
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 const routeCache = new Map<string, RouteCacheEntry>();
-
-function getClientIp(req: NextRequest) {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  const firstForwardedIp = forwardedFor?.split(",")[0]?.trim();
-
-  return (
-    firstForwardedIp ||
-    req.headers.get("x-real-ip") ||
-    req.headers.get("cf-connecting-ip") ||
-    "anonymous"
-  );
-}
 
 function getRoundedCoordinate(value: number) {
   return Number(value.toFixed(5));
@@ -64,6 +58,31 @@ function getRouteCacheKey(data: ValidatedTripInput) {
   });
 }
 
+function stripRouteLabels(routes: RouteResult[]): CachedRoute[] {
+  return routes.map((route) => ({
+    ...route,
+    legs: route.legs.map((leg) => {
+      const cachedLeg = { ...leg };
+      delete cachedLeg.fromLabel;
+      delete cachedLeg.toLabel;
+      return cachedLeg;
+    }),
+  }));
+}
+
+function labelRoutes(routes: CachedRoute[], trip: ValidatedTripInput): RouteResult[] {
+  const waypoints = [trip.origin, ...trip.stops, trip.destination];
+
+  return routes.map((route) => ({
+    ...route,
+    legs: route.legs.map((leg, index) => ({
+      ...leg,
+      fromLabel: waypoints[index]?.label ?? `Point ${index + 1}`,
+      toLabel: waypoints[index + 1]?.label ?? `Point ${index + 2}`,
+    })),
+  }));
+}
+
 function cleanupStores(now: number) {
   for (const [key, entry] of routeCache.entries()) {
     if (entry.expiresAt <= now) {
@@ -78,17 +97,17 @@ function cleanupStores(now: number) {
   }
 }
 
-function checkRateLimit(ip: string, now: number) {
+function checkRateLimit(userId: string, now: number) {
   cleanupStores(now);
 
-  const existing = rateLimitStore.get(ip);
+  const existing = rateLimitStore.get(userId);
 
   if (!existing) {
     const entry = {
       count: 1,
       resetAt: now + ROUTE_RATE_LIMIT_WINDOW_MS,
     };
-    rateLimitStore.set(ip, entry);
+    rateLimitStore.set(userId, entry);
 
     return {
       allowed: true,
@@ -126,7 +145,6 @@ function getRateLimitHeaders(rateLimit: ReturnType<typeof checkRateLimit>) {
 }
 
 export async function POST(req: NextRequest) {
-  let payload: TripValidationPayload;
   const session = await auth.api.getSession({ headers: req.headers });
 
   if (!session) {
@@ -139,26 +157,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  try {
-    payload = (await req.json()) as TripValidationPayload;
-  } catch {
+  const parsed = await readJsonObject<TripValidationPayload>(req);
+
+  if (!parsed.ok) {
     return NextResponse.json(
-      {
-        success: false,
-        errors: {
-          origin: "Request body must be valid JSON.",
-        },
-      },
+      { success: false, errors: { origin: parsed.message } },
       { status: 400 }
     );
   }
+
+  const payload = parsed.body;
 
   // The user's chosen country decides which service area their origin,
   // destination and stops are validated against, and is snapshotted onto the
   // trip record so the fare and weather stages downstream agree with it.
   const country = await getUserCountry(session.user.id);
 
-  const validation = validateTripInput(payload, new Date(), country);
+  const validation = validateTripInput(payload, new Date(), country, resolveTripTimeZone);
 
   if (!validation.success) {
     return NextResponse.json(
@@ -171,35 +186,9 @@ export async function POST(req: NextRequest) {
   }
 
   const now = Date.now();
-  const cacheKey = getRouteCacheKey(validation.data);
-  const cached = routeCache.get(cacheKey);
-
-  if (cached && cached.expiresAt > now) {
-    const tripHistoryId = await createTripHistoryRecord({
-      userId: session.user.id,
-      trip: validation.data,
-      routes: cached.routes,
-      country,
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          routes: cached.routes,
-          tripHistoryId,
-        },
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store",
-          "X-Route-Cache": "HIT",
-        },
-      }
-    );
-  }
-
-  const rateLimit = checkRateLimit(getClientIp(req), now);
+  // Counted per account, not per IP address: the address comes from a header
+  // the caller can set, and this route already knows who is signed in.
+  const rateLimit = checkRateLimit(session.user.id, now);
 
   if (!rateLimit.allowed) {
     return NextResponse.json(
@@ -217,16 +206,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const cacheKey = getRouteCacheKey(validation.data);
+  const cached = routeCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    const routes = labelRoutes(cached.routes, validation.data);
+    const tripHistoryId = await createTripHistoryRecord({
+      userId: session.user.id,
+      trip: validation.data,
+      routes,
+      country,
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: { routes, tripHistoryId },
+      },
+      {
+        headers: {
+          ...getRateLimitHeaders(rateLimit),
+          "Cache-Control": "no-store",
+          "X-Route-Cache": "HIT",
+        },
+      }
+    );
+  }
+
   try {
-    const routes = await fetchRouteSuggestions(
+    const fetchedRoutes = await fetchRouteSuggestions(
       validation.data.origin,
       validation.data.destination,
       validation.data.stops
     );
 
+    const cacheRoutes = stripRouteLabels(fetchedRoutes);
+    const routes = labelRoutes(cacheRoutes, validation.data);
+
     routeCache.set(cacheKey, {
-      expiresAt: now + ROUTE_CACHE_TTL_MS,
-      routes,
+      expiresAt: Date.now() + ROUTE_CACHE_TTL_MS,
+      routes: cacheRoutes,
     });
 
     const tripHistoryId = await createTripHistoryRecord({

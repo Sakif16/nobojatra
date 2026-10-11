@@ -1,0 +1,16 @@
+{
+  "advisories": {},
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 1,
+      "critical": 0
+    },
+    "dependencies": 182,
+    "devDependencies": 318,
+    "optionalDependencies": 90,
+    "totalDependencies": 540
+  }
+}

@@ -59,6 +59,8 @@ export type TripTrafficResult = {
   isPeakHour: boolean;
   /** The country whose peak-hour windows `isPeakHour` was judged against. */
   country: CountryCode;
+  /** The IANA zone at the start of the trip, which the departure was read in. */
+  timeZone: string;
   legs: TrafficLegResult[];
   totals: Omit<TrafficLegResult, "legIndex" | "distanceMeters"> & {
     distanceMeters: number;
@@ -82,6 +84,13 @@ export const TRAFFIC_LEVEL_LABELS: Record<TrafficLevel, string> = {
 };
 
 /**
+ * The most points a route is thinned to before traffic is requested for it.
+ * Each consecutive pair is one provider call, so this is also the ceiling the
+ * traffic endpoint enforces on what it is sent.
+ */
+export const MAX_TRAFFIC_SAMPLES = 10;
+
+/**
  * Picks the same evenly-spaced coordinate indices used to sample a route
  * down to at most `maxSamples` points before sending it to the traffic
  * service. Shared by the fetch side (which turns the indices into lat/lng
@@ -91,7 +100,7 @@ export const TRAFFIC_LEVEL_LABELS: Record<TrafficLevel, string> = {
  */
 export function getTrafficSampleIndices(
   route: Pick<RouteResult, "coords">,
-  maxSamples = 10
+  maxSamples = MAX_TRAFFIC_SAMPLES
 ): number[] {
   const sampleCount = Math.min(maxSamples, route.coords.length);
   if (sampleCount < 2) return [];
@@ -121,6 +130,8 @@ type FetchRoutesOptions = {
   passengerCount?: number;
   departureMode?: "now" | "scheduled";
   scheduledAt?: string | null;
+  /** Lets a caller drop a request that a newer one has replaced. */
+  signal?: AbortSignal;
 };
 
 export async function fetchTripTraffic(
@@ -139,6 +150,7 @@ export async function fetchTripTraffic(
       departureMode: options.departureMode ?? "now",
       scheduledAt: options.scheduledAt ?? null,
     }),
+    signal: options.signal,
   });
   const payload = (await response.json()) as
     | { success: true; data: TripTrafficResult }
@@ -199,6 +211,7 @@ export async function fetchRoutes(
       departureMode: options.departureMode ?? "now",
       scheduledAt: options.scheduledAt ?? undefined,
     }),
+    signal: options.signal,
   });
 
   const payload = (await response.json()) as RoutesApiResponse;
@@ -238,4 +251,13 @@ export async function updateTripHistorySelectedRoute(
       | null;
     throw new Error(payload?.message ?? "Unable to update selected route.");
   }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: { vehicleChoiceCleared?: boolean } }
+    | null;
+
+  return {
+    /** True when a vehicle saved on the previous route had to be dropped. */
+    vehicleChoiceCleared: Boolean(payload?.data?.vehicleChoiceCleared),
+  };
 }

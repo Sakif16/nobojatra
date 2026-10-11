@@ -10,22 +10,18 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { formatFare } from "@/lib/country-config";
+import {
+  formatFare,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
+} from "@/lib/country-config";
 import type { ScheduledTripListItem } from "@/lib/trip-history";
+import { formatTripDateTime } from "@/lib/trip-time";
 import BackLink from "@/components/BackLink";
 
 type Props = {
   trips: ScheduledTripListItem[];
 };
-
-const dateFormatter = new Intl.DateTimeFormat("en", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 function formatMinutes(min: number | null) {
   if (min == null) return "Not available";
@@ -38,7 +34,7 @@ function formatMinutes(min: number | null) {
 }
 
 function formatTripFare(trip: ScheduledTripListItem) {
-  if (!trip.vehicle) return "No vehicle confirmed";
+  if (!trip.vehicle) return "No vehicle chosen";
 
   // The trip's own country, not the user's current one — a Dhaka trip stays
   // quoted in taka after the user switches their profile.
@@ -46,7 +42,7 @@ function formatTripFare(trip: ScheduledTripListItem) {
 }
 
 function getStatus(trip: ScheduledTripListItem) {
-  return trip.vehicle ? "Confirmed" : "Planned";
+  return trip.vehicle ? "Vehicle chosen" : "Planned";
 }
 
 function getPrimaryAction(trip: ScheduledTripListItem) {
@@ -105,7 +101,7 @@ export default function ScheduledTripsList({ trips }: Props) {
           Scheduled trips
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Upcoming planned and confirmed departures.
+          Upcoming planned departures. These are plans, not bookings.
         </p>
       </div>
 
@@ -123,7 +119,7 @@ export default function ScheduledTripsList({ trips }: Props) {
                   <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary">
                       <CalendarClock className="size-3.5" />
-                      {dateFormatter.format(new Date(trip.scheduledAt))}
+                      {formatTripDateTime(trip.scheduledAt, trip.timeZone)}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-secondary-foreground">
                       {trip.vehicle ? (
@@ -184,14 +180,14 @@ export default function ScheduledTripsList({ trips }: Props) {
                     <span>
                       Departure
                       <strong className="mt-0.5 block text-foreground">
-                        {dateFormatter.format(new Date(trip.scheduledAt))}
+                        {formatTripDateTime(trip.scheduledAt, trip.timeZone)}
                       </strong>
                     </span>
                     <span>
                       Arrival
                       <strong className="mt-0.5 block text-foreground">
                         {trip.estimatedArrivalAt
-                          ? dateFormatter.format(new Date(trip.estimatedArrivalAt))
+                          ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone)
                           : "Not available"}
                       </strong>
                     </span>
@@ -224,7 +220,9 @@ export default function ScheduledTripsList({ trips }: Props) {
                     <span className="inline-flex items-center gap-1.5">
                       <TrafficCone className="size-4 text-primary" />
                       {trip.trafficUnavailable || !trip.traffic
-                        ? "Traffic not captured"
+                        ? hasLiveTraffic(trip.country)
+                          ? "Traffic not captured"
+                          : liveTrafficUnavailableMessage(trip.country)
                         : `${trip.traffic.congestionLevel} · ${trip.traffic.durationInTrafficMin} min`}
                     </span>
                   </div>

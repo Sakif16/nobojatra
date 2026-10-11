@@ -15,7 +15,13 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { formatFare, type CountryCode } from '@/lib/country-config'
+import {
+  formatFare,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
+  type CountryCode,
+} from '@/lib/country-config'
+import { formatTripDateTime } from '@/lib/trip-time'
 import BackLink from "@/components/BackLink";
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
@@ -68,6 +74,7 @@ interface TripSummaryDetail {
   durationMin: number | null
   vehicle: SummaryVehicle | null
   departureMode: 'now' | 'scheduled'
+  timeZone: string
   estimatedDepartureAt: string | null
   estimatedArrivalAt: string | null
   weather: SummaryWeather | null
@@ -93,23 +100,6 @@ const ICONS: Record<string, string> = {
   'uber-xl': '🚐',
 }
 
-const timeFormatter = new Intl.DateTimeFormat('en', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-
-const tripTitleFormatter = new Intl.DateTimeFormat('en', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-
 function formatMinutes(min: number | null) {
   if (min == null) return '—'
   if (min < 60) return `${Math.round(min)} min`
@@ -131,14 +121,14 @@ function congestionTone(level: CongestionLevel | undefined) {
 }
 
 function getTripTitle(trip: TripSummaryDetail, viewMode: 'confirmed' | 'history') {
-  if (viewMode === 'confirmed') return 'Trip confirmed'
+  if (viewMode === 'confirmed') return 'Plan saved'
 
   const dateValue = trip.estimatedDepartureAt ?? trip.selectedAt ?? trip.createdAt
   const date = new Date(dateValue)
 
   if (Number.isNaN(date.getTime())) return 'Your trip'
 
-  return `Your trip on ${tripTitleFormatter.format(date)}`
+  return `Your trip on ${formatTripDateTime(date, trip.timeZone)}`
 }
 
 export default function TripSummary({
@@ -168,7 +158,7 @@ export default function TripSummary({
       })
       .catch(() => {
         if (!active) return
-        setError('Could not load this trip. It may not exist or may not be confirmed yet.')
+        setError('Could not load this trip. It may not exist or may not have a saved plan yet.')
         setLoading(false)
       })
 
@@ -222,11 +212,16 @@ export default function TripSummary({
             <ArrowRight className="my-0.5 size-3 shrink-0 rotate-90 sm:my-0 sm:size-3.5 sm:rotate-0" />
             <span className="truncate">{trip.destinationLabel}</span>
           </p>
+          {trip.vehicle && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              A saved plan is not a booking. No ride provider has been contacted.
+            </p>
+          )}
         </div>
 
         {!trip.vehicle ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-            <p className="text-sm font-medium text-foreground">No vehicle confirmed yet</p>
+            <p className="text-sm font-medium text-foreground">No vehicle chosen yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Go back to the fare results and pick a ride to see a summary here.
             </p>
@@ -249,8 +244,11 @@ export default function TripSummary({
                     {trip.passengerCount > 1 ? 's' : ''}
                   </p>
                 </div>
-                <div className="shrink-0 text-lg font-bold tabular-nums text-foreground">
-                  {formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)}
+                <div className="shrink-0 text-right">
+                  <div className="text-lg font-bold tabular-nums text-foreground">
+                    {formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Estimated</div>
                 </div>
               </div>
             </div>
@@ -273,7 +271,7 @@ export default function TripSummary({
                   Est. departure
                 </p>
                 <p className="mt-0.5 font-semibold text-foreground">
-                  {trip.estimatedDepartureAt ? timeFormatter.format(new Date(trip.estimatedDepartureAt)) : '—'}
+                  {trip.estimatedDepartureAt ? formatTripDateTime(trip.estimatedDepartureAt, trip.timeZone, { year: false }) : '—'}
                 </p>
               </div>
               <div>
@@ -282,7 +280,7 @@ export default function TripSummary({
                   Est. arrival
                 </p>
                 <p className="mt-0.5 font-semibold text-foreground">
-                  {trip.estimatedArrivalAt ? timeFormatter.format(new Date(trip.estimatedArrivalAt)) : '—'}
+                  {trip.estimatedArrivalAt ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone, { year: false }) : '—'}
                 </p>
               </div>
             </div>
@@ -329,10 +327,10 @@ export default function TripSummary({
             <div className="rounded-2xl border border-border bg-card px-4 py-4">
               <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 <Camera className="size-3.5" aria-hidden />
-                Conditions when you booked
+                Conditions when you saved this plan
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                A snapshot from the moment you confirmed — not a live reading.
+                A snapshot from the moment you saved — not a live reading.
               </p>
 
               <div className="mt-3 flex flex-col gap-2.5 sm:flex-row">
@@ -370,7 +368,11 @@ export default function TripSummary({
                   <TrafficCone className="size-4 shrink-0" />
                   <div className="min-w-0">
                     {trip.trafficUnavailable || !trip.traffic ? (
-                      <p className="font-medium">Traffic unavailable</p>
+                      <p className="font-medium">
+                        {hasLiveTraffic(trip.country)
+                          ? 'Traffic unavailable'
+                          : liveTrafficUnavailableMessage(trip.country)}
+                      </p>
                     ) : (
                       <>
                         <p className="font-medium">

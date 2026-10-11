@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { COUNTRY_CONFIG, formatAmount, formatFare, type CountryCode } from '@/lib/country-config'
 import type { RecentTrip, TripHistoryActivityData } from '@/lib/trip-history'
+import { formatTripDateTime } from '@/lib/trip-time'
 import BackLink from "@/components/BackLink";
 
 interface HistoryVehicleOption {
@@ -26,6 +27,7 @@ interface HistoryTrip {
   fareMid: number | null
   distanceKm: number | null
   durationMin: number | null
+  timeZone: string
   selectedAt: string | null
   createdAt: string
 }
@@ -58,14 +60,6 @@ const ICONS: Record<string, string> = {
   'cng-auto': '🛺',
   'uber-xl': '🚐',
 }
-
-const dateFormatter = new Intl.DateTimeFormat('en', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
 
 function formatActivityMetrics(trip: RecentTrip) {
   const parts: string[] = []
@@ -124,7 +118,7 @@ function ActivityRows({ trips }: { trips: RecentTrip[] }) {
           </div>
 
           <span className="shrink-0 text-xs text-muted-foreground max-sm:w-full max-sm:pl-13">
-            {dateFormatter.format(new Date(trip.scheduledAt ?? trip.createdAt))}
+            {formatTripDateTime(trip.scheduledAt ?? trip.createdAt, trip.timeZone, { weekday: false })}
           </span>
         </li>
       ))}
@@ -230,7 +224,7 @@ export default function TripHistoryList({ activityData }: Props) {
             Trip History
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Confirmed rides and route searches in one place.
+            Saved plans and route searches in one place.
           </p>
         </div>
 
@@ -242,7 +236,7 @@ export default function TripHistoryList({ activityData }: Props) {
               onChange={(e) => setHistoryView(e.target.value)}
               className="h-10 appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-3 text-sm font-semibold text-foreground outline-none transition-colors hover:bg-muted focus:border-primary"
             >
-              <option value={CONFIRMED_VIEW}>Confirmed trips</option>
+              <option value={CONFIRMED_VIEW}>Saved plans</option>
               <option value={LAST_SEVEN_DAYS_VIEW}>Last 7 days searches</option>
               {activityData.monthlyGroups.map((group) => (
                 <option key={group.monthKey} value={group.monthKey}>
@@ -332,7 +326,7 @@ export default function TripHistoryList({ activityData }: Props) {
               three-across order) intact from sm up. */}
           <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3">
             <div>
-              <p className="text-xs text-muted-foreground">Total cost</p>
+              <p className="text-xs text-muted-foreground">Estimated total</p>
               <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
                 {formatAmount(summary.totalCost, summary.costCountry)}
               </p>
@@ -344,7 +338,7 @@ export default function TripHistoryList({ activityData }: Props) {
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Average cost</p>
+              <p className="text-xs text-muted-foreground">Average estimate</p>
               <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
                 {formatAmount(summary.averageCost, summary.costCountry)}
               </p>
@@ -354,7 +348,7 @@ export default function TripHistoryList({ activityData }: Props) {
               the common single-country case stays uncluttered. */}
           {summary.costTripCount < summary.tripCount && (
             <p className="mt-3 border-t border-border pt-3 text-center text-xs text-muted-foreground">
-              Costs cover the {summary.costTripCount} of {summary.tripCount} trips planned in{' '}
+              Estimates cover the {summary.costTripCount} of {summary.tripCount} trips planned in{' '}
               {COUNTRY_CONFIG[summary.costCountry].label}. Trips from other countries are listed
               but not totalled, since their fares are in a different currency.
             </p>
@@ -372,11 +366,11 @@ export default function TripHistoryList({ activityData }: Props) {
           </p>
         ) : trips.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-            <p className="text-sm font-medium text-foreground">No confirmed trips</p>
+            <p className="text-sm font-medium text-foreground">No saved plans</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {hasFilters
                 ? 'No trips match these filters.'
-                : 'Confirm a ride from the fare results page and it will show up here.'}
+                : 'Save a plan from the fare results page and it will show up here.'}
             </p>
           </div>
         ) : (
@@ -401,7 +395,7 @@ export default function TripHistoryList({ activityData }: Props) {
                       {/* Wraps: date, vehicle and distance run past one line on a phone */}
                       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
                         <CalendarClock className="size-3 shrink-0" aria-hidden />
-                        {dateFormatter.format(new Date(trip.selectedAt ?? trip.createdAt))}
+                        {formatTripDateTime(trip.selectedAt ?? trip.createdAt, trip.timeZone, { weekday: false })}
                         {trip.vehicleDisplayName && <span>· {trip.vehicleDisplayName}</span>}
                         {trip.distanceKm != null && <span>· {trip.distanceKm} km</span>}
                       </p>

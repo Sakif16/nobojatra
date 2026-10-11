@@ -4,7 +4,7 @@
 // snapshot. That is what makes the fare condition mechanically able to fire:
 // the Pathao endpoint prices on distance and duration, so a fare can only move
 // if the duration does, and the duration only moves if we ask for it again.
-import { resolveCountry } from "@/lib/country-config";
+import { hasLiveTraffic, resolveCountry } from "@/lib/country-config";
 import "server-only";
 
 import { estimateFaresForRates } from "@/lib/fare-providers";
@@ -13,6 +13,7 @@ import { fetchRouteSuggestions } from "@/lib/route-service";
 import { getTrafficSampleIndices } from "@/lib/routing";
 import {
   getTrafficForTrip,
+  isDeparturePeakHour,
   type DepartureOptions,
   type TrafficPoint,
 } from "@/lib/traffic-service";
@@ -22,6 +23,7 @@ import { Types } from "mongoose";
 import type { EvaluationContext, SavedTripDocument } from "./types";
 
 type RateColumns = {
+  country?: unknown;
   provider: string;
   vehicleType: string;
   baseFare: number;
@@ -80,7 +82,7 @@ async function loadRateColumns(vehicleRateId: unknown): Promise<RateColumns | nu
     _id: id,
     isActive: true,
   })
-    .select("provider vehicleType baseFare perKmRate perMinRate minimumFare")
+    .select("country provider vehicleType baseFare perKmRate perMinRate minimumFare")
     .lean()) as RateColumns | null;
 }
 
@@ -115,7 +117,7 @@ export async function buildEvaluationContext(
   const midpoint = getMidpoint(best.coords) ?? trip.origin;
 
   const [traffic, weather, rate] = await Promise.all([
-    trafficPoints
+    trafficPoints && hasLiveTraffic(tripCountry)
       ? getTrafficForTrip(trafficPoints, departure, tripCountry).catch((error: unknown) => {
           notes.push(
             `Traffic unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
@@ -143,6 +145,14 @@ export async function buildEvaluationContext(
         return null;
       }
 
+      // A rate from another country would price this trip in the wrong
+      // currency's numbers. Create and edit refuse one; this covers a record
+      // that already holds one.
+      if (resolveCountry(rate.country) !== tripCountry) {
+        notes.push("Fare unavailable: preferred vehicle belongs to another country.");
+        return null;
+      }
+
       return rate;
     })().catch((error: unknown) => {
       notes.push(
@@ -161,12 +171,17 @@ export async function buildEvaluationContext(
         durationMin: best.durationMin,
         adjustmentContext: {
           weather,
-          traffic: traffic
-            ? {
-                congestionLevel: traffic.totals.congestionLevel,
-                isPeakHour: traffic.isPeakHour,
-              }
-            : null,
+          // Peak hour comes from the clock, so it applies with or without a
+          // traffic reading. Dropping it when traffic is missing would move the
+          // fare and fire a fare alert for no real change.
+          traffic: {
+            congestionLevel: traffic?.totals.congestionLevel ?? null,
+            isPeakHour: isDeparturePeakHour(
+              trafficPoints?.[0] ?? trip.origin,
+              departure,
+              tripCountry,
+            ),
+          },
         },
       });
 

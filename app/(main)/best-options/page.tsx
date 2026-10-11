@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import BestOptionsResults from "@/components/BestOptionsResults";
+import { auth } from "@/lib/auth";
 
 // searchParams is a Promise in Next.js 15 — must be awaited before reading
 interface Props {
@@ -7,6 +9,10 @@ interface Props {
 }
 
 export default async function BestOptionsPage({ searchParams }: Props) {
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  if (!session) redirect("/signin");
+
   const params = await searchParams;
 
   const tripHistoryId = params.tripHistoryId?.trim();

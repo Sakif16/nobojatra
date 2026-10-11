@@ -63,7 +63,7 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
                   stops: [],
                   passengerCount: trip.passengerCount,
                   departureMode: "now",
-                  scheduledAt: null,
+                  scheduledLocal: null,
                 })
               }
               // min-w-0: a grid item's automatic minimum size is its

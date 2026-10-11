@@ -61,16 +61,29 @@ export type CountryConfig = {
   /** Used when a route has no usable midpoint to read weather at. */
   fallbackWeatherPoint: { lat: number; lng: number };
   /**
-   * The IANA zone the peak windows below are written in, and the one a
-   * departure time is converted to before being tested against them.
+   * The country's default IANA zone: the one a trip is read in when it has no
+   * zone of its own (records written before trips stored one) and the one the
+   * planner assumes before an origin is chosen.
    *
-   * One zone per country is an approximation for the US, which spans six.
-   * It is still far closer than the alternative this replaced — every
-   * country was previously tested against Asia/Dhaka — and fixing it
-   * properly needs a coordinate-to-timezone lookup, which is a dependency
-   * this app does not otherwise need.
+   * A trip's actual zone comes from its origin — see ./trip-time-zone — and is
+   * always one of `timeZones` below.
    */
   timeZone: string;
+  /**
+   * Every IANA zone a trip in this country can be in. The peak windows below
+   * are local times, so they apply in whichever of these the trip is in.
+   */
+  timeZones: string[];
+  /**
+   * Whether the traffic provider has live traffic data in this country.
+   *
+   * TomTom routes in Bangladesh but has no real-time traffic there: its
+   * answers come back with no delay at all, which reads as free-flowing roads
+   * and blank overlay tiles. Where this is false the app asks for no traffic,
+   * shows none, and says so — an absent reading must never become a "low" one.
+   * Peak hours are unaffected: they come from the clock, not from this.
+   */
+  liveTraffic: boolean;
   /**
    * Local-time windows when demand is high, as minutes from midnight.
    * `isPeakHour` feeds a fare multiplier, so these are pricing inputs:
@@ -85,6 +98,43 @@ export type CountryConfig = {
 function at(hour: number, minute = 0) {
   return hour * 60 + minute;
 }
+
+/**
+ * Every zone in the fifty states, east to west. Indiana, Kentucky, North Dakota
+ * and Alaska each have counties on their own rules, which is why this is far
+ * longer than the six zones people usually count.
+ */
+const US_TIME_ZONES = [
+  "America/New_York",
+  "America/Detroit",
+  "America/Kentucky/Louisville",
+  "America/Kentucky/Monticello",
+  "America/Indiana/Indianapolis",
+  "America/Indiana/Vincennes",
+  "America/Indiana/Winamac",
+  "America/Indiana/Marengo",
+  "America/Indiana/Petersburg",
+  "America/Indiana/Vevay",
+  "America/Indiana/Tell_City",
+  "America/Indiana/Knox",
+  "America/Chicago",
+  "America/Menominee",
+  "America/North_Dakota/Center",
+  "America/North_Dakota/New_Salem",
+  "America/North_Dakota/Beulah",
+  "America/Denver",
+  "America/Boise",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "America/Juneau",
+  "America/Sitka",
+  "America/Metlakatla",
+  "America/Yakutat",
+  "America/Nome",
+  "America/Adak",
+  "Pacific/Honolulu",
+];
 
 export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
   /**
@@ -109,6 +159,8 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currencySymbol: "৳",
     fallbackWeatherPoint: { lat: 23.8103, lng: 90.4125 },
     timeZone: "Asia/Dhaka",
+    timeZones: ["Asia/Dhaka"],
+    liveTraffic: false,
     peakWindows: [
       { startMinute: at(8), endMinute: at(10, 30) },
       { startMinute: at(17), endMinute: at(20, 30) },
@@ -135,9 +187,10 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "USD",
     currencySymbol: "$",
     fallbackWeatherPoint: { lat: 40.7128, lng: -74.006 },
-    // Eastern time covers the largest share of the population; a Pacific trip
-    // is judged three hours out until the caveat on `timeZone` is addressed.
+    // Eastern time covers the largest share of the population.
     timeZone: "America/New_York",
+    timeZones: US_TIME_ZONES,
+    liveTraffic: true,
     peakWindows: [
       { startMinute: at(7), endMinute: at(9, 30) },
       { startMinute: at(16), endMinute: at(19) },
@@ -155,6 +208,8 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currencySymbol: "£",
     fallbackWeatherPoint: { lat: 51.5072, lng: -0.1276 },
     timeZone: "Europe/London",
+    timeZones: ["Europe/London"],
+    liveTraffic: true,
     peakWindows: [
       { startMinute: at(7), endMinute: at(9, 30) },
       { startMinute: at(16), endMinute: at(19) },
@@ -178,6 +233,31 @@ export function resolveCountry(value: unknown): CountryCode {
 
 export function getCountryConfig(value: unknown): CountryConfig {
   return COUNTRY_CONFIG[resolveCountry(value)];
+}
+
+/**
+ * The zone a stored trip is read in. Every display, filter and peak-hour check
+ * on a persisted trip goes through here.
+ *
+ * Trips written before the zone was stored have none, and read back in their
+ * country's default zone. A stored value that is not one of the country's
+ * zones is treated the same way rather than trusted.
+ */
+export function getTripTimeZone(timeZone: unknown, country: unknown): string {
+  const config = getCountryConfig(country);
+
+  return typeof timeZone === "string" && config.timeZones.includes(timeZone)
+    ? timeZone
+    : config.timeZone;
+}
+
+export function hasLiveTraffic(country: unknown): boolean {
+  return getCountryConfig(country).liveTraffic;
+}
+
+/** The one sentence shown wherever a traffic reading would otherwise be. */
+export function liveTrafficUnavailableMessage(country: unknown) {
+  return `Live traffic is not available in ${getCountryConfig(country).label}.`;
 }
 
 export function getCountryBounds(value: unknown): CountryBounds {

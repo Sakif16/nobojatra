@@ -1,7 +1,19 @@
 
 import "server-only";
 
-import { getCountryConfig, type CountryCode } from "@/lib/country-config";
+import {
+  getCountryConfig,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
+  type CountryCode,
+} from "@/lib/country-config";
+import {
+  budgetReachedMessage,
+  ProviderBudgetError,
+  spendProviderBudget,
+} from "@/lib/provider-budget";
+import { getLocalClock, parseInstant } from "@/lib/trip-time";
+import { resolveTripTimeZone } from "@/lib/trip-time-zone";
 
 // The fields of TomTom's calculateRoute response that this module reads.
 // Everything is optional because the response is checked before use.
@@ -77,6 +89,12 @@ export type TripTrafficResult = {
    * one.
    */
   country: CountryCode;
+
+  /**
+   * The IANA zone at the start of the trip, which the departure was read in
+   * before being tested against those windows.
+   */
+  timeZone: string;
 
   legs: TrafficLegResult[];
 
@@ -186,67 +204,23 @@ export function getCongestionLevel(
 }
 
 /**
- * The weekday and minute-of-day a moment falls on, in one country's zone.
- */
-function getLocalTimeParts(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-
-    hour: "2-digit",
-
-    minute: "2-digit",
-
-    weekday: "short",
-
-    hour12: false,
-  }).formatToParts(date);
-
-  const hour = Number(
-    parts.find(
-      (part) => part.type === "hour"
-    )?.value ?? "0"
-  );
-
-  const minute = Number(
-    parts.find(
-      (part) => part.type === "minute"
-    )?.value ?? "0"
-  );
-
-  const weekdayShort =
-    parts.find(
-      (part) => part.type === "weekday"
-    )?.value ?? "";
-
-  const weekdayIndex = [
-    "Sun",
-    "Mon",
-    "Tue",
-    "Wed",
-    "Thu",
-    "Fri",
-    "Sat",
-  ].indexOf(weekdayShort);
-
-  return {
-    minuteOfDay: hour * 60 + minute,
-
-    weekdayIndex,
-  };
-}
-
-/**
  * Whether a departure falls inside one of a country's peak-hour windows.
  *
- * The country is required rather than defaulted. This used to be
- * `isDhakaPeakHour(date)`, applied to every trip in every country — so a
- * London departure was judged against Dhaka's clock, surcharged on Dhaka's
- * rush hours and given a free pass on Friday. A default here would let that
- * bug back in the moment a new caller forgot the argument.
+ * The windows are local times, so the instant is read in the trip's own zone
+ * before it is tested. The country says which windows apply; the zone says
+ * what the clock at the pickup point reads. Both are required rather than
+ * defaulted: this used to be `isDhakaPeakHour(date)` for every trip in every
+ * country, and then one zone per country, which judged a Los Angeles departure
+ * on New York's clock. A default would let either bug back in the moment a new
+ * caller forgot an argument.
  */
-export function isPeakHour(date: Date, country: CountryCode): boolean {
-  const { timeZone, peakWindows, nonPeakWeekdays } = getCountryConfig(country);
-  const { minuteOfDay, weekdayIndex } = getLocalTimeParts(date, timeZone);
+export function isPeakHour(
+  date: Date,
+  country: CountryCode,
+  timeZone: string
+): boolean {
+  const { peakWindows, nonPeakWeekdays } = getCountryConfig(country);
+  const { minuteOfDay, weekdayIndex } = getLocalClock(date, timeZone);
 
   if (nonPeakWeekdays.includes(weekdayIndex)) {
     return false;
@@ -269,11 +243,13 @@ function getDepartureDate(
     return new Date();
   }
 
-  const scheduled = new Date(
+  // An instant with its own offset, never a bare local time: `new Date` would
+  // read that in the server's zone.
+  const scheduled = parseInstant(
     departure.scheduledAt
   );
 
-  if (Number.isNaN(scheduled.getTime())) {
+  if (!scheduled) {
     throw new TrafficServiceError(
       "Invalid scheduledAt value.",
       400,
@@ -282,6 +258,26 @@ function getDepartureDate(
   }
 
   return scheduled;
+}
+
+/**
+ * Whether a trip's departure falls in a peak-hour window, read on the clock
+ * where the trip starts.
+ *
+ * This needs no traffic data, so it is available in every country — including
+ * those with no live traffic, where the peak-hour fare adjustment still
+ * applies.
+ */
+export function isDeparturePeakHour(
+  start: TrafficPoint | null,
+  departure: DepartureOptions,
+  country: CountryCode
+): boolean {
+  const timeZone = start
+    ? resolveTripTimeZone(start, country)
+    : getCountryConfig(country).timeZone;
+
+  return isPeakHour(getDepartureDate(departure), country, timeZone);
 }
 
 /**
@@ -347,6 +343,25 @@ export async function fetchLiveTrafficForLegs(
 
   const departureDate =
     getDepartureDate(departure);
+
+  /*
+   * One provider call per leg. The whole trip is counted before the first
+   * call, so a trip is either read in full or not started.
+   */
+  try {
+    await spendProviderBudget(
+      "tomtom_routing",
+      points.length - 1
+    );
+  } catch (error) {
+    if (!(error instanceof ProviderBudgetError)) throw error;
+
+    throw new TrafficServiceError(
+      error.message,
+      429,
+      budgetReachedMessage("live traffic")
+    );
+  }
 
   const legs: TrafficLegResult[] = [];
 
@@ -588,8 +603,28 @@ export async function getTrafficForTrip(
   /*
    * Determine actual departure date.
    */
+  /*
+   * No provider call where there is nothing live to read. TomTom would answer
+   * with a route and no delay, which every caller would take for light
+   * traffic.
+   */
+  if (!hasLiveTraffic(country)) {
+    throw new TrafficServiceError(
+      `No live traffic coverage in ${country}.`,
+      422,
+      liveTrafficUnavailableMessage(country)
+    );
+  }
+
   const departureDate =
     getDepartureDate(departure);
+
+  /*
+   * Peak hours are judged on the clock where the trip starts.
+   */
+  const timeZone = points[0]
+    ? resolveTripTimeZone(points[0], country)
+    : getCountryConfig(country).timeZone;
 
   /*
    * Get traffic information for
@@ -655,10 +690,13 @@ export async function getTrafficForTrip(
 
     isPeakHour: isPeakHour(
       departureDate,
-      country
+      country,
+      timeZone
     ),
 
     country,
+
+    timeZone,
 
     legs,
 

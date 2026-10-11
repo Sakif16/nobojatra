@@ -18,6 +18,8 @@ import {
 import { deleteAlertsForSavedTrip } from "@/lib/alerts";
 import {
   getCountryConfig,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
   resolveCountry,
   type CountryCode,
 } from "@/lib/country-config";
@@ -32,6 +34,7 @@ import SavedTrip, {
   type AlertConditionType,
   type TrafficLevel,
 } from "@/models/SavedTrip";
+import { seatsPassengers } from "@/lib/vehicle-capacity";
 import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 
@@ -65,6 +68,7 @@ export class SavedTripError extends Error {
 
 type VehicleRateDocument = {
   _id: Types.ObjectId;
+  country?: unknown;
   provider: string;
   vehicleType: string;
   displayName: string;
@@ -245,9 +249,19 @@ export function serializeSavedTrip(
 
 // ── Provider work ──────────────────────────────────────────────────────────
 
+/**
+ * The vehicle a caller has asked to attach to a trip. Anything wrong with the
+ * request — an unknown id, another country's rate, too few seats — is an
+ * error, raised before any routing or fare work is spent on it.
+ *
+ * The country is the trip's own. A rate card is priced in its country's
+ * currency for its country's services, so a US rate on a Bangladesh trip would
+ * show dollar arithmetic with a taka sign.
+ */
 async function loadPreferredRate(
   vehicleRateId: string | null | undefined,
   passengerCount: number,
+  country: CountryCode,
 ): Promise<VehicleRateDocument | null> {
   if (!vehicleRateId) return null;
 
@@ -274,7 +288,15 @@ async function loadPreferredRate(
     );
   }
 
-  if (passengerCount > rate.maxPassengers) {
+  if (resolveCountry(rate.country) !== country) {
+    throw new SavedTripError(
+      `VehicleRate ${vehicleRateId} belongs to ${String(rate.country)}, not ${country}`,
+      400,
+      `That vehicle is not available in ${getCountryConfig(country).serviceAreaName}.`,
+    );
+  }
+
+  if (!seatsPassengers(rate, passengerCount)) {
     throw new SavedTripError(
       `passengerCount ${passengerCount} exceeds ${rate.displayName} capacity`,
       400,
@@ -283,6 +305,35 @@ async function loadPreferredRate(
   }
 
   return rate;
+}
+
+/**
+ * The vehicle already stored on a trip, or null if it no longer suits the trip
+ * as it now stands: retired, from another country, or too small for the
+ * party. Nobody asked for this vehicle in the current request, so there is no
+ * one to report an error to — the caller drops the vehicle instead.
+ */
+async function loadStoredRate(
+  vehicleRateId: unknown,
+  passengerCount: number,
+  country: CountryCode,
+): Promise<VehicleRateDocument | null> {
+  const id = String(vehicleRateId ?? "");
+
+  if (!Types.ObjectId.isValid(id)) return null;
+
+  await dbConnect();
+
+  const rate = (await VehicleRate.findOne({
+    _id: id,
+    isActive: true,
+  }).lean()) as VehicleRateDocument | null;
+
+  return rate &&
+    resolveCountry(rate.country) === country &&
+    seatsPassengers(rate, passengerCount)
+    ? rate
+    : null;
 }
 
 function serializeRoute(route: RouteResult) {
@@ -453,7 +504,7 @@ export async function createSavedTrip({
     );
   }
 
-  const rate = await loadPreferredRate(preferredVehicleRateId, trip.passengerCount);
+  const rate = await loadPreferredRate(preferredVehicleRateId, trip.passengerCount, country);
 
   // Provider work happens before the insert so a routing failure leaves nothing
   // half-written — a saved trip with no route could never be evaluated.
@@ -476,6 +527,7 @@ export async function createSavedTrip({
       passengerCount: trip.passengerCount,
       departureMode: trip.departureMode,
       scheduledAt: trip.scheduledAt ? new Date(trip.scheduledAt) : null,
+      timeZone: trip.timeZone,
       preferredVehicle: rate
         ? {
             vehicleRateId: rate._id,
@@ -542,14 +594,20 @@ export async function updateSavedTrip({
     record.scheduledAt = patch.trip.scheduledAt
       ? new Date(patch.trip.scheduledAt)
       : null;
+    record.timeZone = patch.trip.timeZone;
   }
 
   const vehicleChanged = patch.preferredVehicleRateId !== undefined;
+  // The country the trip was saved in, not the profile's current one: an old
+  // Dhaka trip only ever takes Bangladesh vehicles.
+  const tripCountry = resolveCountry(record.country);
+  let rate: VehicleRateDocument | null = null;
 
   if (vehicleChanged) {
-    const rate = await loadPreferredRate(
+    rate = await loadPreferredRate(
       patch.preferredVehicleRateId,
       record.passengerCount,
+      tripCountry,
     );
 
     record.preferredVehicle = rate
@@ -564,6 +622,21 @@ export async function updateSavedTrip({
     // Clearing the vehicle clears the baseline: a fare threshold with nothing
     // to price against would silently never fire.
     if (!rate) record.baseline = null;
+  } else if (patch.trip && record.preferredVehicle) {
+    // The trip changed under a vehicle chosen earlier. If it no longer suits
+    // the trip — most often more passengers than it seats — the vehicle and
+    // its baseline are dropped rather than the edit refused: the edit itself
+    // is valid, and the vehicle can be chosen again.
+    rate = await loadStoredRate(
+      record.preferredVehicle.vehicleRateId,
+      record.passengerCount,
+      tripCountry,
+    );
+
+    if (!rate) {
+      record.preferredVehicle = null;
+      record.baseline = null;
+    }
   }
 
   // Re-route only when the waypoints moved. A vehicle swap alone re-prices
@@ -573,20 +646,11 @@ export async function updateSavedTrip({
     record.route = serializeRoute(route);
   }
 
-  const activeVehicleId = record.preferredVehicle?.vehicleRateId;
-
-  if (activeVehicleId && (patch.trip || vehicleChanged)) {
-    const rate = await loadPreferredRate(
-      String(activeVehicleId),
-      record.passengerCount,
-    );
-
-    if (rate && record.route) {
-      record.baseline = await captureBaseline(rate, {
-        distanceKm: record.route.distanceKm,
-        durationMin: record.route.durationMin,
-      });
-    }
+  if (rate && record.route) {
+    record.baseline = await captureBaseline(rate, {
+      distanceKm: record.route.distanceKm,
+      durationMin: record.route.durationMin,
+    });
   }
 
   try {
@@ -637,7 +701,7 @@ function isFiniteNumber(value: unknown): value is number {
  */
 function validateCondition(
   input: ConditionWriteInput,
-  trip: { baseline: unknown; preferredVehicle: unknown },
+  trip: { baseline: unknown; preferredVehicle: unknown; country?: unknown },
 ): { threshold: number | null; level: TrafficLevel | null } {
   if (input.type === "weather_severity") {
     if (
@@ -656,6 +720,15 @@ function validateCondition(
   }
 
   if (input.type === "traffic_level") {
+    // A condition that can never be judged would sit on the trip looking armed.
+    if (!hasLiveTraffic(trip.country)) {
+      throw new SavedTripError(
+        `Traffic condition on a trip with no live traffic coverage: ${String(trip.country)}`,
+        400,
+        `${liveTrafficUnavailableMessage(trip.country)} Traffic alerts cannot be set for this trip.`,
+      );
+    }
+
     if (!input.level || !TRAFFIC_LEVELS.includes(input.level)) {
       throw new SavedTripError(
         `Invalid traffic level: ${input.level}`,

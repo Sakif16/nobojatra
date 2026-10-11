@@ -4,6 +4,13 @@ import type { CongestionLevel } from "@/lib/traffic-service";
 
 // The three risk tiers shown as the card's colour-coded risk badge
 export type RiskBand = "low" | "moderate" | "high";
+/**
+ * Which readings a risk band was actually worked out from. A band built from
+ * weather alone says nothing about the roads, and one built from neither is
+ * not an assessment at all — the UI must label it by this, never as a bare
+ * "low risk".
+ */
+export type RiskBasis = "weather_and_traffic" | "weather" | "traffic" | "none";
 export type TravelPriority = "time" | "cost" | "comfort";
 type BestForTag = "Speed" | "Budget" | "Comfort";
 type MetricScores = { cost: number; time: number; comfort: number };
@@ -27,7 +34,8 @@ export interface ScorableOption {
 }
 export interface RankedOption extends ScorableOption {
   adjustedDurationMin: number;              // real traffic duration × per-vehicle multiplier
-  riskBand: RiskBand;                        // combined weather + traffic risk
+  riskBand: RiskBand;                        // risk from whichever of weather/traffic was readable
+  riskBasis: RiskBasis;                      // which of them that was
   bestFor: BestForTag;                       // strongest normalized metric for this option
   pros: string[];                            // up to 3 short chips
   cons: string[];                            // up to 2 short chips
@@ -137,7 +145,7 @@ interface RankInput {
   baseDurationMin: number;          // travel + dwell fallback, in minutes
   baseTravelDurationMin?: number;   // real traffic-inclusive driving/riding time only
   dwellDurationMin?: number;        // fixed wait time across vehicles
-  congestionLevel: CongestionLevel; // from lib/traffic-service.ts, live TomTom reading
+  congestionLevel: CongestionLevel | null; // live TomTom reading; null when there is none
   weatherBand: "low" | "moderate" | "severe" | null; // null when weather is unavailable
   priority?: TravelPriority | null; // user's profile priority, defaults to time
 }
@@ -166,7 +174,11 @@ export function rankRouteOptions({
   // real TomTom reading as the base
   const withDuration = candidates.map((option) => {
     const vehicleClass = getVehicleClass(option.vehicleType);
-    const multiplier = DURATION_MULTIPLIERS[vehicleClass][congestionLevel];
+    // With no traffic reading there is nothing to scale by: every vehicle
+    // keeps the car-route time rather than the "low congestion" row.
+    const multiplier = congestionLevel
+      ? DURATION_MULTIPLIERS[vehicleClass][congestionLevel]
+      : 1;
     const travelDurationMin =
       typeof baseTravelDurationMin === "number" && Number.isFinite(baseTravelDurationMin)
         ? baseTravelDurationMin
@@ -187,6 +199,15 @@ export function rankRouteOptions({
   const minFare = Math.min(...fares),     maxFare = Math.max(...fares);
   const minDur  = Math.min(...durations), maxDur  = Math.max(...durations);
   const minComf = Math.min(...comforts),  maxComf = Math.max(...comforts);
+
+  const riskBasis: RiskBasis =
+    weatherBand && congestionLevel
+      ? "weather_and_traffic"
+      : weatherBand
+        ? "weather"
+        : congestionLevel
+          ? "traffic"
+          : "none";
 
   // score every candidate
   const scored = withDuration.map((option) => {
@@ -223,7 +244,7 @@ export function rankRouteOptions({
       metricScores.comfort * weights.comfort -
       riskPenalty * 0.15;
 
-    return { ...option, metricScores, riskBand, score };
+    return { ...option, metricScores, riskBand, riskBasis, score };
   });
 
   // find the single winner in each individual metric — used to assign
@@ -240,15 +261,28 @@ export function rankRouteOptions({
     const cons: string[] = [];
 
     if (option === cheapest) pros.push("Cheapest option");
-    if (option === fastest) pros.push("Fastest in current traffic");
+    if (option === fastest) pros.push("Shortest estimated time");
     if (option === comfiest) pros.push("Most comfortable option");
     if (option.comfortScore >= 4) pros.push("High comfort");
-    if (option.riskBand === "low") pros.push("Low overall risk");
+    // Only a band built from both readings can vouch for the whole trip.
+    if (option.riskBand === "low" && riskBasis === "weather_and_traffic") {
+      pros.push("Low weather/traffic score");
+    } else if (option.riskBand === "low" && riskBasis === "weather") {
+      pros.push("Low weather score");
+    }
     if (!option.weatherRestricted) pros.push("No weather caution");
 
     if (option.fare.mid === maxFareValue) cons.push("Higher cost than alternatives");
     if (option.weatherRestricted) cons.push(option.restrictionReason ?? "Weather caution advised");
-    if (option.riskBand === "high") cons.push("Elevated traffic/weather risk");
+    if (option.riskBand === "high") {
+      cons.push(
+        riskBasis === "weather"
+          ? "Elevated weather risk"
+          : riskBasis === "traffic"
+            ? "Elevated traffic risk"
+            : "Elevated traffic/weather risk",
+      );
+    }
     if (option.comfortScore <= 2) cons.push("Lower comfort rating");
 
     const { metricScores, ...rankedOption } = option;

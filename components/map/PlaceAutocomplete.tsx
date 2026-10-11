@@ -57,6 +57,7 @@ export default function PlaceAutocomplete({
       debounceRef.current = setTimeout(() => {
         setResults([]);
         setError(null);
+        setLoading(false);
         setOpen(focused && value.trim().length === 0 && hasSavedPlaces);
       }, 0);
       return () => {
@@ -64,24 +65,34 @@ export default function PlaceAutocomplete({
       };
     }
 
+    // The debounce stops a request per keystroke, but not a slow answer for
+    // "Dhan" landing after the one for "Dhanmondi". Each run of this effect
+    // owns one request and aborts it when the query or country moves on, so
+    // only the latest query can fill the list.
+    const request = new AbortController();
+
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       setError(null);
       try {
-        const places = await searchPlaces(value, country);
+        const places = await searchPlaces(value, country, request.signal);
+        if (request.signal.aborted) return;
         setResults(places);
         setOpen(true);
       } catch {
+        if (request.signal.aborted) return;
         setResults([]);
         setError("Unable to load suggestions.");
         setOpen(true);
       } finally {
-        setLoading(false);
+        // A replaced request leaves the spinner to the one that replaced it.
+        if (!request.signal.aborted) setLoading(false);
       }
     }, 300);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      request.abort();
     };
     // `country` is a dependency so switching country re-runs the search that
     // is already on screen against the new one, rather than leaving stale

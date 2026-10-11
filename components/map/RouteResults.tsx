@@ -14,7 +14,7 @@ type Props = {
   activeRouteId: string | null;
   onSelect: (id: string) => void;
   savedMessage?: string | null;
-  routeSaveStatus?: "idle" | "saving" | "saved" | "error";
+  routeSaveStatus?: "idle" | "saving" | "saved" | "saved_vehicle_cleared" | "error";
   traffic?: TripTrafficResult | null;
   trafficLoading?: boolean;
   trafficError?: string | null;
@@ -43,6 +43,8 @@ export default function RouteResults({
       ? "Saving selected route..."
       : routeSaveStatus === "saved"
         ? "Selected route saved"
+        : routeSaveStatus === "saved_vehicle_cleared"
+          ? "Route changed, so your saved vehicle was cleared. Choose one again."
         : routeSaveStatus === "error"
           ? "Route shown, but selection could not be saved"
           : savedMessage;
@@ -75,7 +77,7 @@ export default function RouteResults({
       {!isMultiStop &&
         routes.map((route) => {
           const active = route.id === (activeRouteId ?? routes[0].id);
-          const badge = route.rank === 1 ? "Best" : "Alternative";
+          const badge = route.rank === 1 ? "Suggested" : "Alternative";
 
           return (
             <button

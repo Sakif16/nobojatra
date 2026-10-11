@@ -1,4 +1,4 @@
-# Quality gate: type-check, lint and build on every pull request and every
+# Quality gate: type-check, lint, test and build on every pull request and every
 # push to main, so broken code is caught before Render tries to deploy it.
 
 name: CI
@@ -38,11 +38,13 @@ jobs:
       - name: Type-check
         run: pnpm exec tsc --noEmit
 
-      # Non-blocking until FIX_PLAN steps 2.15 and 2.26 land. After that,
-      # delete continue-on-error so a lint error fails the pull request.
       - name: Lint
         run: pnpm lint
-        continue-on-error: true
+
+      # Plain node:test, no network and no database: every provider and model
+      # is replaced inside the tests.
+      - name: Test
+        run: pnpm test
 
       - name: Build
         run: pnpm build

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 
-const TRAFFIC_PUNK_URL = "https://traffic-punk-re.onrender.com/?embed=1";
+import { LIVE_CAMS_URL } from "@/lib/live-cams";
 
 /**
  * Embeds the Traffic Punk landing page directly — it already lists every
@@ -30,7 +30,7 @@ export default function LiveCamsFrame() {
 
       <iframe
         key={reloadKey}
-        src={TRAFFIC_PUNK_URL}
+        src={LIVE_CAMS_URL}
         onLoad={() => setLoaded(true)}
         className="h-[500px] w-full"
         title="Live traffic camera feeds"
@@ -50,7 +50,7 @@ export default function LiveCamsFrame() {
           Reload
         </button>
         <a
-          href={TRAFFIC_PUNK_URL}
+          href={LIVE_CAMS_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted"
