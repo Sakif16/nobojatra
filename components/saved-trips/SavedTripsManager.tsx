@@ -30,7 +30,7 @@ export default function SavedTripsManager({
   // The list the API returns is scoped to this country, so both the subtitle
   // and the empty state have to name it — otherwise switching country looks
   // like the saved trips were lost.
-  const { serviceAreaName } = useCountryConfig();
+  const { serviceAreaName, liveTraffic } = useCountryConfig();
   const [trips, setTrips] = useState<SavedTripDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +111,7 @@ export default function SavedTripsManager({
 
       setCheckResult(
         payload.evaluated === 0
-          ? "Nothing due yet — trips are re-checked every 15 minutes."
+          ? "Nothing due yet. Trips are checked at most every 15 minutes, and only while the app is open."
           : `Checked ${payload.evaluated} trip(s), ${payload.alertsCreated ?? 0} new notification(s).`,
       );
 
@@ -200,7 +200,7 @@ export default function SavedTripsManager({
             No saved trips in {serviceAreaName} yet
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Save a trip to start watching its weather, traffic, and fare. Trips
+            Save a trip to start watching its weather{liveTraffic ? ", traffic," : ""} and fare. Trips
             saved in another country stay there — switch back to see them.
           </p>
         </div>

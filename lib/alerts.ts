@@ -252,7 +252,7 @@ function formatTripConfirmationMessage(input: CreateTripConfirmedAlertInput) {
       ? ` Estimated fare: ${input.fareLow}-${input.fareHigh} ${input.currency ?? COUNTRY_CONFIG[DEFAULT_COUNTRY].currency}.`
       : "";
 
-  return `${input.vehicleLabel} is confirmed for ${input.originLabel} to ${input.destinationLabel}.${fare}`;
+  return `${input.vehicleLabel} saved for ${input.originLabel} to ${input.destinationLabel}.${fare} This is not a booking.`;
 }
 
 /**
@@ -273,7 +273,7 @@ export async function createTripConfirmedAlert(
       { userId: input.userId, dedupeKey },
       {
         $setOnInsert: {
-          title: "Your trip has been confirmed",
+          title: "Your plan is saved",
           message: formatTripConfirmationMessage(input),
           severity: "info",
           savedTripId: null,

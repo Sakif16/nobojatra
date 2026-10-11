@@ -12,6 +12,7 @@ import {
   type TripValidationErrors,
   type TripValidationPayload,
 } from "@/lib/trip-input";
+import { resolveTripTimeZone } from "@/lib/trip-time-zone";
 import { NextRequest, NextResponse } from "next/server";
 
 type SavedTripCreateBody = TripValidationPayload & {
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
   // country — unlike trip history, a saved trip is being created fresh here.
   const country = await getUserCountry(session.user.id);
 
-  const validation = validateTripInput(body, new Date(), country);
+  const validation = validateTripInput(body, new Date(), country, resolveTripTimeZone);
 
   if (!validation.success) {
     return NextResponse.json(

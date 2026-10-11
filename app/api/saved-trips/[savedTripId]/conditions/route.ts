@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { addCondition, SavedTripError } from "@/lib/saved-trips";
 import { ALERT_CONDITION_TYPES, type AlertConditionType } from "@/models/SavedTrip";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/request-body";
 
 type RouteContext = { params: Promise<{ savedTripId: string }> };
 
@@ -34,15 +35,11 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  let body: ConditionBody;
-  try {
-    body = (await req.json()) as ConditionBody;
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Request body must be valid JSON." },
-      { status: 400 },
-    );
+  const parsed = await readJsonObject<ConditionBody>(req);
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, message: parsed.message }, { status: 400 });
   }
+  const body = parsed.body;
 
   if (!isConditionType(body?.type)) {
     return NextResponse.json(
@@ -50,6 +47,15 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
         success: false,
         message: `type must be one of: ${ALERT_CONDITION_TYPES.join(", ")}.`,
       },
+      { status: 400 },
+    );
+  }
+
+  // A flag that is not a boolean is a mistake, not "use the default": "false"
+  // sent as a string would otherwise arm a condition meant to start paused.
+  if (body.isActive !== undefined && typeof body.isActive !== "boolean") {
+    return NextResponse.json(
+      { success: false, message: "isActive must be true or false." },
       { status: 400 },
     );
   }
@@ -64,7 +70,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
         type: body.type,
         threshold: typeof body.threshold === "number" ? body.threshold : null,
         level: typeof body.level === "string" ? (body.level as never) : null,
-        isActive: typeof body.isActive === "boolean" ? body.isActive : undefined,
+        isActive: body.isActive,
       },
     });
 

@@ -4,6 +4,7 @@ import {
   getNominatimViewbox,
   type CountryCode,
 } from "@/lib/country-config";
+import { localDateTimeToInstant, parseInstant } from "@/lib/trip-time";
 
 /**
  * The service area is no longer one fixed box. Each country in ./country-config
@@ -93,8 +94,27 @@ export type TripValidationPayload = {
   stops?: unknown;
   passengerCount?: unknown;
   departureMode?: unknown;
+  /**
+   * A scheduled departure as the form collects it: a wall-clock time at the
+   * origin ("2026-09-20T09:00"), with no zone of its own.
+   */
+  scheduledLocal?: unknown;
+  /**
+   * A scheduled departure that is already an instant, so it must say which
+   * offset it is in ("…Z" or "…+06:00"). Used when `scheduledLocal` is absent.
+   */
   scheduledAt?: unknown;
 };
+
+/**
+ * Finds the IANA zone a trip is in from its origin. Passed in rather than
+ * imported because the lookup table behind it is server-only — see
+ * ./trip-time-zone — while this module is also loaded by the planner form.
+ */
+export type TripTimeZoneResolver = (
+  origin: Pick<TripLocation, "lat" | "lng">,
+  country: CountryCode,
+) => string;
 
 export type TripValidationErrors = {
   origin?: string;
@@ -111,7 +131,10 @@ export type ValidatedTripInput = {
   stops: TripStop[];
   passengerCount: number;
   departureMode: DepartureMode;
+  /** The departure instant, as an ISO string in UTC. */
   scheduledAt?: string;
+  /** The IANA zone at the origin, which every time on this trip is read in. */
+  timeZone: string;
   distanceMeters: number;
 };
 
@@ -220,8 +243,9 @@ export function getScheduleWindow(now = new Date()) {
 
 export function validateTripInput(
   payload: TripValidationPayload,
-  now = new Date(),
-  country: CountryCode = DEFAULT_COUNTRY,
+  now: Date,
+  country: CountryCode,
+  resolveTimeZone: TripTimeZoneResolver,
 ): TripValidationResult {
   const errors: TripValidationErrors = {};
   const origin = normalizeTripLocation(payload.origin);
@@ -239,8 +263,16 @@ export function validateTripInput(
     errors.destination = outsideServiceAreaMessage("Destination", country);
   }
 
+  // Absent means no stops. Anything else that is not a list is a malformed
+  // request, not an empty one: treating it as empty would plan a different
+  // trip from the one that was sent.
+  const stopsAreMalformed = payload.stops != null && !Array.isArray(payload.stops);
   const stopsInput = Array.isArray(payload.stops) ? payload.stops : [];
   const stopErrors: string[] = [];
+
+  if (stopsAreMalformed) {
+    stopErrors.push("Stops must be a list of places.");
+  }
 
   if (stopsInput.length > MAX_STOPS) {
     stopErrors.push(`You can add up to ${MAX_STOPS} stops.`);
@@ -276,18 +308,42 @@ export function validateTripInput(
     errors.departureMode = "Departure mode must be leave now or scheduled.";
   }
 
+  // The trip's zone is the origin's, because a departure time is read off a
+  // clock at the pickup point.
+  const timeZone = origin
+    ? resolveTimeZone(origin, country)
+    : getCountryConfig(country).timeZone;
+
   let scheduledAt: string | undefined;
 
   if (departureMode === "scheduled") {
-    if (typeof payload.scheduledAt !== "string" || !payload.scheduledAt) {
-      errors.scheduledAt = "Scheduled departure time is required.";
+    let scheduledDate: Date | null = null;
+
+    if (typeof payload.scheduledLocal === "string" && payload.scheduledLocal) {
+      const converted = localDateTimeToInstant(payload.scheduledLocal, timeZone);
+
+      if (converted.ok) {
+        scheduledDate = converted.instant;
+      } else if (converted.reason === "nonexistent") {
+        errors.scheduledAt =
+          "That time does not exist on this date because the clocks go forward. Choose a different time.";
+      } else {
+        errors.scheduledAt = "Scheduled departure time is invalid.";
+      }
+    } else if (typeof payload.scheduledAt === "string" && payload.scheduledAt) {
+      scheduledDate = parseInstant(payload.scheduledAt);
+
+      if (!scheduledDate) {
+        errors.scheduledAt = "Scheduled departure time is invalid.";
+      }
     } else {
-      const scheduledDate = new Date(payload.scheduledAt);
+      errors.scheduledAt = "Scheduled departure time is required.";
+    }
+
+    if (scheduledDate) {
       const { max } = getScheduleWindow(now);
 
-      if (Number.isNaN(scheduledDate.getTime())) {
-        errors.scheduledAt = "Scheduled departure time is invalid.";
-      } else if (scheduledDate <= now) {
+      if (scheduledDate <= now) {
         errors.scheduledAt = "Scheduled departure time must be in the future.";
       } else if (scheduledDate > max) {
         errors.scheduledAt = `Scheduled departure time must be within the next ${SCHEDULE_WINDOW_DAYS} days.`;
@@ -324,6 +380,7 @@ export function validateTripInput(
       passengerCount,
       departureMode: departureMode as DepartureMode,
       ...(scheduledAt ? { scheduledAt } : {}),
+      timeZone,
       distanceMeters,
     },
   };

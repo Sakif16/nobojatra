@@ -1,9 +1,16 @@
 import "server-only";
 
-import { DEFAULT_COUNTRY, resolveCountry, type CountryCode } from "@/lib/country-config";
+import {
+  DEFAULT_COUNTRY,
+  getTripTimeZone,
+  hasLiveTraffic,
+  resolveCountry,
+  type CountryCode,
+} from "@/lib/country-config";
 import dbConnect from "@/lib/mongodb";
 import type { RouteResult } from "@/lib/routing";
 import type { TripLocation, ValidatedTripInput } from "@/lib/trip-input";
+import { formatTripMonth, getLocalDateKey, getLocalMonthKey } from "@/lib/trip-time";
 import TripHistory from "@/models/TripHistory";
 import { Types } from "mongoose";
 
@@ -43,12 +50,16 @@ export type RecentTrip = {
   durationMin: number | null;
   departureMode: "now" | "scheduled";
   scheduledAt: string | null;
+  /** The IANA zone at the origin, which this trip's times are shown in. */
+  timeZone: string;
   createdAt: string;
 };
 
 type StoredLocation = { label?: unknown; lat?: unknown; lng?: unknown };
 type StoredActivityTrip = {
   _id: unknown;
+  country?: unknown;
+  timeZone?: unknown;
   origin?: unknown;
   destination?: unknown;
   stops?: unknown;
@@ -89,7 +100,32 @@ function mapRecentTrip(record: StoredActivityTrip): RecentTrip {
     scheduledAt: record.scheduledAt
       ? new Date(record.scheduledAt).toISOString()
       : null,
+    timeZone: getTripTimeZone(record.timeZone, record.country),
     createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
+  };
+}
+
+/**
+ * The traffic reading saved with a plan, for display.
+ *
+ * Plans saved in a country with no live traffic before the app knew that carry
+ * a stored "low, +0%" reading — the provider's answer where it had no data. It
+ * is reported as unavailable rather than shown.
+ */
+function getTrafficSnapshot(record: {
+  country?: unknown;
+  selectionSnapshot?: {
+    traffic?: SelectionTrafficSnapshot;
+    trafficUnavailable?: boolean | null;
+  } | null;
+}): { traffic: SelectionTrafficSnapshot; trafficUnavailable: boolean } {
+  if (!hasLiveTraffic(record.country)) {
+    return { traffic: null, trafficUnavailable: true };
+  }
+
+  return {
+    traffic: record.selectionSnapshot?.traffic ?? null,
+    trafficUnavailable: Boolean(record.selectionSnapshot?.trafficUnavailable),
   };
 }
 
@@ -119,6 +155,8 @@ export type ScheduledTripListItem = {
   stops: Array<{ label: string; dwellMinutes: number | null }>;
   passengerCount: number;
   scheduledAt: string;
+  /** The IANA zone at the origin, which the times below are shown in. */
+  timeZone: string;
   estimatedArrivalAt: string | null;
   distanceKm: number | null;
   durationMin: number | null;
@@ -216,6 +254,7 @@ export async function getScheduledTrips(userId: string): Promise<ScheduledTripLi
         passengerCount: record.passengerCount ?? 1,
         country: resolveCountry(record.country),
         scheduledAt: scheduledAt.toISOString(),
+        timeZone: getTripTimeZone(record.timeZone, record.country),
         estimatedArrivalAt,
         distanceKm: record.distanceKm ?? null,
         durationMin,
@@ -231,8 +270,7 @@ export async function getScheduledTrips(userId: string): Promise<ScheduledTripLi
           : null,
         weather: record.selectionSnapshot?.weather ?? null,
         weatherUnavailable: Boolean(record.selectionSnapshot?.weatherUnavailable),
-        traffic: record.selectionSnapshot?.traffic ?? null,
-        trafficUnavailable: Boolean(record.selectionSnapshot?.trafficUnavailable),
+        ...getTrafficSnapshot(record),
         itinerary,
         createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
       },
@@ -254,17 +292,13 @@ export async function getTripHistoryActivityData(userId: string): Promise<TripHi
       .lean(),
   ])) as [StoredActivityTrip[], StoredActivityTrip[]];
 
-  const monthFormatter = new Intl.DateTimeFormat("en", {
-    month: "long",
-    year: "numeric",
-  });
-
   const groups = new Map<string, MonthlyTripActivityGroup>();
 
   for (const record of monthlyRecords) {
     const trip = mapRecentTrip(record);
-    const createdAt = new Date(trip.createdAt);
-    const monthKey = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}`;
+    // Filed under the month it was at the origin, not on the server: a trip
+    // at 02:00 on 1 October in Dhaka is an October trip.
+    const monthKey = getLocalMonthKey(trip.createdAt, trip.timeZone);
     const existing = groups.get(monthKey);
 
     if (existing) {
@@ -272,7 +306,7 @@ export async function getTripHistoryActivityData(userId: string): Promise<TripHi
     } else {
       groups.set(monthKey, {
         monthKey,
-        monthLabel: monthFormatter.format(createdAt),
+        monthLabel: formatTripMonth(trip.createdAt, trip.timeZone),
         trips: [trip],
       });
     }
@@ -308,6 +342,7 @@ export async function createTripHistoryRecord({
     passengerCount: trip.passengerCount,
     departureMode: trip.departureMode,
     scheduledAt: trip.scheduledAt ? new Date(trip.scheduledAt) : null,
+    timeZone: trip.timeZone,
     routeOptions: routes.map(serializeRoute),
     selectedRoute,
     distanceKm: selectedRoute?.distanceKm ?? null,
@@ -353,6 +388,20 @@ export async function updateSelectedTripRoute({
     return null;
   }
 
+  // A saved vehicle was priced and timed on one route, under the conditions
+  // read along it. Keeping it after the route changes would leave a plan with
+  // this route's path and the other route's fare, duration and weather, so the
+  // choice is dropped and has to be made again. Re-selecting the same route
+  // changes nothing.
+  const vehicleChoiceCleared =
+    record.selectedRoute?.routeId !== routeId && record.selectedVehicle != null;
+
+  if (vehicleChoiceCleared) {
+    record.selectedVehicle = null;
+    record.selectionSnapshot = null;
+    record.selectedAt = null;
+  }
+
   record.selectedRoute = selectedRoute;
   record.distanceKm = selectedRoute.distanceKm;
   record.durationMin = selectedRoute.durationMin;
@@ -361,6 +410,7 @@ export async function updateSelectedTripRoute({
   return {
     id: String(record._id),
     selectedRoute,
+    vehicleChoiceCleared,
   };
 }
 
@@ -556,6 +606,8 @@ export type TripSummaryDetail = {
     currency: string;
   } | null;
   departureMode: "now" | "scheduled";
+  /** The IANA zone at the origin, which the times below are shown in. */
+  timeZone: string;
   estimatedDepartureAt: string | null;
   estimatedArrivalAt: string | null;
   weather: SelectionWeatherSnapshot;
@@ -626,12 +678,12 @@ export async function getTripSummary(
     durationMin,
     vehicle,
     departureMode: record.departureMode === "scheduled" ? "scheduled" : "now",
+    timeZone: getTripTimeZone(record.timeZone, record.country),
     estimatedDepartureAt,
     estimatedArrivalAt,
     weather: record.selectionSnapshot?.weather ?? null,
     weatherUnavailable: Boolean(record.selectionSnapshot?.weatherUnavailable),
-    traffic: record.selectionSnapshot?.traffic ?? null,
-    trafficUnavailable: Boolean(record.selectionSnapshot?.trafficUnavailable),
+    ...getTrafficSnapshot(record),
     itinerary,
     selectedAt: record.selectedAt ? new Date(record.selectedAt).toISOString() : null,
     createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
@@ -652,11 +704,14 @@ export type TripHistoryListItem = {
   fareMid: number | null;
   distanceKm: number | null;
   durationMin: number | null;
+  /** The IANA zone at the origin, which the times below are shown in. */
+  timeZone: string;
   selectedAt: string | null;
   createdAt: string;
 };
 
 export type TripHistoryFilters = {
+  /** Calendar days ("2026-09-10"), each read in the zone of the trip it is tested against. */
   from?: string;
   to?: string;
   provider?: string;
@@ -681,6 +736,17 @@ export type TripHistoryPage = {
   };
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A history filter's "YYYY-MM-DD" value, or null if it is anything else. */
+function parseFilterDay(value: string | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+  const utcMidnightMs = Date.parse(`${value}T00:00:00.000Z`);
+
+  return Number.isNaN(utcMidnightMs) ? null : { day: value, utcMidnightMs };
+}
+
 /**
  * Trip History list — only trips with a confirmed vehicle count (a search
  * that was never booked isn't trip history), reverse-chronological, with an
@@ -698,18 +764,14 @@ export async function getTripHistoryPage(
     selectedVehicle: { $ne: null },
   };
 
+  // "10 September" means 10 September at the trip's origin, so the exact test
+  // is per trip and runs below. The query only narrows the scan: a day either
+  // side covers every zone's offset from UTC.
+  const from = parseFilterDay(filters.from);
+  const to = parseFilterDay(filters.to);
   const createdAtRange: Record<string, Date> = {};
-  if (filters.from) {
-    const from = new Date(filters.from);
-    if (!Number.isNaN(from.getTime())) createdAtRange.$gte = from;
-  }
-  if (filters.to) {
-    const to = new Date(filters.to);
-    if (!Number.isNaN(to.getTime())) {
-      to.setHours(23, 59, 59, 999); // inclusive of the whole "to" day
-      createdAtRange.$lte = to;
-    }
-  }
+  if (from) createdAtRange.$gte = new Date(from.utcMidnightMs - DAY_MS);
+  if (to) createdAtRange.$lt = new Date(to.utcMidnightMs + 2 * DAY_MS);
   if (Object.keys(createdAtRange).length > 0) {
     query.createdAt = createdAtRange;
   }
@@ -717,7 +779,18 @@ export async function getTripHistoryPage(
   if (filters.provider) query["selectedVehicle.provider"] = filters.provider;
   if (filters.vehicleType) query["selectedVehicle.vehicleType"] = filters.vehicleType;
 
-  const records = await TripHistory.find(query).sort({ createdAt: -1 }).lean();
+  const storedRecords = await TripHistory.find(query).sort({ createdAt: -1 }).lean();
+
+  const records = storedRecords.filter((record) => {
+    if (!from && !to) return true;
+
+    const day = getLocalDateKey(
+      new Date(record.createdAt ?? Date.now()),
+      getTripTimeZone(record.timeZone, record.country),
+    );
+
+    return (!from || day >= from.day) && (!to || day <= to.day);
+  });
 
   const trips: TripHistoryListItem[] = records.map((record) => {
     const fareLow = record.selectedVehicle?.estimatedFareLow ?? null;
@@ -738,6 +811,7 @@ export async function getTripHistoryPage(
       fareMid,
       distanceKm: record.distanceKm ?? null,
       durationMin: record.durationMin ?? null,
+      timeZone: getTripTimeZone(record.timeZone, record.country),
       selectedAt: record.selectedAt ? new Date(record.selectedAt).toISOString() : null,
       createdAt: new Date(record.createdAt ?? Date.now()).toISOString(),
     };

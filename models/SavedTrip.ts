@@ -152,6 +152,13 @@ const SavedTripSchema = new Schema(
       type: Date,
       default: null,
     },
+    // The IANA zone at the origin. `scheduledAt` is an instant; this is what
+    // turns it back into the clock time the user chose. Null on records written
+    // before it was stored, which read back in the country's default zone.
+    timeZone: {
+      type: String,
+      default: null,
+    },
     preferredVehicle: {
       type: PreferredVehicleSchema,
       default: null,

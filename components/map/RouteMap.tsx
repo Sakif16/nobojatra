@@ -9,7 +9,7 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
-import { COUNTRY_CONFIG } from "@/lib/country-config";
+import { COUNTRY_CONFIG, hasLiveTraffic, type CountryCode } from "@/lib/country-config";
 import {
   INACTIVE_ROUTE_COLOR,
   MARKER_COLOR,
@@ -44,6 +44,12 @@ function numberedIcon(label: string | number, color: string) {
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 type Props = {
+  /**
+   * The country the trip is in. Decides whether the traffic overlay and
+   * legend are offered at all: where there is no live traffic the overlay
+   * tiles are blank, which looks like clear roads.
+   */
+  country: CountryCode;
   origin: LatLng;
   destination: LatLng;
   stops: LatLng[];
@@ -118,6 +124,7 @@ function FitBounds({
 }
 
 export default function RouteMap({
+  country,
   origin,
   destination,
   stops,
@@ -128,6 +135,7 @@ export default function RouteMap({
   trafficLoading,
 }: Props) {
   const [showTrafficTiles, setShowTrafficTiles] = useState(false);
+  const trafficAvailable = hasLiveTraffic(country);
   const mapRef = useRef<L.Map | null>(null);
 
   const activeRoute =
@@ -194,7 +202,7 @@ export default function RouteMap({
         />
 
         {/* Traffic tile overlay (Mapbox or TomTom) */}
-        {trafficTileUrl && showTrafficTiles && (
+        {trafficAvailable && trafficTileUrl && showTrafficTiles && (
           <TileLayer
             url={trafficTileUrl}
             opacity={0.9}
@@ -274,16 +282,20 @@ export default function RouteMap({
         />
       </MapContainer>
 
-      <div className="absolute left-3 top-3 z-1000">
-        <button
-          type="button"
-          onClick={() => setShowTrafficTiles((s) => !s)}
-          className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm"
-        >
-          {showTrafficTiles ? "Hide map traffic" : "Show map traffic"}
-        </button>
-      </div>
-      <TrafficLegend traffic={traffic} loading={trafficLoading} />
+      {trafficAvailable && (
+        <>
+          <div className="absolute left-3 top-3 z-1000">
+            <button
+              type="button"
+              onClick={() => setShowTrafficTiles((s) => !s)}
+              className="rounded-md bg-card/90 px-3 py-1 text-xs shadow-sm"
+            >
+              {showTrafficTiles ? "Hide map traffic" : "Show map traffic"}
+            </button>
+          </div>
+          <TrafficLegend traffic={traffic} loading={trafficLoading} />
+        </>
+      )}
     </div>
   );
 }

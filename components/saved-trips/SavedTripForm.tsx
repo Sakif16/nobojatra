@@ -7,6 +7,12 @@ import PlaceAutocomplete, {
 import { buttonVariants } from "@/components/ui/button";
 import { fieldClassName } from "@/components/ui/field-styles";
 import type { PlaceResult } from "@/lib/geocode";
+import { MAX_PASSENGER_COUNT, MIN_PASSENGER_COUNT } from "@/lib/trip-input";
+import {
+  clampPassengerCount,
+  keepVehicleIfItFits,
+  seatsPassengers,
+} from "@/lib/vehicle-capacity";
 import type { SavedTripDetail, VehicleOption } from "./types";
 
 /**
@@ -34,8 +40,20 @@ export default function SavedTripForm({
   const [origin, setOrigin] = useState<PlaceResult | null>(null);
   const [destinationLabel, setDestinationLabel] = useState("");
   const [destination, setDestination] = useState<PlaceResult | null>(null);
-  const [passengerCount, setPassengerCount] = useState(1);
+  // The field keeps what was typed, so it can be emptied while editing; the
+  // count the form acts on is always inside the allowed range.
+  const [passengerInput, setPassengerInput] = useState("1");
+  const passengerCount = clampPassengerCount(passengerInput);
   const [vehicleId, setVehicleId] = useState("");
+
+  function handlePassengerInput(value: string) {
+    setPassengerInput(value);
+    // The list below only offers vehicles that seat the party. A selection
+    // that drops out of it is let go, not kept hidden and submitted.
+    setVehicleId((current) =>
+      keepVehicleIfItFits(current, vehicles, clampPassengerCount(value)),
+    );
+  }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,10 +165,11 @@ export default function SavedTripForm({
           <input
             id="passengers"
             type="number"
-            min={1}
-            max={8}
-            value={passengerCount}
-            onChange={(event) => setPassengerCount(Number(event.target.value))}
+            min={MIN_PASSENGER_COUNT}
+            max={MAX_PASSENGER_COUNT}
+            value={passengerInput}
+            onChange={(event) => handlePassengerInput(event.target.value)}
+            onBlur={() => setPassengerInput(String(passengerCount))}
             className={fieldClassName()}
           />
         </div>
@@ -167,7 +186,7 @@ export default function SavedTripForm({
           >
             <option value="">No vehicle</option>
             {vehicles
-              .filter((vehicle) => vehicle.maxPassengers >= passengerCount)
+              .filter((vehicle) => seatsPassengers(vehicle, passengerCount))
               .map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.displayName}

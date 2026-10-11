@@ -4,6 +4,7 @@ import { CircleDollarSign, CloudRain, Plus, TrafficCone, X } from "lucide-react"
 import { useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { fieldClassName } from "@/components/ui/field-styles";
+import { hasLiveTraffic, liveTrafficUnavailableMessage } from "@/lib/country-config";
 import type { AlertConditionType, SavedTripDetail, TrafficLevel } from "./types";
 
 /**
@@ -50,6 +51,8 @@ export default function ConditionEditor({
 
   // A fare alert needs a baseline, which only exists once a vehicle is chosen.
   const canAddFare = Boolean(trip.baseline && trip.preferredVehicle);
+  // A traffic alert needs a traffic reading, which some countries never have.
+  const canWatchTraffic = hasLiveTraffic(trip.country);
 
   function selectType(nextType: AlertConditionType) {
     setType(nextType);
@@ -114,6 +117,13 @@ export default function ConditionEditor({
         )}
       </div>
 
+      {!canWatchTraffic && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {liveTrafficUnavailableMessage(trip.country)} Traffic alerts are off
+          for this trip.
+        </p>
+      )}
+
       {trip.conditions.length === 0 && !adding && (
         <p className="mt-1.5 text-[11px] text-muted-foreground">
           No conditions yet — this trip will not produce notifications.
@@ -134,7 +144,11 @@ export default function ConditionEditor({
                 <span className="font-medium">
                   {CONDITION_META[condition.type].label}
                 </span>{" "}
-                <span className="text-muted-foreground">{describe(condition)}</span>
+                <span className="text-muted-foreground">
+                  {condition.type === "traffic_level" && !canWatchTraffic
+                    ? "— not checked, no live traffic here"
+                    : describe(condition)}
+                </span>
               </span>
 
               <button
@@ -179,7 +193,7 @@ export default function ConditionEditor({
             className={fieldClassName(false, "py-2 text-xs")}
           >
             <option value="weather_severity">Weather severity</option>
-            <option value="traffic_level">Traffic level</option>
+            {canWatchTraffic && <option value="traffic_level">Traffic level</option>}
             <option value="fare_change" disabled={!canAddFare}>
               Fare change{canAddFare ? "" : " — pick a vehicle first"}
             </option>

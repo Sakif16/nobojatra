@@ -1,5 +1,7 @@
 import "server-only";
 
+import { ProviderBudgetError, spendProviderBudget } from "@/lib/provider-budget";
+
 const DEFAULT_OPENWEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5";
 const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
 const WEATHER_COORDINATE_PRECISION = 3;
@@ -313,6 +315,16 @@ export async function fetchWeatherForPoint(
   url.searchParams.set("lon", String(point.lng));
   url.searchParams.set("appid", apiKey);
   url.searchParams.set("units", "metric");
+
+  // A spent budget reads as weather being unavailable, which every caller
+  // already shows as such.
+  try {
+    await spendProviderBudget("openweather");
+  } catch (error) {
+    if (!(error instanceof ProviderBudgetError)) throw error;
+
+    throw new WeatherServiceError(error.message);
+  }
 
   let response: Response;
 

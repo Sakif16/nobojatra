@@ -18,6 +18,7 @@ type ApiResponse<T> =
 export async function searchPlaces(
   query: string,
   country?: string,
+  signal?: AbortSignal,
 ): Promise<PlaceResult[]> {
   const normalizedQuery = query.trim();
 
@@ -32,7 +33,7 @@ export async function searchPlaces(
     url.searchParams.set("country", country);
   }
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal });
 
   if (!res.ok) {
     throw new Error("Unable to fetch place suggestions.");

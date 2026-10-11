@@ -12,6 +12,8 @@
 // visible rather than silently indistinguishable from a live one.
 import "server-only";
 
+import { ProviderBudgetError, spendProviderBudget } from "@/lib/provider-budget";
+
 const PATHAO_TIMEOUT_MS = 6_000;
 /** Upper bound on simultaneous outbound provider requests per fare request. */
 const PROVIDER_CONCURRENCY = 4;
@@ -274,6 +276,16 @@ export async function fetchPathaoFare(
   url.searchParams.set("city", "dhaka");
   url.searchParams.set("distance_km", distanceKm.toFixed(3));
   url.searchParams.set("duration_min", durationMin.toFixed(3));
+
+  // A spent budget is handled like any other provider failure: the caller
+  // falls back to the rate card and says so.
+  try {
+    await spendProviderBudget("pathao");
+  } catch (error) {
+    if (!(error instanceof ProviderBudgetError)) throw error;
+
+    throw new FareProviderError(error.message);
+  }
 
   let response: Response;
 

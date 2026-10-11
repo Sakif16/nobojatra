@@ -12,6 +12,7 @@ import {
   type TripValidationErrors,
   type TripValidationPayload,
 } from "@/lib/trip-input";
+import { resolveTripTimeZone } from "@/lib/trip-time-zone";
 import { NextRequest, NextResponse } from "next/server";
 
 type RouteContext = { params: Promise<{ savedTripId: string }> };
@@ -29,6 +30,7 @@ const TRIP_FIELDS = [
   "stops",
   "passengerCount",
   "departureMode",
+  "scheduledLocal",
   "scheduledAt",
 ] as const;
 
@@ -161,13 +163,19 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       stops: body.stops ?? existing.stops,
       passengerCount: body.passengerCount ?? existing.passengerCount,
       departureMode: body.departureMode ?? existing.departureMode,
+      scheduledLocal: body.scheduledLocal,
       scheduledAt: body.scheduledAt ?? existing.scheduledAt ?? undefined,
     };
 
     // Validated against the country the trip was SAVED in, not the user's
     // current one. Editing the passenger count on an old Dhaka trip must not
     // start rejecting its origin because the user has since switched to the UK.
-    const validation = validateTripInput(merged, new Date(), existing.country);
+    const validation = validateTripInput(
+      merged,
+      new Date(),
+      existing.country,
+      resolveTripTimeZone,
+    );
 
     if (!validation.success) {
       return NextResponse.json(
@@ -199,7 +207,22 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
     if (!trip) return notFound();
 
-    return NextResponse.json({ success: true, trip });
+    // The edit was valid but left the stored vehicle unusable, so it was
+    // dropped. Say so: otherwise a fare alert goes quiet with no explanation.
+    const vehicleCleared =
+      patch.preferredVehicleRateId === undefined &&
+      existing.preferredVehicle !== null &&
+      trip.preferredVehicle === null;
+
+    return NextResponse.json({
+      success: true,
+      trip,
+      ...(vehicleCleared
+        ? {
+            message: `${existing.preferredVehicle?.displayName ?? "The saved vehicle"} no longer fits this trip, so it was removed. Choose a vehicle again to keep fare alerts.`,
+          }
+        : {}),
+    });
   } catch (error) {
     if (error instanceof SavedTripError) {
       return NextResponse.json(

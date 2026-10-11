@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Cloud, CloudOff, CloudRain, Sparkles, Users } from 'lucide-react'
+import { AlertTriangle, Cloud, CloudOff, CloudRain, Sparkles, TrafficCone, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -9,11 +9,14 @@ import {
   COUNTRY_CONFIG,
   DEFAULT_COUNTRY,
   formatFare,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
   type CountryCode,
 } from '@/lib/country-config'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
 import { cn } from '@/lib/utils'
 import BackLink from "@/components/BackLink";
+import EstimateNotes from "@/components/EstimateNotes";
 
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
   ssr: false,
@@ -98,6 +101,7 @@ interface FaresApiResponse {
   map?: FareMap | null
   weather?: FareWeather | null
   weatherUnavailable?: boolean
+  trafficUnavailable?: boolean
 }
 
 const ICONS: Record<string, string> = {
@@ -213,6 +217,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const [map, setMap] = useState<FareMap | null>(null)
   const [weather, setWeather] = useState<FareWeather | null>(null)
   const [weatherUnavailable, setWeatherUnavailable] = useState(false)
+  const [trafficUnavailable, setTrafficUnavailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -240,6 +245,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
         setMap(d?.map ?? null)
         setWeather(d?.weather ?? null)
         setWeatherUnavailable(Boolean(d?.weatherUnavailable))
+        setTrafficUnavailable(Boolean(d?.trafficUnavailable))
         setError(null)
         setLoading(false)
       })
@@ -251,6 +257,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
         setMap(null)
         setWeather(null)
         setWeatherUnavailable(false)
+        setTrafficUnavailable(false)
         setLoading(false)
       })
 
@@ -319,7 +326,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
       const data = await res.json()
 
       if (!res.ok || !data?.success) {
-        setConfirmError(data?.message ?? 'Could not confirm this ride. Please try again.')
+        setConfirmError(data?.message ?? 'Could not save this plan. Please try again.')
         setConfirming(false)
         return
       }
@@ -327,7 +334,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
       window.dispatchEvent(new Event('notifications:refresh'))
       router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`)
     } catch {
-      setConfirmError('Could not confirm this ride. Please try again.')
+      setConfirmError('Could not save this plan. Please try again.')
       setConfirming(false)
     }
   }
@@ -357,6 +364,16 @@ export default function FareResults({ tripHistoryId, routeId }: {
             <p className="mt-1 text-sm text-muted-foreground">
               Showing services for {COUNTRY_CONFIG[country].label} · fares in{' '}
               {COUNTRY_CONFIG[country].currency}
+            </p>
+          )}
+          <EstimateNotes className="mt-2 max-w-2xl" />
+          {!loading && trafficUnavailable && (
+            <p className="mt-2 flex max-w-2xl items-start gap-1.5 text-xs text-muted-foreground">
+              <TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden />
+              {hasLiveTraffic(country)
+                ? 'Live traffic is unavailable right now.'
+                : liveTrafficUnavailableMessage(country)}{' '}
+              Fares include no traffic adjustment.
             </p>
           )}
           {/* Entry point into the Route Comparison Display. Reuses the same
@@ -543,9 +560,12 @@ export default function FareResults({ tripHistoryId, routeId }: {
                           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
                         >
                           {confirming
-                            ? 'Confirming…'
-                            : `Confirm ${selectedOption.displayName} · ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
+                            ? 'Saving…'
+                            : `Save plan with ${selectedOption.displayName} · est. ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
                         </button>
+                        <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                          This saves your choice. It does not book a ride.
+                        </p>
                       </div>
                     )}
                   </>
@@ -603,6 +623,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
           {canShowMap && map?.origin && map?.destination && (
             <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
               <RouteMap
+                country={country}
                 origin={map.origin}
                 destination={map.destination}
                 stops={map.stops}

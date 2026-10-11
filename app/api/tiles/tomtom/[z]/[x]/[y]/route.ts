@@ -1,3 +1,11 @@
+import { auth } from "@/lib/auth";
+import { parseTileCoordinates } from "@/lib/map-tiles";
+import {
+  budgetReachedMessage,
+  ProviderBudgetError,
+  spendProviderBudget,
+} from "@/lib/provider-budget";
+import { createRateLimiter, getRateLimitHeaders } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 /**
@@ -8,10 +16,24 @@ import { NextResponse } from "next/server";
  * GET handler with that params shape doesn't belong there and previously
  * broke the production build's type-check.
  */
+// A map view asks for a screenful of tiles at once and more on every pan, so
+// the allowance is wide — but it is per account, and it ends.
+const checkUserRateLimit = createRateLimiter({ windowMs: 60_000, max: 600 });
+
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ z: string; x: string; y: string }> }
 ) {
+  // The map that shows these tiles is only reachable signed in. Without this
+  // check the route is an open, key-hiding proxy to a metered API.
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json(
+      { success: false, message: "Authentication required." },
+      { status: 401 }
+    );
+  }
+
   const apiKey = process.env.TOMTOM_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -20,11 +42,37 @@ export async function GET(
     );
   }
 
-  const { z, x, y } = await params;
-  if (![z, x, y].every((value) => /^\d+$/.test(value))) {
+  const rawTile = await params;
+  const tile = parseTileCoordinates(rawTile.z, rawTile.x, rawTile.y);
+  if (!tile) {
     return NextResponse.json(
       { success: false, message: "Invalid tile coordinates." },
       { status: 400 }
+    );
+  }
+  const { z, x, y } = tile;
+
+  const rateLimit = checkUserRateLimit(session.user.id);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { success: false, message: "Too many map tile requests. Please wait a moment." },
+      {
+        status: 429,
+        headers: {
+          ...getRateLimitHeaders(rateLimit),
+          "Retry-After": String(rateLimit.retryAfter),
+        },
+      }
+    );
+  }
+
+  try {
+    await spendProviderBudget("tomtom_tiles");
+  } catch (error) {
+    if (!(error instanceof ProviderBudgetError)) throw error;
+    return NextResponse.json(
+      { success: false, message: budgetReachedMessage("traffic map tiles") },
+      { status: 429 }
     );
   }
 
@@ -63,7 +111,9 @@ export async function GET(
     headers: {
       "Content-Type": response.headers.get("content-type") ?? "image/png",
       // Traffic flow tiles are near-real-time; cache briefly, not indefinitely.
-      "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
+      // Private: the response is only for the signed-in user who asked for it,
+      // so a shared cache must not serve it to someone who is not.
+      "Cache-Control": "private, max-age=60, stale-while-revalidate=120",
     },
   });
 }

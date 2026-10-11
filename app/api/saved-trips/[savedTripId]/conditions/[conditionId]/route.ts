@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { deleteCondition, SavedTripError, updateCondition } from "@/lib/saved-trips";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/request-body";
 
 type RouteContext = {
   params: Promise<{ savedTripId: string; conditionId: string }>;
@@ -36,12 +37,17 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
   if (!session) return unauthorized();
 
-  let body: ConditionPatchBody;
-  try {
-    body = (await req.json()) as ConditionPatchBody;
-  } catch {
+  const parsed = await readJsonObject<ConditionPatchBody>(req);
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, message: parsed.message }, { status: 400 });
+  }
+  const body = parsed.body;
+
+  // `Boolean("false")` is true, so a string here used to resume a condition
+  // the caller was trying to pause.
+  if (body.isActive !== undefined && typeof body.isActive !== "boolean") {
     return NextResponse.json(
-      { success: false, message: "Request body must be valid JSON." },
+      { success: false, message: "isActive must be true or false." },
       { status: 400 },
     );
   }
@@ -71,9 +77,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         ...(body.level !== undefined
           ? { level: typeof body.level === "string" ? (body.level as never) : null }
           : {}),
-        ...(body.isActive !== undefined
-          ? { isActive: Boolean(body.isActive) }
-          : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
       },
     });
 

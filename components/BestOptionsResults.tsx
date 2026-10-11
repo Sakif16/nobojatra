@@ -4,10 +4,17 @@ import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, Sparkles, Traffic
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_COUNTRY, formatFare, type CountryCode } from "@/lib/country-config";
+import {
+  DEFAULT_COUNTRY,
+  formatFare,
+  hasLiveTraffic,
+  liveTrafficUnavailableMessage,
+  type CountryCode,
+} from "@/lib/country-config";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 import BackLink from "@/components/BackLink";
+import EstimateNotes from "@/components/EstimateNotes";
 
 // Lazy-loads the map client-side only — Leaflet needs the browser
 const RouteMap = dynamic(() => import("@/components/map/RouteMap"), {
@@ -25,6 +32,7 @@ type WeatherBand = "low" | "moderate" | "severe";
 // Mirrors CongestionLevel VARIABLE from lib/traffic-service.ts, the real TomTom band
 type CongestionLevel = "low" | "moderate" | "high" | "severe";
 type RiskBand = "low" | "moderate" | "high";
+type RiskBasis = "weather_and_traffic" | "weather" | "traffic" | "none";
 type TravelPriority = "time" | "cost" | "comfort";
 
 interface RankedOption {
@@ -35,6 +43,7 @@ interface RankedOption {
   comfortScore: number;
   adjustedDurationMin: number;
   riskBand: RiskBand;
+  riskBasis?: RiskBasis;
   bestFor: "Speed" | "Budget" | "Comfort" | null;
   pros: string[];
   cons: string[];
@@ -145,18 +154,25 @@ function getFareAdjustmentLabel(adjustment: RankedOption["fareAdjustment"]) {
   return `Condition adjusted x${adjustment.multiplier.toFixed(2)}: ${notes}${more}`;
 }
 
-// Risk badge colour classes per band
-function riskBadgeClass(band: RiskBand) {
+// Risk badge colour classes per band. A band nothing was measured for gets no
+// colour: green would read as "safe".
+function riskBadgeClass(band: RiskBand, basis: RiskBasis) {
+  if (basis === "none") return "border-border bg-muted text-muted-foreground";
   if (band === "high") return "border-destructive/30 bg-destructive/10 text-destructive";
   if (band === "moderate") return "border-primary/30 bg-primary/10 text-primary";
   return "border-emerald-500/30 bg-emerald-500/10 text-emerald-600";
 }
 
-// Risk badge label — SRS calls for LOW / MODERATE / HIGH
-function riskBadgeLabel(band: RiskBand) {
-  if (band === "high") return "HIGH";
-  if (band === "moderate") return "MODERATE";
-  return "LOW";
+// Risk badge label — LOW / MODERATE / HIGH, named for what it was worked out
+// from. Without a traffic reading it is a weather risk, not an overall one.
+function riskBadgeLabel(band: RiskBand, basis: RiskBasis) {
+  if (basis === "none") return "RISK NOT ASSESSED";
+
+  const level = band === "high" ? "HIGH" : band === "moderate" ? "MODERATE" : "LOW";
+
+  if (basis === "weather") return `${level} WEATHER RISK`;
+  if (basis === "traffic") return `${level} TRAFFIC RISK`;
+  return `${level} RISK`;
 }
 
 // "Best for" tag colour classes per tag
@@ -192,8 +208,7 @@ function weatherClassName(weather: WeatherReading | null, unavailable: boolean) 
 
 // Congestion line shown inside the weather banner — built from the real
 // TomTom reading: level, % slower than free-flow, live minutes, peak-hour flag
-function congestionLabel(reading: CongestionReading | null | undefined, unavailable: boolean) {
-  if (unavailable) return "Live traffic unavailable — showing estimates without a traffic adjustment.";
+function congestionLabel(reading: CongestionReading | null | undefined) {
   if (!reading) return null;
   const levelLabel = reading.congestionLevel.toUpperCase();
   const percentText =
@@ -372,7 +387,13 @@ export default function BestOptionsResults({
 
   const title = weatherTitle(weather, weatherUnavailable);
   const showBanner = !bannerDismissed && (title !== null);
-  const congestionText = congestionLabel(congestion, trafficUnavailable);
+  const congestionText = trafficUnavailable ? null : congestionLabel(congestion);
+  // Shown in the page header rather than the dismissible weather banner, so
+  // it cannot be closed or missed when there is no weather to report.
+  const trafficNote =
+    loading || !trafficUnavailable
+      ? null
+      : `${hasLiveTraffic(country) ? "Live traffic is unavailable right now." : liveTrafficUnavailableMessage(country)} Times, fares and risk use no traffic data.`;
   const activePriority = pendingPriority ?? scoringPriority ?? "time";
   const isPriorityChanging = pendingPriority !== null;
 
@@ -397,7 +418,7 @@ export default function BestOptionsResults({
       const data = await res.json();
 
       if (!res.ok || !data?.success) {
-        setConfirmError(data?.message ?? "Could not confirm this ride. Please try again.");
+        setConfirmError(data?.message ?? "Could not save this plan. Please try again.");
         setConfirming(false);
         return;
       }
@@ -405,7 +426,7 @@ export default function BestOptionsResults({
       window.dispatchEvent(new Event("notifications:refresh"));
       router.push(`/trip-summary?tripHistoryId=${data.tripHistoryId}`);
     } catch {
-      setConfirmError("Could not confirm this ride. Please try again.");
+      setConfirmError("Could not save this plan. Please try again.");
       setConfirming(false);
     }
   }
@@ -428,6 +449,10 @@ export default function BestOptionsResults({
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Best Options
             </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              AI ranking: options are scored on time, cost and comfort for the
+              priority you pick, for this one route.
+            </p>
             {trip && (
               <>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -437,6 +462,13 @@ export default function BestOptionsResults({
                   {trip.distanceKm} km · {trip.passengers} passenger{trip.passengers > 1 ? "s" : ""}
                 </p>
               </>
+            )}
+            <EstimateNotes adjustedTimes className="mt-2" />
+            {trafficNote && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden />
+                {trafficNote}
+              </p>
             )}
           </div>
 
@@ -619,8 +651,8 @@ export default function BestOptionsResults({
 
                             {/* Row 2: risk badge */}
                             <div className="flex items-center gap-2">
-                              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", riskBadgeClass(option.riskBand))}>
-                                {riskBadgeLabel(option.riskBand)} RISK
+                              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", riskBadgeClass(option.riskBand, option.riskBasis ?? "weather_and_traffic"))}>
+                                {riskBadgeLabel(option.riskBand, option.riskBasis ?? "weather_and_traffic")}
                               </span>
                               <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary-foreground">
                                 Score {scoreLabel(option.score)}
@@ -674,9 +706,12 @@ export default function BestOptionsResults({
                           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
                         >
                           {confirming
-                            ? "Confirming…"
-                            : `Confirm ${selectedOption.displayName} · ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
+                            ? "Saving…"
+                            : `Save plan with ${selectedOption.displayName} · est. ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
                         </button>
+                        <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                          This saves your choice. It does not book a ride.
+                        </p>
                       </div>
                     )}
                   </>
@@ -691,6 +726,7 @@ export default function BestOptionsResults({
           {canShowMap && map?.origin && map?.destination && (
             <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
               <RouteMap
+                country={country}
                 origin={map.origin}
                 destination={map.destination}
                 stops={map.stops}

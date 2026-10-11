@@ -1,6 +1,11 @@
 import "server-only";
 
 import { ROUTE_COLORS, type LatLng, type RouteLeg, type RouteResult } from "@/lib/routing";
+import {
+  budgetReachedMessage,
+  ProviderBudgetError,
+  spendProviderBudget,
+} from "@/lib/provider-budget";
 import { calculateDistanceMeters } from "@/lib/trip-input";
 
 const ORS_BASE = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
@@ -243,23 +248,16 @@ function areDuplicateRoutes(first: RouteResult, second: RouteResult) {
   );
 }
 
-function getRouteMetricSignature(route: RouteResult) {
-  return `${route.distanceKm.toFixed(1)}:${route.durationMin}`;
-}
-
 function limitUniqueRoutes(routes: RouteResult[]) {
   const uniqueRoutes: RouteResult[] = [];
-  const metricSignatures = new Set<string>();
 
   for (const route of routes) {
-    const metricSignature = getRouteMetricSignature(route);
-    const isDuplicate =
-      metricSignatures.has(metricSignature) ||
-      uniqueRoutes.some((uniqueRoute) => areDuplicateRoutes(route, uniqueRoute));
+    const isDuplicate = uniqueRoutes.some((uniqueRoute) =>
+      areDuplicateRoutes(route, uniqueRoute)
+    );
 
     if (!isDuplicate) {
       uniqueRoutes.push(route);
-      metricSignatures.add(metricSignature);
     }
 
     if (uniqueRoutes.length >= MAX_ROUTE_SUGGESTIONS) {
@@ -444,6 +442,14 @@ export async function fetchRouteSuggestions(
       weight_factor: 1.6,
       share_factor: 0.6,
     };
+  }
+
+  try {
+    await spendProviderBudget("openrouteservice");
+  } catch (error) {
+    if (!(error instanceof ProviderBudgetError)) throw error;
+
+    throw new RouteServiceError(error.message, 429, budgetReachedMessage("route searches"));
   }
 
   let response: Response;

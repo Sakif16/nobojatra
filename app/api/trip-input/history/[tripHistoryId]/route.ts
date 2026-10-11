@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getTripSummary, updateSelectedTripRoute } from "@/lib/trip-history";
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/request-body";
 
 // GET /api/trip-input/history/:tripHistoryId — Trip Summary page data: the
 // confirmed vehicle, cost range, total time, estimated departure/arrival,
@@ -48,19 +49,11 @@ export async function PATCH(
   }
 
   const { tripHistoryId } = await params;
-  let body: { routeId?: unknown };
-
-  try {
-    body = (await req.json()) as { routeId?: unknown };
-  } catch {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Request body must be valid JSON.",
-      },
-      { status: 400 }
-    );
+  const parsed = await readJsonObject<{ routeId?: unknown }>(req);
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, message: parsed.message }, { status: 400 });
   }
+  const body = parsed.body;
 
   if (typeof body.routeId !== "string" || body.routeId.trim().length === 0) {
     return NextResponse.json(

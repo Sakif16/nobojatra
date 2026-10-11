@@ -1,14 +1,14 @@
 # NoboJatra
 
 ## Intro
-A smart travel-planning web app for comparing routes, estimating fares, checking live conditions, and saving repeat journeys — all in one place.
+A travel-planning web app for comparing routes, estimating fares, checking live conditions, and saving repeat journeys — all in one place.
 
 ---
 
 ## Description
 NoboJatra is a full-stack travel planning application built for everyday commuters who want a simpler way to choose the best route for their trip. Users can search from one place to another, compare route options, review traffic and weather conditions, estimate fares for different transport modes, and revisit saved trips whenever needed.
 
-The app combines route intelligence, fare estimation, map visualization, and trip history into a single experience that helps users make faster and more informed travel decisions.
+The app combines route comparison, fare estimation, map visualization, and trip history into a single experience that helps users make faster and more informed travel decisions.
 
 ---
 
@@ -80,10 +80,11 @@ cp .env.example .env
 | `TOMTOM_API_KEY` | Optional | Live traffic. Without it, traffic is unavailable |
 | `RESEND_API_KEY` | Optional | Sending password reset emails |
 | `RESEND_FROM_EMAIL` | Optional | Sender address. Must be on a domain verified in Resend (see Known Issues) |
-| `PATHAO_FARE_API` | Optional | Live fare quotes. Without it, fares come from the built-in rate card |
+| `PATHAO_FARE_API` | Optional | Third-party fare estimates. Without it, fares come from the built-in rate card |
 | `ALERT_EVALUATION_SECRET` | Optional | Protects the scheduled alert-check endpoint |
 | `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Defaults to the app name and this repository's URL. Set it only to add a contact email |
 | `NOMINATIM_BASE_URL` | Optional | Place-search server. Defaults to the public OpenStreetMap one |
+| `DEMO_BUDGET_<PROVIDER>` | Optional | Daily cap on calls to one provider, for example `DEMO_BUDGET_NOMINATIM=500`. Providers: `NOMINATIM`, `OPENROUTESERVICE`, `TOMTOM_ROUTING`, `TOMTOM_TILES`, `OPENWEATHER`, `PATHAO`. Defaults are in `lib/provider-budget.ts` |
 | `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search fails |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Leave unset | Mapbox is not used. Setting it switches to Mapbox map layers that aren't configured correctly |
 
