@@ -5,15 +5,13 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
-  CircleDollarSign,
-  CloudRain,
-  TrafficCone,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import NotificationCenter from "./NotificationCenter";
 import type { AlertView } from "./types";
+import { readJson } from "@/lib/read-json";
 
 /**
  * Bell + unread badge + notification panel.
@@ -29,10 +27,12 @@ const NOTIFICATIONS_REFRESH_EVENT = "notifications:refresh";
 const TOAST_DURATION_MS = 5_500;
 const TOAST_RECENT_WINDOW_MS = 90_000;
 
-type CountResponse = { success: boolean; unreadCount?: number };
+type CountResponse = { success: boolean; unreadCount?: number; latestId?: string | null };
 type ListResponse = {
   success: boolean;
   alerts?: AlertView[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
   unreadCount?: number;
   message?: string;
 };
@@ -55,18 +55,6 @@ function isRecentAlert(alert: AlertView) {
 
 function ToastIcon({ alert }: { alert: AlertView }) {
   const className = "mt-0.5 size-4 shrink-0 text-primary";
-
-  if (alert.conditionType === "weather_severity") {
-    return <CloudRain className={className} aria-hidden />;
-  }
-
-  if (alert.conditionType === "traffic_level") {
-    return <TrafficCone className={className} aria-hidden />;
-  }
-
-  if (alert.conditionType === "fare_change") {
-    return <CircleDollarSign className={className} aria-hidden />;
-  }
 
   if (alert.severity === "critical") {
     return <AlertTriangle className={className} aria-hidden />;
@@ -118,11 +106,17 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<string[]>([]);
+  // Where the loaded list ends, so "Load older" can ask for what comes next.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Set when the session has gone away, so a logged-out tab stops polling
   // instead of hammering a route that will only ever return 401.
   const stoppedRef = useRef(false);
   const unreadCountRef = useRef(0);
+  // The newest notification the last poll saw. Compared with the next poll's,
+  // it says the list changed even when the count did not.
+  const latestIdRef = useRef<string | null>(null);
   const countInitializedRef = useRef(false);
   const surfacedAlertIdsRef = useRef<Set<string>>(new Set());
   const toastTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -158,14 +152,33 @@ export default function NotificationBell() {
 
       try {
         const response = await fetch("/api/alerts");
-        const payload = (await response.json()) as ListResponse;
+        const payload = await readJson<ListResponse>(response);
 
         if (!response.ok || !payload.success) {
           throw new Error(payload.message ?? "Could not load notifications.");
         }
 
         const nextAlerts = payload.alerts ?? [];
-        setAlerts(nextAlerts);
+        // A background refresh replaces the first page and keeps any older
+        // rows already loaded below it, so the list does not snap shut while
+        // someone is reading further down. Opening the panel starts afresh.
+        setAlerts((current) => {
+          if (!silent) return nextAlerts;
+
+          const refreshed = new Set(nextAlerts.map((alert) => alert.id));
+          const oldestRefreshed = nextAlerts[nextAlerts.length - 1];
+          const older = oldestRefreshed
+            ? current.filter(
+                (alert) =>
+                  !refreshed.has(alert.id) && alert.createdAt <= oldestRefreshed.createdAt,
+              )
+            : [];
+
+          return [...nextAlerts, ...older];
+        });
+        setNextCursor((current) =>
+          silent && current !== null ? current : (payload.nextCursor ?? null),
+        );
         if (typeof payload.unreadCount === "number") {
           setUnreadCountValue(payload.unreadCount);
         }
@@ -199,19 +212,29 @@ export default function NotificationBell() {
         return;
       }
 
-      const payload = (await response.json()) as CountResponse;
+      const payload = await readJson<CountResponse>(response);
 
       if (payload.success && typeof payload.unreadCount === "number") {
         const previousCount = unreadCountRef.current;
+        const previousLatestId = latestIdRef.current;
+        const latestId = payload.latestId ?? null;
+
         setUnreadCountValue(payload.unreadCount);
+        latestIdRef.current = latestId;
 
         if (!countInitializedRef.current) {
           countInitializedRef.current = true;
           return;
         }
 
-        if (payload.unreadCount > previousCount) {
-          void loadAlerts({ silent: true, surfaceLatest: true });
+        // Reload whenever what is showing has changed, not only when the count
+        // went up: one arriving while another was dismissed in a different tab
+        // leaves the number alone, and a dismissal elsewhere lowers it. A toast
+        // is only for something new.
+        const hasNewest = latestId !== null && latestId !== previousLatestId;
+
+        if (hasNewest || payload.unreadCount !== previousCount) {
+          void loadAlerts({ silent: true, surfaceLatest: hasNewest });
         }
       }
     } catch {
@@ -256,6 +279,33 @@ export default function NotificationBell() {
     if (nextOpen) void loadAlerts();
   }
 
+  /** Fetches the page after the one already shown and adds it to the list. */
+  async function loadOlder() {
+    if (!nextCursor || loadingMore) return;
+
+    setLoadingMore(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/alerts?before=${encodeURIComponent(nextCursor)}`);
+      const payload = await readJson<ListResponse>(response);
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message ?? "Could not load older notifications.");
+      }
+
+      setAlerts((current) => {
+        const known = new Set(current.map((alert) => alert.id));
+        return [...current, ...(payload.alerts ?? []).filter((alert) => !known.has(alert.id))];
+      });
+      setNextCursor(payload.nextCursor ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load older notifications.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   /**
    * Dismiss and snooze differ only in the action they send, and both remove the
    * alert from the panel — a snoozed alert is hidden until it re-surfaces, so
@@ -271,7 +321,7 @@ export default function NotificationBell() {
         body: JSON.stringify({ action }),
       });
 
-      const payload = (await response.json()) as MutationResponse;
+      const payload = await readJson<MutationResponse>(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.message ?? "Could not update this notification.");
@@ -290,13 +340,14 @@ export default function NotificationBell() {
   async function dismissAll() {
     try {
       const response = await fetch("/api/alerts/read-all", { method: "POST" });
-      const payload = (await response.json()) as MutationResponse;
+      const payload = await readJson<MutationResponse>(response);
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.message ?? "Could not dismiss notifications.");
       }
 
       setAlerts([]);
+      setNextCursor(null);
       setToasts([]);
       if (typeof payload.unreadCount === "number") setUnreadCountValue(payload.unreadCount);
     } catch (err) {
@@ -351,6 +402,9 @@ export default function NotificationBell() {
                 onDismiss={(id) => void mutateAlert(id, "read")}
                 onSnooze={(id) => void mutateAlert(id, "snooze")}
                 onDismissAll={() => void dismissAll()}
+                hasMore={nextCursor !== null}
+                loadingMore={loadingMore}
+                onLoadMore={() => void loadOlder()}
               />
             </Popover.Popup>
           </Popover.Positioner>

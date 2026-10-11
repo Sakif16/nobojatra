@@ -5,12 +5,20 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  COUNTRY_CONFIG,
   DEFAULT_COUNTRY,
   formatFare,
-  hasLiveTraffic,
-  liveTrafficUnavailableMessage,
   type CountryCode,
 } from "@/lib/country-config";
+import type { ServerFeatures } from "@/lib/env";
+import { describeTrafficUnavailable, describeWeatherUnavailable } from "@/lib/feature-messages";
+import { useServerFeatures } from "@/components/features/FeatureProvider";
+import { getFareSourceLabel } from "@/lib/fare-source";
+import {
+  FORECAST_ADVISORY,
+  getWeatherReadingLabel,
+  WEATHER_SEVERITY_LIMITS,
+} from "@/lib/weather-reading";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 import BackLink from "@/components/BackLink";
@@ -33,6 +41,7 @@ type WeatherBand = "low" | "moderate" | "severe";
 type CongestionLevel = "low" | "moderate" | "high" | "severe";
 type RiskBand = "low" | "moderate" | "high";
 type RiskBasis = "weather_and_traffic" | "weather" | "traffic" | "none";
+type ScoringWeights = { time: number; cost: number; comfort: number };
 type TravelPriority = "time" | "cost" | "comfort";
 
 interface RankedOption {
@@ -73,6 +82,8 @@ interface TripSummary {
 }
 
 interface WeatherReading {
+  kind?: "current" | "forecast";
+  forecastFor?: string | null;
   temperatureCelsius: number;
   precipitationMmPerHour: number;
   windKmh: number;
@@ -114,10 +125,12 @@ interface BestOptionsApiResponse {
   map?: BestOptionsMap | null;
   weather?: WeatherReading | null;
   weatherUnavailable?: boolean;
+  timeZone?: string;
   congestion?: CongestionReading | null;
   trafficUnavailable?: boolean;
   options?: RankedOption[];
   scoringPriority?: TravelPriority;
+  scoringWeights?: ScoringWeights;
   lastUpdated?: string;
 }
 
@@ -139,6 +152,33 @@ const PRIORITY_OPTIONS: Array<{ value: TravelPriority; label: string }> = [
   { value: "cost", label: "Budget" },
   { value: "comfort", label: "Comfort" },
 ];
+
+/**
+ * The ranking rule in one sentence: the share each measure carries, and which
+ * of weather and traffic was available to count against an option. It is the
+ * whole rule — there is nothing else behind the order.
+ */
+function scoringRule(weights: ScoringWeights, basis: RiskBasis) {
+  const shares = PRIORITY_OPTIONS.map((priority) => ({
+    label: priority.label.toLowerCase(),
+    percent: Math.round(weights[priority.value] * 100),
+  })).sort((first, second) => second.percent - first.percent);
+  const split = `${shares
+    .slice(0, -1)
+    .map((share) => `${share.percent}% on ${share.label}`)
+    .join(", ")} and ${shares.at(-1)?.percent}% on ${shares.at(-1)?.label}`;
+
+  if (basis === "weather_and_traffic") {
+    return `Ranked ${split}, less a small deduction for weather and traffic risk.`;
+  }
+  if (basis === "weather") {
+    return `Ranked ${split}, less a small deduction for weather risk. Traffic is unknown, so it is not counted.`;
+  }
+  if (basis === "traffic") {
+    return `Ranked ${split}, less a small deduction for traffic risk. Weather is unknown, so it is not counted.`;
+  }
+  return `Ranked ${split}. Weather and traffic are unknown, so risk is not counted.`;
+}
 
 function scoreLabel(score: number) {
   if (!Number.isFinite(score)) return "0";
@@ -184,9 +224,19 @@ function bestForClass(tag: RankedOption["bestFor"]) {
 }
 
 // Formats the weather banner title from severity band
-function weatherTitle(weather: WeatherReading | null, unavailable: boolean) {
-  if (unavailable) return "Weather data unavailable";
+function weatherTitle(
+  weather: WeatherReading | null,
+  unavailable: boolean,
+  features: ServerFeatures,
+) {
+  if (unavailable) return describeWeatherUnavailable(features);
   if (!weather) return null;
+  // A forecast restricts nothing, so it is not titled as a restriction.
+  if (weather.kind === "forecast") {
+    if (weather.severityBand === "severe") return "Severe weather forecast";
+    if (weather.severityBand === "moderate") return "Moderate weather forecast";
+    return "Low weather impact forecast";
+  }
   if (weather.severityBand === "severe") return "Severe weather restrictions";
   if (weather.severityBand === "moderate") return "Moderate weather caution";
   return "Low weather impact";
@@ -215,7 +265,7 @@ function congestionLabel(reading: CongestionReading | null | undefined) {
     reading.congestionIndexPercent >= 0
       ? `+${reading.congestionIndexPercent}%`
       : `${reading.congestionIndexPercent}%`;
-  return `${levelLabel} traffic · ${percentText} vs free-flow · ${reading.durationInTrafficMin} min with live traffic${reading.isPeakHour ? " · peak hour" : ""}`;
+  return `${levelLabel} traffic · ${percentText} vs free-flow · ${reading.durationInTrafficMin} min by car with live traffic${reading.isPeakHour ? " · peak hour" : ""}`;
 }
 
 export default function BestOptionsResults({
@@ -229,14 +279,17 @@ export default function BestOptionsResults({
   // From the API, not from context: this ranks a stored trip, which keeps the
   // country it was planned in.
   const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
+  const [timeZone, setTimeZone] = useState(COUNTRY_CONFIG[DEFAULT_COUNTRY].timeZone);
   const [options, setOptions] = useState<RankedOption[]>([]);
   const [trip, setTrip] = useState<TripSummary | null>(null);
   const [map, setMap] = useState<BestOptionsMap | null>(null);
   const [weather, setWeather] = useState<WeatherReading | null>(null);
+  const features = useServerFeatures();
   const [weatherUnavailable, setWeatherUnavailable] = useState(false);
   const [congestion, setCongestion] = useState<CongestionReading | null>(null);
   const [trafficUnavailable, setTrafficUnavailable] = useState(false);
   const [scoringPriority, setScoringPriority] = useState<TravelPriority | null>(null);
+  const [scoringWeights, setScoringWeights] = useState<ScoringWeights | null>(null);
   const [pendingPriority, setPendingPriority] = useState<TravelPriority | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -287,12 +340,13 @@ export default function BestOptionsResults({
           }),
         });
 
-        if (!res.ok) throw new Error("Best options service returned an error");
+        if (!res.ok) throw new Error("Ranking service returned an error");
 
         const data = (await res.json()) as BestOptionsApiResponse;
         if (requestId !== requestIdRef.current) return;
 
         setCountry(data.country ?? DEFAULT_COUNTRY);
+        setTimeZone(data.timeZone ?? COUNTRY_CONFIG[data.country ?? DEFAULT_COUNTRY].timeZone);
         setOptions(Array.isArray(data.options) ? data.options : []);
         setTrip(data.trip ?? null);
         setMap(data.map ?? null);
@@ -301,6 +355,7 @@ export default function BestOptionsResults({
         setCongestion(data.congestion ?? null);
         setTrafficUnavailable(Boolean(data.trafficUnavailable));
         setScoringPriority(data.scoringPriority ?? null);
+        setScoringWeights(data.scoringWeights ?? null);
         setLastUpdated(data.lastUpdated ?? new Date().toISOString());
         setBannerDismissed(false); // re-run re-shows the banner with fresh data
         setSelectedKey(null);
@@ -313,7 +368,7 @@ export default function BestOptionsResults({
         }
 
         if (requestId !== requestIdRef.current) return;
-        setError("Could not load best options. Please try again.");
+        setError("Could not load the ranked options. Please try again.");
         setOptions([]);
       } finally {
         if (requestId !== requestIdRef.current) return;
@@ -385,7 +440,7 @@ export default function BestOptionsResults({
 
   const canShowMap = map?.origin != null && map?.destination != null && mapRoutes.length > 0;
 
-  const title = weatherTitle(weather, weatherUnavailable);
+  const title = weatherTitle(weather, weatherUnavailable, features);
   const showBanner = !bannerDismissed && (title !== null);
   const congestionText = trafficUnavailable ? null : congestionLabel(congestion);
   // Shown in the page header rather than the dismissible weather banner, so
@@ -393,7 +448,7 @@ export default function BestOptionsResults({
   const trafficNote =
     loading || !trafficUnavailable
       ? null
-      : `${hasLiveTraffic(country) ? "Live traffic is unavailable right now." : liveTrafficUnavailableMessage(country)} Times, fares and risk use no traffic data.`;
+      : `${describeTrafficUnavailable(country, features)} Times, fares and risk use no traffic data.`;
   const activePriority = pendingPriority ?? scoringPriority ?? "time";
   const isPriorityChanging = pendingPriority !== null;
 
@@ -447,7 +502,7 @@ export default function BestOptionsResults({
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              Best Options
+              Ranked Options
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               AI ranking: options are scored on time, cost and comfort for the
@@ -505,7 +560,7 @@ export default function BestOptionsResults({
           >
             {loading ? (
               <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-                Scoring the best options…
+                Ranking the options…
               </p>
             ) : error ? (
               <p role="alert" className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -537,6 +592,14 @@ export default function BestOptionsResults({
                       </button>
                     </div>
 
+                    {weather && (
+                      <p className="mt-2 text-[11px] opacity-70">
+                        {getWeatherReadingLabel(weather, timeZone)}.{" "}
+                        {weather.kind === "forecast" ? `${FORECAST_ADVISORY} ` : ""}
+                        {WEATHER_SEVERITY_LIMITS}
+                      </p>
+                    )}
+
                     {congestionText && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs opacity-85">
                         <TrafficCone className="size-3.5 shrink-0" />
@@ -561,7 +624,9 @@ export default function BestOptionsResults({
                   <>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        Top {options.length} ranked option{options.length > 1 ? "s" : ""}
+                        {options.length > 1
+                          ? `${options.length} options, ranked`
+                          : "1 option fits this trip"}
                       </p>
                       <div
                         role="group"
@@ -591,6 +656,13 @@ export default function BestOptionsResults({
                         })}
                       </div>
                     </div>
+
+                    <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
+                      {options.length > 1
+                        ? scoringWeights &&
+                          scoringRule(scoringWeights, options[0].riskBasis ?? "weather_and_traffic")
+                        : "Only one option fits this trip, so there is nothing to rank it against."}
+                    </p>
 
                     {/* ── Ranked cards ── */}
                     <div className="flex flex-col gap-3">
@@ -637,7 +709,9 @@ export default function BestOptionsResults({
                                     {option.maxPassengers}
                                   </span>
                                   <span aria-hidden>·</span>
-                                  <span>{option.adjustedDurationMin} min</span>
+                                  {/* An estimate from the car route, not a
+                                      measured time for this vehicle. */}
+                                  <span>est. {option.adjustedDurationMin} min</span>
                                 </div>
                               </div>
                               {/* Fare range — "Estimated" label per the spec */}
@@ -645,7 +719,9 @@ export default function BestOptionsResults({
                                 <div className="text-sm font-semibold tabular-nums text-foreground">
                                   {formatFare(option.fare.low, option.fare.high, country)}
                                 </div>
-                                <div className="text-[10px] text-muted-foreground">Estimated</div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  {getFareSourceLabel(option.fareSource) ?? "Estimated"}
+                                </div>
                               </div>
                             </div>
 
@@ -654,10 +730,23 @@ export default function BestOptionsResults({
                               <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", riskBadgeClass(option.riskBand, option.riskBasis ?? "weather_and_traffic"))}>
                                 {riskBadgeLabel(option.riskBand, option.riskBasis ?? "weather_and_traffic")}
                               </span>
-                              <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary-foreground">
-                                Score {scoreLabel(option.score)}
-                              </span>
+                              {/* A score only places an option among the others;
+                                  with one option it measures nothing. */}
+                              {options.length > 1 && (
+                                <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary-foreground">
+                                  Score {scoreLabel(option.score)}
+                                </span>
+                              )}
                             </div>
+
+                            {/* The live lookup failed and this is the rate card
+                                standing in for it. */}
+                            {option.fareSourceNote && (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                                <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
+                                {option.fareSourceNote}
+                              </p>
+                            )}
 
                             {adjustmentLabel && (
                               <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">

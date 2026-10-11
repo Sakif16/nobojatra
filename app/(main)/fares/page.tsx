@@ -1,7 +1,9 @@
-import { headers } from 'next/headers'
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import FareResults from '@/components/FareResults'
-import { auth } from '@/lib/auth'
+import { getRequestSession } from '@/lib/request-context'
+
+export const metadata: Metadata = { title: 'Fare estimates' }
 
 interface Props {
   searchParams: Promise<{ tripHistoryId?: string; routeId?: string }>
@@ -10,7 +12,7 @@ interface Props {
 export default async function FaresPage({ searchParams }: Props) {
   // The API behind this page already refuses a signed-out caller; without this
   // the page would still render and show its error state instead of sign-in.
-  const session = await auth.api.getSession({ headers: await headers() })
+  const session = await getRequestSession()
 
   if (!session) redirect('/signin')
 

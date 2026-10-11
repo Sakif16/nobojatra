@@ -12,6 +12,7 @@ import {
   type CountryCode,
 } from "@/lib/country-config";
 import type { PlaceResult } from "@/lib/geocode";
+import { readJson, UnexpectedResponseError } from "@/lib/read-json";
 import BackLink from "@/components/BackLink";
 
 type TravelPriority = "time" | "cost" | "comfort";
@@ -162,31 +163,41 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
     setErrorMessage("");
     setIsSaving(true);
 
-    const response = await fetch("/api/profile", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        email,
-        country,
-        defaultTravelPriority,
-        defaultPassengerCount,
-        savedPlaces: buildSavedPlacesPayload(),
-      }),
-    });
-    const result = (await response.json()) as { message?: string };
+    // The button is released in `finally`, so a dropped connection or a reply
+    // that is not JSON cannot leave it stuck on "Saving…".
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          country,
+          defaultTravelPriority,
+          defaultPassengerCount,
+          savedPlaces: buildSavedPlacesPayload(),
+        }),
+      });
+      const result = await readJson<{ message?: string }>(response);
 
-    setIsSaving(false);
+      if (!response.ok) {
+        setErrorMessage(result.message || "Unable to save profile.");
+        return;
+      }
 
-    if (!response.ok) {
-      setErrorMessage(result.message || "Unable to save profile.");
-      return;
+      setMessage(result.message || "Profile saved.");
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof UnexpectedResponseError
+          ? error.message
+          : "Unable to save profile. Check your connection and try again.",
+      );
+    } finally {
+      setIsSaving(false);
     }
-
-    setMessage(result.message || "Profile saved.");
-    router.refresh();
   };
 
   const closeDeleteDialog = () => {
@@ -202,29 +213,37 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
     setDeleteError("");
     setIsDeleting(true);
 
-    const response = await fetch("/api/profile", {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        confirmation: deleteConfirmation,
-        password: deletePassword,
-      }),
-    });
-    const result = (await response.json()) as { message?: string };
+    try {
+      const response = await fetch("/api/profile", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          confirmation: deleteConfirmation,
+          password: deletePassword,
+        }),
+      });
+      const result = await readJson<{ message?: string }>(response);
 
-    setIsDeleting(false);
+      if (!response.ok) {
+        // Shown inside the dialog rather than behind it, so a wrong password is
+        // visible next to the field that caused it and the dialog stays open.
+        setDeleteError(result.message || "Unable to delete account.");
+        setDeletePassword("");
+        return;
+      }
 
-    if (!response.ok) {
-      // Shown inside the dialog rather than behind it, so a wrong password is
-      // visible next to the field that caused it and the dialog stays open.
-      setDeleteError(result.message || "Unable to delete account.");
-      setDeletePassword("");
-      return;
+      window.location.replace("/signin");
+    } catch (error) {
+      setDeleteError(
+        error instanceof UnexpectedResponseError
+          ? error.message
+          : "Unable to delete account. Check your connection and try again.",
+      );
+    } finally {
+      setIsDeleting(false);
     }
-
-    window.location.replace("/signin");
   };
 
   return (
@@ -439,8 +458,16 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </dl>
         </div>
 
-        {message ? <p className="mt-5 text-sm text-primary">{message}</p> : null}
-        {errorMessage ? <p className="mt-5 text-sm text-destructive">{errorMessage}</p> : null}
+        {message ? (
+          <p role="status" className="mt-5 text-sm text-primary">
+            {message}
+          </p>
+        ) : null}
+        {errorMessage ? (
+          <p role="alert" className="mt-5 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        ) : null}
 
         <div className="mt-6 flex justify-end">
           <button
@@ -500,7 +527,9 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               className={fieldClassName(Boolean(deleteError))}
             />
             {deleteError ? (
-              <p className="mt-2 text-sm text-destructive">{deleteError}</p>
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                {deleteError}
+              </p>
             ) : null}
             <div className="mt-6 flex justify-end gap-3">
               <button

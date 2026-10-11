@@ -215,7 +215,7 @@ export default function ScheduledTripsList({ trips }: Props) {
                       <Cloud className="size-4 text-primary" />
                       {trip.weatherUnavailable || !trip.weather
                         ? "Weather not captured"
-                        : `${trip.weather.temperatureCelsius}°C · ${trip.weather.severityBand}`}
+                        : `${trip.weather.kind === "forecast" ? "Forecast when saved: " : "When saved: "}${trip.weather.temperatureCelsius}°C · ${trip.weather.severityBand}`}
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <TrafficCone className="size-4 text-primary" />

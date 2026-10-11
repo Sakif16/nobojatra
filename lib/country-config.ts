@@ -165,11 +165,11 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
       { startMinute: at(8), endMinute: at(10, 30) },
       { startMinute: at(17), endMinute: at(20, 30) },
     ],
-    // Friday only, carried over verbatim from the constants this replaced so
-    // BD pricing does not shift with this change. Bangladesh's weekend is
-    // Friday *and* Saturday, so [5, 6] is arguably the right value — that is a
-    // pricing decision, not a refactor, so it is left to be made deliberately.
-    nonPeakWeekdays: [5],
+    // Bangladesh's weekend is Friday and Saturday, so neither has a rush hour.
+    // This was Friday alone, a value carried over from before the country
+    // config existed; Saturday was added by decision, and takes the peak-hour
+    // fare adjustment off Saturday trips.
+    nonPeakWeekdays: [5, 6],
   },
   /**
    * Wide enough to contain Alaska (west to -179.15) and Hawaii (south to

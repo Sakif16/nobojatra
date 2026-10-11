@@ -8,6 +8,7 @@ import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import PlanAgainCards, { type FrequentTripCard } from "@/components/home/PlanAgainCards";
 import RouteResults from "./RouteResults";
 import { useCountry } from "@/components/country/CountryProvider";
+import { useServerFeatures } from "@/components/features/FeatureProvider";
 import { buttonVariants } from "@/components/ui/button";
 import type { SavedPlaceOption } from "./PlaceAutocomplete";
 import {
@@ -23,8 +24,11 @@ import type {
   TripValidationErrors,
   ValidatedTripInput,
 } from "@/lib/trip-input";
+import { describeAccessGap } from "@/lib/route-access";
 import { formatTripDateTime } from "@/lib/trip-time";
-import { hasLiveTraffic, liveTrafficUnavailableMessage } from "@/lib/country-config";
+import { canRequestTraffic, describeTrafficUnavailable } from "@/lib/feature-messages";
+import { readJson } from "@/lib/read-json";
+import StatusMessage from "@/components/ui/status-message";
 
 function getTrafficPointsForRoute(route: RouteResult) {
   const indices = getTrafficSampleIndices(route);
@@ -75,6 +79,11 @@ type Props = {
    * rather than being relayed through a parent prop and an effect.
    */
   frequentTrips?: FrequentTripCard[];
+  /**
+   * A trip to open the form with, filled in but not yet searched — a saved
+   * trip chosen with "Plan this trip".
+   */
+  initialTrip?: RouteFormValues | null;
 };
 
 function getFirstValidationError(errors: TripValidationErrors) {
@@ -121,8 +130,10 @@ function Planner({
   aside,
   savedPlaces,
   frequentTrips,
+  initialTrip,
 }: Props) {
   const country = useCountry();
+  const features = useServerFeatures();
   const router = useRouter();
   const [origin, setOrigin] = useState<TripLocation | null>(null);
   const [destination, setDestination] = useState<TripLocation | null>(null);
@@ -151,7 +162,7 @@ function Planner({
   const [restoredTrip, setRestoredTrip] = useState<{
     values: RouteFormValues;
     revision: number;
-  } | null>(null);
+  } | null>(initialTrip ? { values: initialTrip, revision: 0 } : null);
 
   // Leaving the planner, or remounting it for another country, drops the
   // search in flight with it.
@@ -233,10 +244,10 @@ function Planner({
     setTrafficError(null);
 
     // Nothing to ask for: the route's time stays the car-route estimate.
-    if (!hasLiveTraffic(country)) {
+    if (!canRequestTraffic(country, features)) {
       setTrafficLoading(false);
       setTrafficError(
-        `${liveTrafficUnavailableMessage(country)} Travel times are estimates without traffic.`
+        `${describeTrafficUnavailable(country, features)} Travel times are estimates without traffic.`
       );
       return;
     }
@@ -302,7 +313,7 @@ function Planner({
       });
 
       const validation =
-        (await validationResponse.json()) as TripValidationResponse;
+        await readJson<TripValidationResponse>(validationResponse);
 
       if (!validationResponse.ok || !validation.success) {
         throw new Error(
@@ -369,6 +380,15 @@ function Planner({
 
   const hasResults = origin !== null && destination !== null && routes.length > 0;
 
+  // Read off the route being shown: each alternative meets the road at its own
+  // point. The labels are this user's own, joined here rather than on the
+  // server, where routes are cached without them.
+  const shownRoute = routes.find((route) => route.id === activeRouteId) ?? routes[0];
+  const waypointLabels = [origin?.label, ...stops.map((stop) => stop.label), destination?.label];
+  const accessNotes = (shownRoute?.accessGaps ?? []).map((gap) =>
+    describeAccessGap(gap, waypointLabels)
+  );
+
   // Use the active route for fare params, falling back to the first route.
   const fareRoute =
     routes.find((r) => r.id === activeRouteId) ?? routes[0] ?? null;
@@ -409,17 +429,9 @@ function Planner({
             savedPlaces={savedPlaces}
           />
 
-          {error && (
-            <p className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          {error && <StatusMessage>{error}</StatusMessage>}
 
-          {loading && (
-            <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-              Finding route options...
-            </p>
-          )}
+          {loading && <StatusMessage tone="info">Finding route options...</StatusMessage>}
 
           {hasResults && (
             <>
@@ -442,6 +454,7 @@ function Planner({
                 traffic={traffic}
                 trafficLoading={trafficLoading}
                 trafficError={trafficError}
+                accessNotes={accessNotes}
               />
 
 

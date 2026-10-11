@@ -1,3 +1,5 @@
+import { readJson } from "@/lib/read-json";
+
 export type PlaceResult = {
   id?: string;
   label: string;
@@ -39,7 +41,7 @@ export async function searchPlaces(
     throw new Error("Unable to fetch place suggestions.");
   }
 
-  const payload = (await res.json()) as ApiResponse<PlaceResult[]>;
+  const payload = await readJson<ApiResponse<PlaceResult[]>>(res);
 
   if (!payload.success) {
     throw new Error(payload.message ?? "Unable to fetch place suggestions.");
@@ -56,13 +58,17 @@ export async function reverseGeocode(
   url.searchParams.set("lat", String(lat));
   url.searchParams.set("lng", String(lng));
 
-  const res = await fetch(url.toString());
+  // The label is a nicety: the coordinates are already known, so any failure
+  // here falls back to a plain name rather than stopping the user.
+  try {
+    const res = await fetch(url.toString());
 
-  if (!res.ok) return "Current location";
+    if (!res.ok) return "Current location";
 
-  const payload = (await res.json()) as ApiResponse<PlaceResult>;
+    const payload = await readJson<ApiResponse<PlaceResult>>(res);
 
-  if (!payload.success) return "Current location";
-
-  return payload.data.label;
+    return payload.success ? payload.data.label : "Current location";
+  } catch {
+    return "Current location";
+  }
 }

@@ -9,11 +9,25 @@ import {
   COUNTRY_CONFIG,
   DEFAULT_COUNTRY,
   formatFare,
-  hasLiveTraffic,
-  liveTrafficUnavailableMessage,
   type CountryCode,
 } from '@/lib/country-config'
+import type { ServerFeatures } from '@/lib/env'
+import { describeTrafficUnavailable, describeWeatherUnavailable } from '@/lib/feature-messages'
+import { useServerFeatures } from '@/components/features/FeatureProvider'
+import { getFareSourceLabel } from '@/lib/fare-source'
+import {
+  describeUnavailable,
+  FARE_SORT_OPTIONS,
+  hasCapacityExclusion,
+  sortFareOptions,
+  type FareSort,
+} from '@/lib/fare-sorting'
 import { ROUTE_COLORS, type LatLng, type RouteResult } from '@/lib/routing'
+import {
+  FORECAST_ADVISORY,
+  getWeatherReadingLabel,
+  WEATHER_SEVERITY_LIMITS,
+} from '@/lib/weather-reading'
 import { cn } from '@/lib/utils'
 import BackLink from "@/components/BackLink";
 import EstimateNotes from "@/components/EstimateNotes";
@@ -67,6 +81,8 @@ interface FareTripSummary {
 
 interface FareWeather {
   source: 'route_midpoint' | 'dhaka_fallback'
+  kind?: 'current' | 'forecast'
+  forecastFor?: string | null
   temperatureCelsius: number
   precipitationMmPerHour: number
   windKmh: number
@@ -102,6 +118,7 @@ interface FaresApiResponse {
   weather?: FareWeather | null
   weatherUnavailable?: boolean
   trafficUnavailable?: boolean
+  timeZone?: string
 }
 
 const ICONS: Record<string, string> = {
@@ -144,9 +161,19 @@ function getWeatherSourceLabel(weather: FareWeather, country: CountryCode) {
     : `${COUNTRY_CONFIG[country].label} fallback`
 }
 
-function getWeatherTitle(weather: FareWeather | null, unavailable: boolean) {
-  if (unavailable) return 'Weather data unavailable'
+function getWeatherTitle(
+  weather: FareWeather | null,
+  unavailable: boolean,
+  features: ServerFeatures,
+) {
+  if (unavailable) return describeWeatherUnavailable(features)
   if (!weather) return null
+  // A forecast restricts nothing, so it is not titled as a restriction.
+  if (weather.kind === 'forecast') {
+    if (weather.severityBand === 'severe') return 'Severe weather forecast'
+    if (weather.severityBand === 'moderate') return 'Moderate weather forecast'
+    return 'Low weather impact forecast'
+  }
   if (weather.severityBand === 'severe') return 'Severe weather restrictions'
   if (weather.severityBand === 'moderate') return 'Moderate weather caution'
   return 'Low weather impact'
@@ -182,20 +209,6 @@ function getWeatherClassName(weather: FareWeather | null, unavailable: boolean) 
   return 'border-border bg-card text-muted-foreground'
 }
 
-function getUnavailableReason(option: FareOption, passengers: number) {
-  const reasons = []
-
-  if (!option.eligible) {
-    reasons.push(`Max ${option.maxPassengers} passenger${option.maxPassengers > 1 ? 's' : ''}`)
-  }
-
-  if (option.weatherBlocked) {
-    reasons.push(option.restrictionReason ?? 'Blocked by weather restrictions')
-  }
-
-  return reasons.join(' · ') || `Not available for ${passengers} passengers`
-}
-
 function getFareAdjustmentLabel(adjustment: FareAdjustment | null | undefined) {
   if (!adjustment || adjustment.notes.length === 0) return null
 
@@ -216,11 +229,14 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const [trip, setTrip] = useState<FareTripSummary | null>(null)
   const [map, setMap] = useState<FareMap | null>(null)
   const [weather, setWeather] = useState<FareWeather | null>(null)
+  const features = useServerFeatures()
   const [weatherUnavailable, setWeatherUnavailable] = useState(false)
+  const [timeZone, setTimeZone] = useState(COUNTRY_CONFIG[DEFAULT_COUNTRY].timeZone)
   const [trafficUnavailable, setTrafficUnavailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [sort, setSort] = useState<FareSort>('default')
   const [confirming, setConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const router = useRouter()
@@ -245,6 +261,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
         setMap(d?.map ?? null)
         setWeather(d?.weather ?? null)
         setWeatherUnavailable(Boolean(d?.weatherUnavailable))
+        setTimeZone(d?.timeZone ?? COUNTRY_CONFIG[d?.country ?? DEFAULT_COUNTRY].timeZone)
         setTrafficUnavailable(Boolean(d?.trafficUnavailable))
         setError(null)
         setLoading(false)
@@ -301,9 +318,12 @@ export default function FareResults({ tripHistoryId, routeId }: {
     map?.origin != null && map?.destination != null && mapRoutes.length > 0
 
   const passengers = trip?.passengers ?? 1
-  const available = results.filter((result) => result.eligible && !result.weatherBlocked)
+  const available = sortFareOptions(
+    results.filter((result) => result.eligible && !result.weatherBlocked),
+    sort,
+  )
   const unavailable = results.filter((result) => !result.eligible || result.weatherBlocked)
-  const weatherTitle = getWeatherTitle(weather, weatherUnavailable)
+  const weatherTitle = getWeatherTitle(weather, weatherUnavailable, features)
   const weatherDescription = getWeatherDescription(weatherUnavailable)
   const selectedOption = available.find((v) => `${v.provider}-${v.vehicleType}` === selected) ?? null
 
@@ -370,23 +390,21 @@ export default function FareResults({ tripHistoryId, routeId }: {
           {!loading && trafficUnavailable && (
             <p className="mt-2 flex max-w-2xl items-start gap-1.5 text-xs text-muted-foreground">
               <TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden />
-              {hasLiveTraffic(country)
-                ? 'Live traffic is unavailable right now.'
-                : liveTrafficUnavailableMessage(country)}{' '}
+              {describeTrafficUnavailable(country, features)}{' '}
               Fares include no traffic adjustment.
             </p>
           )}
           {/* Entry point into the Route Comparison Display. Reuses the same
               tripHistoryId + routeId this page already received, so
-              /best-options can look up the exact same trip and route rather
+              /ranked-options can look up the exact same trip and route rather
               than re-deriving anything from scratch. */}
           {trip && (
             <Link
-              href={`/best-options?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
+              href={`/ranked-options?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
               className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <Sparkles className="size-4" />
-              Best Options →
+              Rank these options →
             </Link>
           )}
         </div>
@@ -463,8 +481,14 @@ export default function FareResults({ tripHistoryId, routeId }: {
                           ))}
                         </dl>
                         <p className="mt-2.5 text-[11px] opacity-70">
-                          Measured at {getWeatherSourceLabel(weather, country)}
+                          {getWeatherReadingLabel(weather, timeZone)},{' '}
+                          {weather.kind === 'forecast' ? 'for the' : 'measured at the'}{' '}
+                          {getWeatherSourceLabel(weather, country)}
                         </p>
+                        {weather.kind === 'forecast' && (
+                          <p className="mt-1.5 text-[11px] opacity-70">{FORECAST_ADVISORY}</p>
+                        )}
+                        <p className="mt-1.5 text-[11px] opacity-70">{WEATHER_SEVERITY_LIMITS}</p>
                       </>
                     ) : (
                       weatherDescription && (
@@ -480,9 +504,21 @@ export default function FareResults({ tripHistoryId, routeId }: {
                       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                         {available.length} option{available.length > 1 ? 's' : ''}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Estimated fares
-                      </p>
+                      {/* Sorts what is already on the page; nothing is re-fetched. */}
+                      <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        Sort
+                        <select
+                          value={sort}
+                          onChange={(event) => setSort(event.target.value as FareSort)}
+                          className="rounded-md border border-border bg-background px-1.5 py-1 text-[11px] text-foreground"
+                        >
+                          {FARE_SORT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
 
                     <div className="flex flex-col gap-2.5">
@@ -523,10 +559,26 @@ export default function FareResults({ tripHistoryId, routeId }: {
                                 </div>
                               </div>
                               {/* tabular-nums keeps the fare ranges aligned down the column */}
-                              <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                                {formatFare(v.fare.low, v.fare.high, country)}
+                              <div className="shrink-0 text-right">
+                                <div className="text-sm font-semibold tabular-nums text-foreground">
+                                  {formatFare(v.fare.low, v.fare.high, country)}
+                                </div>
+                                {getFareSourceLabel(v.fareSource) && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    {getFareSourceLabel(v.fareSource)}
+                                  </div>
+                                )}
                               </div>
                             </div>
+
+                            {/* The live lookup failed and this is the rate card
+                                standing in for it. */}
+                            {v.fareSourceNote && (
+                              <p className="flex items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                                <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
+                                {v.fareSourceNote}
+                              </p>
+                            )}
 
                             {v.weatherRestricted && v.restrictionReason && (
                               <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
@@ -585,6 +637,18 @@ export default function FareResults({ tripHistoryId, routeId }: {
                     <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                       Unavailable
                     </p>
+                    {/* The party size is set in the planner, so the way to
+                        bring a too-small vehicle back is one step away. */}
+                    {hasCapacityExclusion(unavailable) && (
+                      <p className="mb-2.5 text-xs text-muted-foreground">
+                        Some vehicles are too small for {passengers} passenger
+                        {passengers > 1 ? 's' : ''}.{' '}
+                        <Link href="/" className="font-medium text-primary hover:underline">
+                          Change the passenger count in the planner
+                        </Link>
+                        .
+                      </p>
+                    )}
                     <div className="flex flex-col gap-2.5">
                       {unavailable.map((v) => {
                         const key = `${v.provider}-${v.vehicleType}`
@@ -604,7 +668,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
                               {/* The reason already names the blocker, so the
                                   old duplicate badge under the price is gone. */}
                               <div className="mt-0.5 text-xs leading-snug text-muted-foreground/75">
-                                {getUnavailableReason(v, passengers)}
+                                {describeUnavailable(v, passengers)}
                               </div>
                             </div>
                             <div className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground/60 line-through">

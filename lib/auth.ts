@@ -1,3 +1,4 @@
+import { isConfigured } from "@/lib/env";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { MongoClient } from "mongodb";
@@ -31,7 +32,7 @@ async function sendPasswordResetEmail({
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL ?? "NoboJatra <onboarding@resend.dev>";
 
-  if (!apiKey) {
+  if (!isConfigured(apiKey)) {
     throw new Error("RESEND_API_KEY is not set");
   }
 
@@ -82,7 +83,7 @@ async function sendEmailVerificationEmail({
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL ?? "NoboJatra <onboarding@resend.dev>";
 
-  if (!apiKey) {
+  if (!isConfigured(apiKey)) {
     throw new Error("RESEND_API_KEY is not set");
   }
 

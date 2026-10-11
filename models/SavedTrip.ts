@@ -2,29 +2,21 @@ import { Schema, model, models } from "mongoose";
 import { COUNTRY_OPTIONS, DEFAULT_COUNTRY } from "@/lib/country-config";
 
 /**
- * A trip the user named and kept, independent of TripHistory.
+ * A trip the user named and kept, to plan again in one tap.
  *
  * TripHistory is an append-only log — a row is written on every route search —
- * so it is the wrong place to hang long-lived alert conditions off. A SavedTrip
- * is curated: the user names it, it survives, and it carries the conditions
- * that the alert evaluator checks on a schedule.
+ * so it is the wrong place for something the user curates. A SavedTrip is the
+ * opposite: the user names it, it stays until they delete it, and it holds
+ * only what the planner needs to be filled in again.
  *
- * `route` and `baseline` are resolved once at creation and refreshed by the
- * evaluator. The baseline exists so "fare shifted more than X%" has a fixed
- * reference point that a later edit cannot silently redefine.
+ * It holds no route and no fare. Both are worked out when the trip is planned,
+ * so they are current then rather than a copy from the day it was saved.
+ *
+ * Records written while saved trips also carried alert conditions still have
+ * those fields in the database (`conditions`, `baseline`, `preferredVehicle`,
+ * `route`, `isActive`, `lastEvaluatedAt`). They are not in this schema, so
+ * nothing reads or writes them.
  */
-
-export const ALERT_CONDITION_TYPES = [
-  "weather_severity",
-  "traffic_level",
-  "fare_change",
-] as const;
-export type AlertConditionType = (typeof ALERT_CONDITION_TYPES)[number];
-
-export const TRAFFIC_LEVELS = ["low", "moderate", "high", "severe"] as const;
-export type TrafficLevel = (typeof TRAFFIC_LEVELS)[number];
-
-export const MAX_CONDITIONS_PER_TRIP = 10;
 
 const TripLocationSchema = new Schema(
   {
@@ -35,74 +27,6 @@ const TripLocationSchema = new Schema(
   },
   { _id: false },
 );
-
-const RouteSnapshotSchema = new Schema(
-  {
-    routeId: { type: String, required: true },
-    distanceKm: { type: Number, required: true },
-    travelDurationMin: { type: Number, default: null },
-    dwellDurationMin: { type: Number, default: 0 },
-    durationMin: { type: Number, required: true },
-    coords: { type: [[Number]], default: [] },
-    legs: { type: [Schema.Types.Mixed], default: [] },
-    resolvedAt: { type: Date, default: Date.now },
-  },
-  { _id: false },
-);
-
-/**
- * The vehicle the user wants priced. Denormalized by value — same reasoning as
- * TripHistory.selectedVehicle — so an edit to the rate table cannot rewrite
- * what the user chose. `vehicleRateId` is kept so the evaluator can re-read
- * live rate columns when it re-prices.
- */
-const PreferredVehicleSchema = new Schema(
-  {
-    vehicleRateId: { type: Schema.Types.ObjectId, ref: "VehicleRate", required: true },
-    provider: { type: String, required: true },
-    vehicleType: { type: String, required: true },
-    displayName: { type: String, required: true },
-  },
-  { _id: false },
-);
-
-const BaselineSchema = new Schema(
-  {
-    fareLow: { type: Number, required: true },
-    fareHigh: { type: Number, required: true },
-    durationMin: { type: Number, required: true },
-    // Whether the baseline fare came from the live provider or the rate card.
-    // A baseline captured from a degraded source is still usable, but knowing
-    // which one it was matters when a later comparison looks surprising.
-    fareSource: { type: String, enum: ["pathao_api", "rate_card"], required: true },
-    capturedAt: { type: Date, default: Date.now },
-  },
-  { _id: false },
-);
-
-/**
- * `lastState` is what makes alerting fire on a transition rather than on a
- * state. Without it, an evaluator running every 15 minutes through a rainy
- * afternoon would write the same alert dozens of times; with it, the alert is
- * written only when the condition crosses from false to true.
- *
- * `_id` is deliberately kept — conditions are addressed individually by the
- * API (PATCH/DELETE /conditions/[conditionId]).
- */
-const AlertConditionSchema = new Schema({
-  type: {
-    type: String,
-    enum: ALERT_CONDITION_TYPES,
-    required: true,
-  },
-  /** Weather severity score, or percent change for fare_change. */
-  threshold: { type: Number, default: null },
-  /** The level at or above which traffic_level fires. Unused by other types. */
-  level: { type: String, enum: TRAFFIC_LEVELS, default: null },
-  isActive: { type: Boolean, default: true },
-  lastState: { type: Boolean, default: false },
-  lastTriggeredAt: { type: Date, default: null },
-});
 
 const SavedTripSchema = new Schema(
   {
@@ -129,9 +53,8 @@ const SavedTripSchema = new Schema(
       type: [TripLocationSchema],
       default: [],
     },
-    // Fixed at creation. The alert evaluator re-prices this trip on a schedule
-    // and must keep using the rate table and currency the baseline was captured
-    // against, regardless of what the user's profile says later.
+    // Fixed at creation: the places belong to one country's service area, and
+    // the list only offers a trip in the country it can be planned in.
     country: {
       type: String,
       enum: COUNTRY_OPTIONS,
@@ -143,67 +66,32 @@ const SavedTripSchema = new Schema(
       max: 8,
       default: 1,
     },
-    departureMode: {
-      type: String,
-      enum: ["now", "scheduled"],
-      default: "now",
-    },
-    scheduledAt: {
-      type: Date,
-      default: null,
-    },
-    // The IANA zone at the origin. `scheduledAt` is an instant; this is what
-    // turns it back into the clock time the user chose. Null on records written
-    // before it was stored, which read back in the country's default zone.
+    // The IANA zone at the origin. Null on records written before it was
+    // stored, which read back in the country's default zone.
     timeZone: {
       type: String,
-      default: null,
-    },
-    preferredVehicle: {
-      type: PreferredVehicleSchema,
-      default: null,
-    },
-    route: {
-      type: RouteSnapshotSchema,
-      default: null,
-    },
-    baseline: {
-      type: BaselineSchema,
-      default: null,
-    },
-    conditions: {
-      type: [AlertConditionSchema],
-      default: [],
-      validate: {
-        validator: (value: unknown[]) => value.length <= MAX_CONDITIONS_PER_TRIP,
-        message: `You can attach up to ${MAX_CONDITIONS_PER_TRIP} conditions to a trip.`,
-      },
-    },
-    /** Cleared by the user to stop evaluation without deleting the trip. */
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    lastEvaluatedAt: {
-      type: Date,
       default: null,
     },
   },
   {
     timestamps: true,
+    // A save fails if the row changed since it was read, instead of writing
+    // over the other change. See updateSavedTrip in lib/saved-trips.
+    optimisticConcurrency: true,
   },
 );
 
 // Names are the user-facing handle for a trip, so two trips called "Commute"
-// in one account would be indistinguishable in the notification list. The
-// unique index makes that a 409 at the API rather than a support question.
+// in one account would be indistinguishable in the list. The unique index
+// makes that a 409 at the API rather than a support question.
 //
 // Scoped by country because the saved-trips list is: without the country in
 // the key, someone whose Dhaka list holds "Commute" would be refused a London
 // "Commute" by a trip their screen cannot show them.
 //
-// NOTE: the older { userId, name } index is not dropped automatically. Until
-// it is dropped in an environment, names stay unique per account there.
+// NOTE: the older { userId, name } index is not dropped automatically. It has
+// been dropped from the shared database; any other environment that still has
+// it keeps names unique per account until it is dropped there too.
 SavedTripSchema.index({ userId: 1, country: 1, name: 1 }, { unique: true });
 
 export default models.SavedTrip || model("SavedTrip", SavedTripSchema);

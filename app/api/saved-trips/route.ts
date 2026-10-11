@@ -17,7 +17,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 type SavedTripCreateBody = TripValidationPayload & {
   name?: unknown;
-  preferredVehicleRateId?: unknown;
 };
 
 function unauthorized() {
@@ -104,7 +103,14 @@ export async function POST(req: NextRequest) {
   // country — unlike trip history, a saved trip is being created fresh here.
   const country = await getUserCountry(session.user.id);
 
-  const validation = validateTripInput(body, new Date(), country, resolveTripTimeZone);
+  // A saved trip has no departure of its own; that is chosen when it is
+  // planned. Validating it as "leave now" keeps a stale time out of the check.
+  const validation = validateTripInput(
+    { ...body, departureMode: "now" },
+    new Date(),
+    country,
+    resolveTripTimeZone,
+  );
 
   if (!validation.success) {
     return NextResponse.json(
@@ -117,23 +123,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (
-    body.preferredVehicleRateId !== undefined &&
-    body.preferredVehicleRateId !== null &&
-    typeof body.preferredVehicleRateId !== "string"
-  ) {
-    return NextResponse.json(
-      { success: false, message: "That vehicle selection is not valid." },
-      { status: 400 },
-    );
-  }
-
   try {
     const trip = await createSavedTrip({
       userId: session.user.id,
       name,
       trip: validation.data,
-      preferredVehicleRateId: body.preferredVehicleRateId ?? null,
       country,
     });
 

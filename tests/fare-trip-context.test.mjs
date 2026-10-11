@@ -14,7 +14,7 @@ function setup(document) {
       },
     },
     "@/lib/weather": {
-      fetchWeatherForPoint: async (point) => {
+      fetchWeatherForDeparture: async (point) => {
         calls.weather.push(point);
         return { severityBand: "low", severityScore: 0 };
       },

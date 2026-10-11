@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  ACCESS_GAP_THRESHOLD_METERS,
+  describeWaypointRole,
+} from "@/lib/route-access";
 import { ROUTE_COLORS, type LatLng, type RouteLeg, type RouteResult } from "@/lib/routing";
 import {
   budgetReachedMessage,
@@ -40,7 +44,7 @@ type RouteWaypoint = LatLng & {
 };
 
 type OrsErrorPayload = {
-  error?: string | { message?: string };
+  error?: string | { code?: number; message?: string };
   message?: string;
 };
 
@@ -85,6 +89,36 @@ function getOrsErrorDetail(details: string) {
   return details;
 }
 
+/** ORS's own error number, when the body carries one. */
+function getOrsErrorCode(details: string) {
+  try {
+    const payload = JSON.parse(details) as OrsErrorPayload;
+
+    return typeof payload.error === "object" && typeof payload.error.code === "number"
+      ? payload.error.code
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ORS refuses a point with no drivable road within its search radius, and its
+ * message says which one by position ("…of specified coordinate 2: …"). Naming
+ * the place lets the user move that pin instead of guessing among several.
+ */
+function getUnroutablePointMessage(detail: string, waypointCount: number) {
+  const match = /routable point[\s\S]*?specified coordinate (\d+)/i.exec(detail);
+
+  if (!match) return null;
+
+  const waypointIndex = Number(match[1]);
+
+  if (!Number.isInteger(waypointIndex) || waypointIndex >= waypointCount) return null;
+
+  return `${describeWaypointRole(waypointIndex, waypointCount)} is not near a road a car can use. Pick a nearby point on a road.`;
+}
+
 function getFriendlyOrsMessage(status: number, detail: string) {
   if (status === 401 || status === 403) {
     return "Routing service credentials need attention.";
@@ -100,14 +134,6 @@ function getFriendlyOrsMessage(status: number, detail: string) {
 
   if (status >= 500) {
     return "Routing service is temporarily unavailable.";
-  }
-
-  // ORS error 2004. Reachable when a trip's straight line clears our margin but
-  // the road distance still passes ORS's 100 km alternatives limit. The route
-  // itself is fine — only the alternatives are refused — so say that rather
-  // than implying an outage the user could retry away.
-  if (detail.toLowerCase().includes("alternative")) {
-    return "This trip is too long for route alternatives. Try a shorter trip.";
   }
 
   if (detail.toLowerCase().includes("point")) {
@@ -381,6 +407,24 @@ function mapOrsFeatureToRoute(
     };
   });
 
+  // Where the route actually touches the road for each place, against where
+  // the place's pin is. Without the provider's waypoint positions only the two
+  // ends are known, which are the route's first and last points.
+  const routedIndices =
+    waypointIndices ?? waypoints.map((_, waypointIndex) =>
+      waypointIndex === 0 ? 0 : waypointIndex === waypoints.length - 1 ? maxIndex : null,
+    );
+  const accessGaps = waypoints.flatMap((waypoint, waypointIndex) => {
+    const routedIndex = routedIndices[waypointIndex];
+    const routedPoint = routedIndex == null ? undefined : coords[routedIndex];
+
+    if (!routedPoint) return [];
+
+    const gapMeters = Math.round(distanceMeters([waypoint.lat, waypoint.lng], routedPoint));
+
+    return gapMeters > ACCESS_GAP_THRESHOLD_METERS ? [{ waypointIndex, gapMeters }] : [];
+  });
+
   const travelDurationMin = roundMinutes(feature.properties.summary.duration);
   const dwellDurationMin = legs.reduce(
     (total, leg) => total + (leg.dwellAfterMin ?? 0),
@@ -396,54 +440,36 @@ function mapOrsFeatureToRoute(
     dwellDurationMin,
     durationMin: travelDurationMin + dwellDurationMin,
     legs,
+    ...(accessGaps.length > 0 ? { accessGaps } : {}),
   };
 }
 
-export async function fetchRouteSuggestions(
-  origin: LatLng,
-  destination: LatLng,
-  stops: RouteWaypoint[] = []
-) {
-  const apiKey = getOrsApiKey();
+/** ORS error 2004: the route is too long for `alternative_routes`. */
+const ORS_ALTERNATIVES_LIMIT_ERROR = 2004;
 
-  if (!apiKey) {
-    throw new RouteServiceError(
-      "Missing ORS_API_KEY in .env.local",
-      503,
-      "Routing service is not configured."
-    );
-  }
+type DirectionsResult =
+  | { ok: true; features: OrsFeature[] }
+  | { ok: false; status: number; detail: string; code: number | null };
 
-  const waypoints: RouteWaypoint[] = [origin, ...stops, destination];
-  const coordinates = waypoints.map((p) => [p.lng, p.lat]);
-  const hasStops = stops.length > 0;
-  const body: Record<string, unknown> = {
-    coordinates,
-  };
+function isAlternativesRefusal(result: Extract<DirectionsResult, { ok: false }>) {
+  return (
+    result.code === ORS_ALTERNATIVES_LIMIT_ERROR ||
+    // The number is the contract; the wording is a fallback for a body that
+    // arrives without it.
+    (result.status === 400 && result.detail.toLowerCase().includes("alternative"))
+  );
+}
 
-  // ORS rejects alternative_routes outright once the approximate route distance
-  // passes 100 km ("error code 2004"), and it judges that on its own routed
-  // distance rather than the straight line — so the check below uses a margin
-  // rather than the raw limit. Asking anyway would turn a perfectly routable
-  // long trip into a 400 that surfaces to the user as "Routing service is
-  // temporarily unavailable", which is wrong twice over: the service is fine,
-  // and retrying can never help.
-  //
-  // This mattered little when every trip was inside Dhaka Division, but the
-  // service area is now per-country and the US box alone spans thousands of
-  // kilometres. Long trips fall back to the single best route.
-  const straightLineMeters = calculateDistanceMeters(origin, destination);
-  const canRequestAlternatives =
-    straightLineMeters <= ALTERNATIVE_ROUTES_MAX_STRAIGHT_LINE_METERS;
-
-  if (!hasStops && canRequestAlternatives) {
-    body.alternative_routes = {
-      target_count: MAX_ROUTE_SUGGESTIONS,
-      weight_factor: 1.6,
-      share_factor: 0.6,
-    };
-  }
-
+/**
+ * One directions request. A refusal from ORS comes back as a value, so the
+ * caller can tell which refusal it was; failing to reach ORS at all, or having
+ * no budget left to try, throws.
+ */
+async function requestDirections(
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<DirectionsResult> {
+  // Counted per request, so a retry is paid for like any other call.
   try {
     await spendProviderBudget("openrouteservice");
   } catch (error) {
@@ -474,17 +500,87 @@ export async function fetchRouteSuggestions(
 
   if (!response.ok) {
     const details = await response.text();
-    const detail = getOrsErrorDetail(details);
 
-    throw new RouteServiceError(
-      `Routing request failed: ${response.status} ${detail}`,
-      response.status === 429 ? 429 : 502,
-      getFriendlyOrsMessage(response.status, detail)
-    );
+    return {
+      ok: false,
+      status: response.status,
+      detail: getOrsErrorDetail(details),
+      code: getOrsErrorCode(details),
+    };
   }
 
   const geojson = (await response.json()) as { features?: OrsFeature[] };
-  const routes = (geojson.features ?? []).map((feature, index) =>
+
+  return { ok: true, features: geojson.features ?? [] };
+}
+
+export async function fetchRouteSuggestions(
+  origin: LatLng,
+  destination: LatLng,
+  stops: RouteWaypoint[] = []
+) {
+  const apiKey = getOrsApiKey();
+
+  if (!apiKey) {
+    throw new RouteServiceError(
+      "Missing ORS_API_KEY in .env.local",
+      503,
+      "Routing service is not configured."
+    );
+  }
+
+  const waypoints: RouteWaypoint[] = [origin, ...stops, destination];
+  const coordinates = waypoints.map((p) => [p.lng, p.lat]);
+  const hasStops = stops.length > 0;
+  const body: Record<string, unknown> = {
+    coordinates,
+  };
+
+  // ORS rejects alternative_routes outright once the approximate route distance
+  // passes 100 km ("error code 2004"), and it judges that on its own routed
+  // distance rather than the straight line — so the check below uses a margin
+  // rather than the raw limit. Trips beyond it ask for the single best route
+  // straight away, which saves a request that is certain to be refused. A trip
+  // inside the margin that is still refused is retried without alternatives
+  // further down.
+  //
+  // This mattered little when every trip was inside Dhaka Division, but the
+  // service area is now per-country and the US box alone spans thousands of
+  // kilometres.
+  const straightLineMeters = calculateDistanceMeters(origin, destination);
+  const canRequestAlternatives =
+    straightLineMeters <= ALTERNATIVE_ROUTES_MAX_STRAIGHT_LINE_METERS;
+
+  if (!hasStops && canRequestAlternatives) {
+    body.alternative_routes = {
+      target_count: MAX_ROUTE_SUGGESTIONS,
+      weight_factor: 1.6,
+      share_factor: 0.6,
+    };
+  }
+
+  let result = await requestDirections(apiKey, body);
+
+  // The margin above is a straight line; ORS applies its 100 km limit to the
+  // road distance, so a winding trip can still be refused alternatives. That
+  // refusal says nothing about the trip itself, which routes fine on its own —
+  // so ask again for just the one route rather than fail a valid journey.
+  // Nothing else is retried: an outage, a bad key or an unroutable point would
+  // only fail the same way twice.
+  if (!result.ok && "alternative_routes" in body && isAlternativesRefusal(result)) {
+    result = await requestDirections(apiKey, { coordinates });
+  }
+
+  if (!result.ok) {
+    throw new RouteServiceError(
+      `Routing request failed: ${result.status} ${result.detail}`,
+      result.status === 429 ? 429 : 502,
+      getUnroutablePointMessage(result.detail, waypoints.length) ??
+        getFriendlyOrsMessage(result.status, result.detail)
+    );
+  }
+
+  const routes = result.features.map((feature, index) =>
     mapOrsFeatureToRoute(feature, index, waypoints)
   );
 

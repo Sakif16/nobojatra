@@ -1,3 +1,4 @@
+import { isConfigured } from "@/lib/env";
 import { auth } from "@/lib/auth";
 import { parseTileCoordinates } from "@/lib/map-tiles";
 import {
@@ -35,7 +36,7 @@ export async function GET(
   }
 
   const apiKey = process.env.TOMTOM_API_KEY;
-  if (!apiKey) {
+  if (!isConfigured(apiKey)) {
     return NextResponse.json(
       { success: false, message: "Traffic tiles are not configured." },
       { status: 500 }

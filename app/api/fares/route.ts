@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
     },
     weather,
     weatherUnavailable,
+    timeZone: context.timeZone,
     congestion: traffic
       ? {
           congestionIndexPercent: traffic.totals.congestionIndexPercent,

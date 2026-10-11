@@ -18,6 +18,11 @@ type Props = {
   traffic?: TripTrafficResult | null;
   trafficLoading?: boolean;
   trafficError?: string | null;
+  /**
+   * One line per place whose pin is well away from where the active route
+   * meets the road. Empty for ordinary street addresses.
+   */
+  accessNotes?: string[];
 };
 
 export default function RouteResults({
@@ -29,6 +34,7 @@ export default function RouteResults({
   traffic,
   trafficLoading = false,
   trafficError,
+  accessNotes = [],
 }: Props) {
   if (routes.length === 0) return null;
 
@@ -72,6 +78,17 @@ export default function RouteResults({
             Only one distinct route found.
           </p>
         )}
+        {/* The route reaches a road near the place, not necessarily its door.
+            Shown here, while the user can still pick a better point. */}
+        {accessNotes.map((note) => (
+          <p
+            key={note}
+            className="flex items-start gap-2 rounded-xl border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span>{note}</span>
+          </p>
+        ))}
       </div>
 
       {!isMultiStop &&

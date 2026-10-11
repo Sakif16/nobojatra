@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   COUNTRY_CONFIG,
+  getTripTimeZone,
   hasLiveTraffic,
   resolveCountry,
   type CountryCode,
@@ -16,7 +17,7 @@ import {
   type TripTrafficResult,
 } from "@/lib/traffic-service";
 import {
-  fetchWeatherForPoint,
+  fetchWeatherForDeparture,
   type NormalizedWeather,
   type WeatherPoint,
 } from "@/lib/weather";
@@ -40,6 +41,7 @@ export type StoredTripHistory = {
   passengerCount?: unknown;
   departureMode?: unknown;
   scheduledAt?: unknown;
+  timeZone?: unknown;
   routeOptions?: StoredRoute[];
   selectedRoute?: StoredRoute | null;
 };
@@ -75,6 +77,8 @@ export type FareTripContext = {
   trip: StoredTripHistory;
   selectedRoute: StoredRoute;
   country: CountryCode;
+  /** The IANA zone at the origin, which the trip's times are shown in. */
+  timeZone: string;
   distanceKm: number;
   durationMin: number;
   passengers: number;
@@ -284,6 +288,7 @@ export async function loadFareTripContext(
       trip,
       selectedRoute,
       country,
+      timeZone: getTripTimeZone(trip.timeZone, country),
       distanceKm,
       durationMin,
       passengers,
@@ -301,7 +306,9 @@ export async function getFareTripWeather(context: FareTripContext) {
   const source = context.routeMidpoint ? "route_midpoint" : "dhaka_fallback";
   const point = context.routeMidpoint ?? COUNTRY_CONFIG[context.country].fallbackWeatherPoint;
   try {
-    const reading = await fetchWeatherForPoint(point);
+    // The current reading for a trip leaving now, the forecast for one
+    // scheduled later.
+    const reading = await fetchWeatherForDeparture(point, context.departure);
     return {
       weather: { source, ...reading } as FareWeather,
       weatherUnavailable: false,
@@ -337,6 +344,9 @@ export async function getFareTripTraffic(context: FareTripContext): Promise<{
  * What a fare is adjusted for. A missing traffic reading leaves the congestion
  * level null — no adjustment, rather than an assumed "low" — while the
  * peak-hour flag still applies, because it never depended on the reading.
+ *
+ * Only a current weather reading adjusts a fare. A forecast is shown to the
+ * user and changes no price: it is a prediction for a trip days away.
  */
 export function getFareAdjustmentContext(
   context: FareTripContext,
@@ -344,7 +354,7 @@ export function getFareAdjustmentContext(
   traffic: TripTrafficResult | null,
 ) {
   return {
-    weather,
+    weather: weather?.kind === "forecast" ? null : weather,
     traffic: {
       congestionLevel: traffic?.totals.congestionLevel ?? null,
       isPeakHour: context.isPeakHour,

@@ -68,6 +68,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     trips: page.trips,
+    truncated: page.truncated,
+    limit: page.limit,
     summary: page.summary,
     vehicles: uniqueVehicles,
   });

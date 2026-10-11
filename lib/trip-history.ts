@@ -7,12 +7,37 @@ import {
   resolveCountry,
   type CountryCode,
 } from "@/lib/country-config";
+import type { FareSource } from "@/lib/fare-source";
 import dbConnect from "@/lib/mongodb";
 import type { RouteResult } from "@/lib/routing";
 import type { TripLocation, ValidatedTripInput } from "@/lib/trip-input";
 import { formatTripMonth, getLocalDateKey, getLocalMonthKey } from "@/lib/trip-time";
 import TripHistory from "@/models/TripHistory";
 import { Types } from "mongoose";
+
+/**
+ * The most each history list loads. A history row carries up to three full
+ * routes, and an account's history only grows, so every list is bounded and
+ * leaves the route geometry out. The screens say when a list has been cut off.
+ */
+export const HISTORY_LIMITS = {
+  savedPlans: 100,
+  recentSearches: 50,
+  monthlySearches: 200,
+  /** How many calendar months of searches are grouped, counting this one. */
+  searchMonths: 6,
+  scheduledTrips: 50,
+  /** Searches read to work out the home page's "Plan Again" suggestions. */
+  frequentTripSearches: 300,
+} as const;
+
+/** What a search row shows: places, party, distance and when. No geometry. */
+const SEARCH_ROW_FIELDS =
+  "origin destination stops passengerCount distanceKm durationMin departureMode scheduledAt country timeZone createdAt";
+
+/** What a saved-plan row shows. */
+const SAVED_PLAN_ROW_FIELDS =
+  "origin destination selectedVehicle distanceKm durationMin country timeZone selectedAt createdAt";
 
 function serializeLocation(location: TripLocation) {
   return {
@@ -80,6 +105,9 @@ export type MonthlyTripActivityGroup = {
 export type TripHistoryActivityData = {
   lastSevenDays: RecentTrip[];
   monthlyGroups: MonthlyTripActivityGroup[];
+  /** True when there were more searches than each list loads. */
+  lastSevenDaysTruncated: boolean;
+  monthlyTruncated: boolean;
 };
 
 function getLocationLabel(location: unknown) {
@@ -217,7 +245,10 @@ export async function getScheduledTrips(userId: string): Promise<ScheduledTripLi
     departureMode: "scheduled",
     scheduledAt: { $gt: new Date() },
   })
+    // The card needs the chosen route's legs and ids, not anyone's polyline.
+    .select("-routeOptions.coords -routeOptions.legs -selectedRoute.coords")
     .sort({ scheduledAt: 1 })
+    .limit(HISTORY_LIMITS.scheduledTrips)
     .lean();
 
   return records.flatMap((record) => {
@@ -278,27 +309,48 @@ export async function getScheduledTrips(userId: string): Promise<ScheduledTripLi
   });
 }
 
-export async function getTripHistoryActivityData(userId: string): Promise<TripHistoryActivityData> {
+export async function getTripHistoryActivityData(
+  userId: string,
+  now: Date = new Date(),
+): Promise<TripHistoryActivityData> {
   await dbConnect();
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+  // The oldest month shown, as "YYYY-MM". The query reaches a day further
+  // back so a search made late on the last day of the month before, which is
+  // already this month at its origin, is not missed; groups older than the
+  // oldest month are then dropped whole, so no month is shown half-loaded.
+  const oldestMonthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (HISTORY_LIMITS.searchMonths - 1), 1),
+  );
+  const oldestMonthKey = oldestMonthStart.toISOString().slice(0, 7);
+  const monthlyFrom = new Date(oldestMonthStart.getTime() - 24 * 60 * 60 * 1000);
+
+  // One row past each limit says whether the list was cut off.
   const [lastSevenDayRecords, monthlyRecords] = (await Promise.all([
     TripHistory.find({ userId, createdAt: { $gte: sevenDaysAgo } })
+      .select(SEARCH_ROW_FIELDS)
       .sort({ createdAt: -1 })
+      .limit(HISTORY_LIMITS.recentSearches + 1)
       .lean(),
-    TripHistory.find({ userId })
+    TripHistory.find({ userId, createdAt: { $gte: monthlyFrom } })
+      .select(SEARCH_ROW_FIELDS)
       .sort({ createdAt: -1 })
+      .limit(HISTORY_LIMITS.monthlySearches + 1)
       .lean(),
   ])) as [StoredActivityTrip[], StoredActivityTrip[]];
 
   const groups = new Map<string, MonthlyTripActivityGroup>();
 
-  for (const record of monthlyRecords) {
+  for (const record of monthlyRecords.slice(0, HISTORY_LIMITS.monthlySearches)) {
     const trip = mapRecentTrip(record);
     // Filed under the month it was at the origin, not on the server: a trip
     // at 02:00 on 1 October in Dhaka is an October trip.
     const monthKey = getLocalMonthKey(trip.createdAt, trip.timeZone);
+
+    if (monthKey < oldestMonthKey) continue;
+
     const existing = groups.get(monthKey);
 
     if (existing) {
@@ -313,8 +365,10 @@ export async function getTripHistoryActivityData(userId: string): Promise<TripHi
   }
 
   return {
-    lastSevenDays: lastSevenDayRecords.map(mapRecentTrip),
+    lastSevenDays: lastSevenDayRecords.slice(0, HISTORY_LIMITS.recentSearches).map(mapRecentTrip),
     monthlyGroups: Array.from(groups.values()),
+    lastSevenDaysTruncated: lastSevenDayRecords.length > HISTORY_LIMITS.recentSearches,
+    monthlyTruncated: monthlyRecords.length > HISTORY_LIMITS.monthlySearches,
   };
 }
 
@@ -347,7 +401,6 @@ export async function createTripHistoryRecord({
     selectedRoute,
     distanceKm: selectedRoute?.distanceKm ?? null,
     durationMin: selectedRoute?.durationMin ?? null,
-    completedAt: new Date(),
   });
 
   return String(record._id);
@@ -426,10 +479,15 @@ export type SelectedVehicleInput = {
   estimatedFareHigh: number;
   estimatedDurationMin: number | null;
   currency?: string;
+  fareSource?: FareSource | null;
+  fareSourceNote?: string | null;
 };
 
 export type SelectionWeatherSnapshot = {
   source: "route_midpoint" | "dhaka_fallback";
+  /** A forecast for the departure, or the weather when the plan was saved. */
+  kind?: "current" | "forecast";
+  forecastFor?: Date | string | null;
   temperatureCelsius: number;
   precipitationMmPerHour: number;
   windKmh: number;
@@ -604,6 +662,10 @@ export type TripSummaryDetail = {
     fareLow: number;
     fareHigh: number;
     currency: string;
+    /** Where the saved fare came from; null on plans saved before it was recorded. */
+    fareSource: FareSource | null;
+    /** Why the live source was not used, when the fare is a fallback. */
+    fareSourceNote: string | null;
   } | null;
   departureMode: "now" | "scheduled";
   /** The IANA zone at the origin, which the times below are shown in. */
@@ -644,6 +706,8 @@ export async function getTripSummary(
         fareLow: record.selectedVehicle.estimatedFareLow,
         fareHigh: record.selectedVehicle.estimatedFareHigh,
         currency: record.selectedVehicle.currency ?? "BDT",
+        fareSource: (record.selectedVehicle.fareSource ?? null) as FareSource | null,
+        fareSourceNote: (record.selectedVehicle.fareSourceNote ?? null) as string | null,
       }
     : null;
 
@@ -720,6 +784,13 @@ export type TripHistoryFilters = {
 
 export type TripHistoryPage = {
   trips: TripHistoryListItem[];
+  /**
+   * True when more saved plans matched than are listed. The summary below then
+   * covers the listed plans only, and the screen says so.
+   */
+  truncated: boolean;
+  /** How many saved plans a page lists at most. */
+  limit: number;
   summary: {
     tripCount: number;
     totalCost: number;
@@ -748,10 +819,13 @@ function parseFilterDay(value: string | undefined) {
 }
 
 /**
- * Trip History list — only trips with a confirmed vehicle count (a search
- * that was never booked isn't trip history), reverse-chronological, with an
- * optional date-range and/or vehicle filter and a summary header computed
- * over the filtered set.
+ * The saved plans list — only trips where a vehicle was chosen (a search that
+ * went no further is listed with the searches instead), newest first, with an
+ * optional date-range and/or vehicle filter.
+ *
+ * Bounded: it lists the latest HISTORY_LIMITS.savedPlans that match and
+ * reports whether there were more. The summary is computed over what is
+ * listed, so the totals and the rows always describe the same plans.
  */
 export async function getTripHistoryPage(
   userId: string,
@@ -779,9 +853,14 @@ export async function getTripHistoryPage(
   if (filters.provider) query["selectedVehicle.provider"] = filters.provider;
   if (filters.vehicleType) query["selectedVehicle.vehicleType"] = filters.vehicleType;
 
-  const storedRecords = await TripHistory.find(query).sort({ createdAt: -1 }).lean();
+  const storedRecords = await TripHistory.find(query)
+    .select(SAVED_PLAN_ROW_FIELDS)
+    .sort({ createdAt: -1 })
+    .limit(HISTORY_LIMITS.savedPlans + 1)
+    .lean();
+  const truncated = storedRecords.length > HISTORY_LIMITS.savedPlans;
 
-  const records = storedRecords.filter((record) => {
+  const records = storedRecords.slice(0, HISTORY_LIMITS.savedPlans).filter((record) => {
     if (!from && !to) return true;
 
     const day = getLocalDateKey(
@@ -862,6 +941,8 @@ export async function getTripHistoryPage(
 
   return {
     trips,
+    truncated,
+    limit: HISTORY_LIMITS.savedPlans,
     summary: {
       tripCount: trips.length,
       totalCost,
@@ -933,6 +1014,8 @@ export async function getFrequentTrips(
   const records = await TripHistory.find({ userId, createdAt: { $gte: cutoff } })
     .select("origin destination passengerCount country createdAt")
     .sort({ createdAt: -1 }) // newest first, so the first hit per group is the most recent passenger count
+    // Suggestions come from recent habits, so the newest searches are enough.
+    .limit(HISTORY_LIMITS.frequentTripSearches)
     .lean();
 
   type Group = {

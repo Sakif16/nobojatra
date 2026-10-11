@@ -1,5 +1,6 @@
 
 import "server-only";
+import { isConfigured } from "@/lib/env";
 
 import {
   getCountryConfig,
@@ -135,7 +136,8 @@ export class TrafficServiceError extends Error {
  * Gets the TomTom API key from environment variables.
  */
 function getTomTomApiKey(): string | undefined {
-  return process.env.TOMTOM_API_KEY;
+  const value = process.env.TOMTOM_API_KEY;
+  return isConfigured(value) ? value?.trim() : undefined;
 }
 
 /**

@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import LiveCamsFrame from "@/components/live-cams/LiveCamsFrame";
 import BackLink from "@/components/BackLink";
+
+export const metadata: Metadata = { title: "Live cams" };
 
 export default function LiveCamsPage() {
   return (

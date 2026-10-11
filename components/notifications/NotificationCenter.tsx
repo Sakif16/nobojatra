@@ -3,12 +3,9 @@
 import {
   AlertTriangle,
   CheckCheck,
-  CircleDollarSign,
   Clock3,
-  CloudRain,
   Inbox,
   Info,
-  TrafficCone,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,12 +16,6 @@ import type { AlertView } from "./types";
  * the network calls; this renders the list and reports which action the user
  * picked, so the two can be reasoned about separately.
  */
-
-const CONDITION_ICONS = {
-  weather_severity: CloudRain,
-  traffic_level: TrafficCone,
-  fare_change: CircleDollarSign,
-} as const;
 
 const SEVERITY_STYLES = {
   info: "text-muted-foreground",
@@ -62,11 +53,7 @@ function AlertRow({
   onSnooze: (id: string) => void;
   pending: boolean;
 }) {
-  const Icon = alert.conditionType
-    ? CONDITION_ICONS[alert.conditionType]
-    : alert.severity === "critical"
-      ? AlertTriangle
-      : Info;
+  const Icon = alert.severity === "critical" ? AlertTriangle : Info;
 
   return (
     <li
@@ -84,11 +71,7 @@ function AlertRow({
         <p className="text-sm font-medium text-foreground">{alert.title}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{alert.message}</p>
 
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-          {alert.tripName && <span className="font-medium">{alert.tripName}</span>}
-          {alert.thresholdLabel && <span>· {alert.thresholdLabel}</span>}
-          <span>· {timeAgo(alert.createdAt)}</span>
-        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{timeAgo(alert.createdAt)}</p>
 
         <div className="mt-2 flex gap-2">
           <button
@@ -123,6 +106,9 @@ export default function NotificationCenter({
   onDismiss,
   onSnooze,
   onDismissAll,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: {
   alerts: AlertView[];
   loading: boolean;
@@ -131,6 +117,10 @@ export default function NotificationCenter({
   onDismiss: (id: string) => void;
   onSnooze: (id: string) => void;
   onDismissAll: () => void;
+  /** True when there are older notifications than the ones listed. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   return (
     <div className="flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col">
@@ -155,8 +145,19 @@ export default function NotificationCenter({
         </p>
       )}
 
+      {/* With a list on screen an error is a line above it, not a replacement:
+          failing to load an older page must not hide what is already shown. */}
       {error && !loading && (
-        <p className="px-4 py-6 text-center text-xs text-destructive">{error}</p>
+        <p
+          role="alert"
+          className={
+            alerts.length > 0
+              ? "border-b border-border px-4 py-2 text-xs text-destructive"
+              : "px-4 py-6 text-center text-xs text-destructive"
+          }
+        >
+          {error}
+        </p>
       )}
 
       {!loading && !error && alerts.length === 0 && (
@@ -168,18 +169,35 @@ export default function NotificationCenter({
         </div>
       )}
 
-      {!loading && !error && alerts.length > 0 && (
-        <ul className="overflow-y-auto">
-          {alerts.map((alert) => (
-            <AlertRow
-              key={alert.id}
-              alert={alert}
-              onDismiss={onDismiss}
-              onSnooze={onSnooze}
-              pending={pendingIds.includes(alert.id)}
-            />
-          ))}
-        </ul>
+      {!loading && alerts.length > 0 && (
+        <div className="overflow-y-auto">
+          <ul>
+            {alerts.map((alert) => (
+              <AlertRow
+                key={alert.id}
+                alert={alert}
+                onDismiss={onDismiss}
+                onSnooze={onSnooze}
+                pending={pendingIds.includes(alert.id)}
+              />
+            ))}
+          </ul>
+
+          {/* The list opens on the newest twenty. This is how the rest are
+              reached; dismissing newer ones used to be the only way down. */}
+          {hasMore && onLoadMore && (
+            <div className="border-t border-border px-4 py-2.5 text-center">
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+              >
+                {loadingMore ? "Loading…" : "Load older notifications"}
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { buttonVariants } from "./ui/button";
+import PrimaryNav from "./PrimaryNav";
 import ProfileMenu from "./ProfileMenu";
 import NotificationBell from "./notifications/NotificationBell";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { getRequestSession } from "@/lib/request-context";
 
 export default async function Navbar() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getRequestSession();
 
   if (!session) {
     return (
@@ -40,10 +38,15 @@ export default async function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+      {/* One row from md up. Below that the links drop to a row of their own
+          under the wordmark, so the bell and the account menu keep their
+          place and nothing is hidden behind a menu button. */}
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="font-semibold text-foreground">
           NoboJatra
         </Link>
+
+        <PrimaryNav className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1" />
 
         <div className="flex min-w-0 items-center gap-3">
           {/* Server component rendering a client child — the bell owns its own

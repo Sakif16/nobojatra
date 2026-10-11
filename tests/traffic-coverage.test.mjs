@@ -74,7 +74,7 @@ function loadFareContext(document, calls) {
   return load("lib/fare-trip-context.ts", {
     "@/lib/mongodb": async () => {},
     "@/models/TripHistory": { findOne: () => ({ lean: async () => document }) },
-    "@/lib/weather": { fetchWeatherForPoint: async () => ({ severityBand: "low", severityScore: 0 }) },
+    "@/lib/weather": { fetchWeatherForDeparture: async () => ({ severityBand: "low", severityScore: 0 }) },
     "@/lib/traffic-service": {
       ...load("lib/traffic-service.ts"),
       getTrafficForTrip: async (...args) => {
@@ -214,7 +214,7 @@ test("a saved plan in Bangladesh hides the stored no-data traffic reading", asyn
   assert.equal(london.trafficUnavailable, false);
 });
 
-test("the traffic overlay and traffic alerts are off only where there is no live traffic", () => {
+test("the traffic overlay is off only where there is no live traffic", () => {
   const config = load("lib/country-config.ts");
 
   assert.equal(config.hasLiveTraffic("BD"), false);
@@ -226,46 +226,4 @@ test("the traffic overlay and traffic alerts are off only where there is no live
     config.liveTrafficUnavailableMessage("BD"),
     "Live traffic is not available in Bangladesh.",
   );
-});
-
-test("a traffic alert cannot be added to a Bangladesh saved trip", async () => {
-  const tripIn = (country) => ({
-    _id: "trip",
-    country,
-    conditions: [],
-    baseline: null,
-    preferredVehicle: null,
-    save: async () => {},
-    toObject() {
-      return { ...this, name: "Commute", origin: {}, destination: {} };
-    },
-  });
-  const savedTripsFor = (country) =>
-    load("lib/saved-trips.ts", {
-      "@/lib/mongodb": async () => {},
-      "@/lib/alerts": { deleteAlertsForSavedTrip: async () => {} },
-      "@/models/VehicleRate": {},
-      mongoose: { Types: { ObjectId: { isValid: () => true } } },
-      "@/models/SavedTrip": {
-        __esModule: true,
-        default: { findOne: async () => tripIn(country) },
-        ALERT_CONDITION_TYPES: ["weather_severity", "traffic_level", "fare_change"],
-        TRAFFIC_LEVELS: ["low", "moderate", "high", "severe"],
-      },
-    });
-  const add = (country) =>
-    savedTripsFor(country).addCondition({
-      userId: "user",
-      savedTripId: "trip",
-      input: { type: "traffic_level", level: "high" },
-    });
-
-  await assert.rejects(add("BD"), (error) => {
-    assert.equal(error.statusCode ?? error.status, 400);
-    assert.match(error.userMessage, /Live traffic is not available in Bangladesh/);
-    return true;
-  });
-
-  const london = await add("UK");
-  assert.deepEqual(london.conditions.map((condition) => condition.type), ["traffic_level"]);
 });

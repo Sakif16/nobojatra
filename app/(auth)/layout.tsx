@@ -1,5 +1,5 @@
 import {
-  BellRing,
+  BookmarkCheck,
   CalendarClock,
   MapPinned,
   Route,
@@ -18,7 +18,7 @@ const currencies = COUNTRY_OPTIONS.map((code) => COUNTRY_CONFIG[code].currency);
 /**
  * Every claim here is a feature that ships today: multi-stop and alternatives
  * from the route service, scheduling from the trip form, cameras from
- * /live-cams, alerts from the saved-trip evaluator, and fares from the
+ * /live-cams, saved trips from the saved-trips page, and fares from the
  * per-country rate cards. Nothing aspirational — someone who signs up should
  * not find the panel promised something the app cannot do.
  */
@@ -36,7 +36,7 @@ const highlights = [
   {
     icon: <CalendarClock className="size-4" />,
     label: "Scheduled departures",
-    body: "Plan up to 7 days ahead",
+    body: "Plan up to 5 days ahead",
   },
   {
     icon: <TrafficCone className="size-4" />,
@@ -44,9 +44,9 @@ const highlights = [
     body: "Congestion levels and city cameras",
   },
   {
-    icon: <BellRing className="size-4" />,
-    label: "Trip alerts",
-    body: "Watch weather, traffic and fare changes",
+    icon: <BookmarkCheck className="size-4" />,
+    label: "Saved trips",
+    body: "Keep the trips you repeat and plan them in one tap",
   },
   {
     icon: <Wallet className="size-4" />,

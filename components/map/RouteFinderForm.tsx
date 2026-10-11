@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Camera, LocateFixed, Minus, Plus, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Camera,
+  LocateFixed,
+  Minus,
+  Plus,
+  X,
+} from "lucide-react";
 import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
 import ImageLocationModal from "./ImageLocationModal";
 import type { PlaceResult } from "@/lib/geocode";
@@ -10,6 +19,7 @@ import {
   DEFAULT_STOP_DWELL_MINUTES,
   MAX_STOP_DWELL_MINUTES,
   MIN_STOP_DWELL_MINUTES,
+  SCHEDULE_WINDOW_DAYS,
   getServiceAreaName,
   isInsideServiceArea,
 } from "@/lib/trip-input";
@@ -17,6 +27,7 @@ import { COUNTRY_CONFIG } from "@/lib/country-config";
 import { formatLocalDateTime } from "@/lib/trip-time";
 import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
+import { isConfigured } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 export type RouteStopValue = PlaceResult & {
@@ -38,6 +49,13 @@ export type RouteFormValues = {
 };
 
 type StopField = {
+  /**
+   * Stays with the stop when it is moved or another is removed. Rows are keyed
+   * on it: keyed by position, moving a stop left the inputs where they were and
+   * swapped their contents, so the cursor and an open suggestion list stayed
+   * behind on the wrong stop.
+   */
+  id: string;
   label: string;
   place: PlaceResult | null;
   dwellMinutes: number;
@@ -65,8 +83,9 @@ type Props = {
 const MIN_PASSENGERS = 1;
 const MAX_PASSENGERS = 8;
 const MAX_STOPS = 6;
-const SCHEDULE_WINDOW_DAYS = 7;
 const SCHEDULE_DEFAULT_LEAD_MS = 60 * 60 * 1000;
+const GEOLOCATION_TIMEOUT_MS = 10_000;
+const GEOLOCATION_MAX_AGE_MS = 60_000;
 
 // Stretches to the field's own height rather than hard-coding one, so the
 // button stays square with the input if the field padding ever changes.
@@ -107,6 +126,8 @@ export default function RouteFinderForm({
   savedPlaces,
 }: Props) {
   const country = useCountry();
+  // Public model URLs are frozen into the client bundle at build time.
+  const photoSearchAvailable = isConfigured(process.env.NEXT_PUBLIC_TM_MODEL_URL);
   const [originLabel, setOriginLabel] = useState(
     initialValues?.origin.label ?? ""
   );
@@ -131,8 +152,10 @@ export default function RouteFinderForm({
     initialValues?.scheduledLocal ?? ""
   );
 
+  const nextStopIdRef = useRef(0);
   const [stops, setStops] = useState<StopField[]>(
-    initialValues?.stops.map((place) => ({
+    initialValues?.stops.map((place, index) => ({
+      id: `restored-${index}`,
       label: place.label,
       place,
       dwellMinutes:
@@ -150,9 +173,14 @@ export default function RouteFinderForm({
     null
   );
 
-  const [mountedAt] = useState(() => Date.now());
+  // The moment the schedule limits are worked out from. Read again whenever
+  // the schedule is opened or its field is focused: fixed at the form's first
+  // render, a form left open for ten minutes offered a time already past.
+  const [clock, setClock] = useState(() => Date.now());
+  // Marks each stop with no place chosen, once a search has been attempted.
+  const [showStopErrors, setShowStopErrors] = useState(false);
   const { label: countryLabel, timeZones } = COUNTRY_CONFIG[country];
-  const scheduleBounds = getScheduleBounds(mountedAt, timeZones);
+  const scheduleBounds = getScheduleBounds(clock, timeZones);
   const scheduleZoneHint =
     timeZones.length === 1
       ? `${countryLabel} time`
@@ -197,13 +225,30 @@ export default function RouteFinderForm({
         setOriginLabel(label);
         setLocating(false);
       },
-      () => {
+      (error) => {
+        // Each failure needs a different remedy, so each gets its own message.
         setLocationPrompt(
-          "Location permission was denied. Enter your origin manually."
+          error.code === error.TIMEOUT
+            ? "Finding your location took too long. Try again, or enter your origin manually."
+            : error.code === error.PERMISSION_DENIED
+              ? "Location permission was denied. Enter your origin manually."
+              : "Your location could not be determined. Enter your origin manually."
         );
         setLocating(false);
-      }
+      },
+      // Without a timeout a weak signal calls neither callback, and the button
+      // sits on "Locating…" for good. A fix from the last minute is accepted,
+      // which usually answers at once.
+      { timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: GEOLOCATION_MAX_AGE_MS }
     );
+  }
+
+  function swapEnds() {
+    setFormError(null);
+    setOrigin(destination);
+    setOriginLabel(destinationLabel);
+    setDestination(origin);
+    setDestinationLabel(originLabel);
   }
 
   function handleImagePlace(place: PlaceResult) {
@@ -222,9 +267,11 @@ export default function RouteFinderForm({
   function addStop() {
     setFormError(null);
     if (stops.length >= MAX_STOPS) return;
+    nextStopIdRef.current += 1;
+    const id = `stop-${nextStopIdRef.current}`;
     setStops((s) => [
       ...s,
-      { label: "", place: null, dwellMinutes: DEFAULT_STOP_DWELL_MINUTES },
+      { id, label: "", place: null, dwellMinutes: DEFAULT_STOP_DWELL_MINUTES },
     ]);
   }
 
@@ -322,7 +369,24 @@ export default function RouteFinderForm({
     }
 
     if (hasIncompleteStops) {
+      // Each empty stop is marked where it is; with six stops the user should
+      // not have to hunt for the one that is missing a place.
+      setShowStopErrors(true);
       setFormError("Choose a place for every stop or remove empty stops.");
+      return;
+    }
+
+    setShowStopErrors(false);
+
+    // The limits on the field are only hints, and may be minutes old. This is
+    // the check against the clock as it is now.
+    if (
+      mode === "schedule" &&
+      scheduledTime &&
+      scheduledTime < getScheduleBounds(Date.now(), timeZones).min
+    ) {
+      setClock(Date.now());
+      setFormError("That departure time has passed. Choose a later one.");
       return;
     }
 
@@ -374,8 +438,10 @@ export default function RouteFinderForm({
             type="button"
             onClick={() => setImageTarget("origin")}
             aria-label="Identify origin from a photo"
-            title="Identify from a photo"
-            className={cameraButtonClassName}
+            disabled={!photoSearchAvailable}
+            aria-describedby={!photoSearchAvailable ? "photo-search-unavailable" : undefined}
+            title={photoSearchAvailable ? "Identify from a photo" : "Photo search is not set up"}
+            className={cn(cameraButtonClassName, "disabled:opacity-50 disabled:cursor-not-allowed")}
           >
             <Camera size={16} />
           </button>
@@ -403,24 +469,45 @@ export default function RouteFinderForm({
             type="button"
             onClick={() => setImageTarget("destination")}
             aria-label="Identify destination from a photo"
-            title="Identify from a photo"
-            className={cameraButtonClassName}
+            disabled={!photoSearchAvailable}
+            aria-describedby={!photoSearchAvailable ? "photo-search-unavailable" : undefined}
+            title={photoSearchAvailable ? "Identify from a photo" : "Photo search is not set up"}
+            className={cn(cameraButtonClassName, "disabled:opacity-50 disabled:cursor-not-allowed")}
           >
             <Camera size={16} />
           </button>
         </div>
       </div>
 
-      <button
-        type="button"
-        data-no-glow
-        onClick={useCurrentLocation}
-        disabled={locating}
-        className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
-      >
-        <LocateFixed size={15} />
-        {locating ? "Locating…" : "Use current location"}
-      </button>
+      {!photoSearchAvailable && (
+        <p id="photo-search-unavailable" role="status" className="text-sm text-muted-foreground">
+          Photo search is not set up. Search for a place by name instead.
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <button
+          type="button"
+          data-no-glow
+          onClick={useCurrentLocation}
+          disabled={locating}
+          className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
+        >
+          <LocateFixed size={15} />
+          {locating ? "Locating…" : "Use current location"}
+        </button>
+        {/* The return journey: the same two places the other way round. */}
+        <button
+          type="button"
+          data-no-glow
+          onClick={swapEnds}
+          disabled={!origin && !destination && !originLabel && !destinationLabel}
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <ArrowUpDown size={15} />
+          Swap origin and destination
+        </button>
+      </div>
       {locationPrompt && (
         <p className="rounded-xl bg-accent px-3 py-2 text-sm text-accent-foreground">
           {locationPrompt}
@@ -470,8 +557,10 @@ export default function RouteFinderForm({
         <button
           type="button"
           onClick={() => {
+            const now = Date.now();
+            setClock(now);
             setMode("schedule");
-            if (!scheduledTime) setScheduledTime(scheduleBounds.initial);
+            if (!scheduledTime) setScheduledTime(getScheduleBounds(now, timeZones).initial);
           }}
           className={cn(
             "flex-1 py-2.5 text-sm font-medium transition-colors",
@@ -491,6 +580,7 @@ export default function RouteFinderForm({
             aria-describedby="schedule-zone-hint"
             value={scheduledTime}
             onChange={(e) => setScheduledTime(e.target.value)}
+            onFocus={() => setClock(Date.now())}
             min={scheduleBounds.min}
             max={scheduleBounds.max}
             className="w-full rounded-xl border border-input bg-secondary/60 px-4 py-2.5 text-sm text-foreground outline-none focus:border-ring"
@@ -524,8 +614,11 @@ export default function RouteFinderForm({
         <div className="space-y-2">
           {stops.map((stop, i) => (
             <div
-              key={i}
-              className="flex flex-wrap items-center gap-2 rounded-xl border border-input bg-secondary/40 px-3 py-2"
+              key={stop.id}
+              className={cn(
+                "flex flex-wrap items-center gap-2 rounded-xl border bg-secondary/40 px-3 py-2",
+                showStopErrors && stop.place === null ? "border-destructive" : "border-input"
+              )}
             >
               <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
                 {i + 1}
@@ -584,13 +677,19 @@ export default function RouteFinderForm({
                   </button>
                 </div>
               </div>
+              {/* Beside the stop it is about, on a line of its own. */}
+              {showStopErrors && stop.place === null && (
+                <p role="alert" className="w-full text-xs text-destructive">
+                  Choose a place for stop {i + 1} from the suggestions, or remove it.
+                </p>
+              )}
             </div>
           ))}
         </div>
       </div>
 
       {formError && (
-        <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {formError}
         </p>
       )}

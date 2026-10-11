@@ -35,7 +35,7 @@ test("every page behind the main layout checks for a session, apart from the lis
   const unguarded = filesNamed("app/(main)", "page.tsx").filter((file) => {
     if (open.has(file)) return false;
     const source = read(file);
-    return !(source.includes("auth.api.getSession") && /redirect\(["']\/signin["']\)/.test(source));
+    return !((source.includes("auth.api.getSession") || /await getRequestSession\(\)/.test(source)) && /redirect\(["']\/signin["']\)/.test(source));
   });
 
   assert.deepEqual(unguarded, []);

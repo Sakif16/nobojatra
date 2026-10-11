@@ -73,7 +73,9 @@ export const MAX_STOP_DWELL_MINUTES = 60;
 export const MIN_TRIP_DISTANCE_METERS = 500;
 export const MIN_PASSENGER_COUNT = 1;
 export const MAX_PASSENGER_COUNT = 8;
-export const SCHEDULE_WINDOW_DAYS = 7;
+// As far ahead as the weather forecast reaches, so every scheduled trip can be
+// shown a forecast for its departure. See fetchForecastForPoint in ./weather.
+export const SCHEDULE_WINDOW_DAYS = 5;
 
 export type TripLocation = {
   id?: string;
@@ -135,6 +137,7 @@ export type ValidatedTripInput = {
   scheduledAt?: string;
   /** The IANA zone at the origin, which every time on this trip is read in. */
   timeZone: string;
+  /** Straight-line length of the itinerary: origin, each stop in order, destination. */
   distanceMeters: number;
 };
 
@@ -355,13 +358,31 @@ export function validateTripInput(
 
   let distanceMeters = 0;
 
-  // Skip when either endpoint already failed, so a "same place" or "too short"
-  // message cannot overwrite the more specific service-area one.
-  if (origin && destination && !errors.origin && !errors.destination) {
-    distanceMeters = calculateDistanceMeters(origin, destination);
+  // Skip when a waypoint already failed, so a "same place" or "too short"
+  // message cannot overwrite the more specific one.
+  if (origin && destination && !errors.origin && !errors.destination && !errors.stops) {
+    // The trip is measured along its whole itinerary, not end to end. A round
+    // trip (home, market, home) ends where it starts and is still a real
+    // journey, and so is one whose destination is next door to its origin by
+    // way of a stop across town.
+    const waypoints = [origin, ...stops.filter((stop) => stop !== null), destination];
+    const legs = waypoints
+      .slice(1)
+      .map((waypoint, index) => calculateDistanceMeters(waypoints[index], waypoint));
+    const emptyLeg = legs.indexOf(0);
 
-    if (distanceMeters === 0) {
+    distanceMeters = legs.reduce((total, leg) => total + leg, 0);
+
+    if (waypoints.length === 2 && emptyLeg === 0) {
       errors.destination = "Origin and destination cannot be the same.";
+    } else if (emptyLeg === legs.length - 1) {
+      // Two identical places in a row make a leg with nothing in it.
+      errors.destination = `Destination cannot be the same place as stop ${emptyLeg}.`;
+    } else if (emptyLeg !== -1) {
+      const previous = emptyLeg === 0 ? "the origin" : `stop ${emptyLeg}`;
+      const repeated: string[] = [];
+      repeated[emptyLeg] = `Stop ${emptyLeg + 1} cannot be the same place as ${previous}.`;
+      errors.stops = repeated;
     } else if (distanceMeters < MIN_TRIP_DISTANCE_METERS) {
       errors.destination = `Trip distance must be at least ${MIN_TRIP_DISTANCE_METERS} meters.`;
     }

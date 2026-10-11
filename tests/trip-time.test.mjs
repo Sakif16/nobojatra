@@ -75,18 +75,18 @@ inEveryProcessZone("London follows the clocks either side of a daylight-saving c
     validate({ origin: LONDON, destination: LONDON_END, country: "UK", now, scheduledLocal });
 
   // Friday before the clocks go back: British Summer Time, UTC+1.
-  const summer = schedule("2026-10-23T08:00", "2026-10-20T00:00:00Z");
+  const summer = schedule("2026-10-23T08:00", "2026-10-22T00:00:00Z");
   assert.equal(summer.data.scheduledAt, "2026-10-23T07:00:00.000Z");
   assert.equal(summer.data.timeZone, "Europe/London");
   assert.equal(isPeakHour(new Date(summer.data.scheduledAt), "UK", "Europe/London"), true);
 
   // Monday after: Greenwich Mean Time, UTC+0. Same clock time, different instant.
-  const winter = schedule("2026-10-26T08:00", "2026-10-20T00:00:00Z");
+  const winter = schedule("2026-10-26T08:00", "2026-10-22T00:00:00Z");
   assert.equal(winter.data.scheduledAt, "2026-10-26T08:00:00.000Z");
   assert.equal(isPeakHour(new Date(winter.data.scheduledAt), "UK", "Europe/London"), true);
 
   // 01:30 on 25 October happens twice; the first one (still BST) is used.
-  const repeated = schedule("2026-10-25T01:30", "2026-10-20T00:00:00Z");
+  const repeated = schedule("2026-10-25T01:30", "2026-10-22T00:00:00Z");
   assert.equal(repeated.data.scheduledAt, "2026-10-25T00:30:00.000Z");
 
   // 01:30 on 28 March 2027 never happens: the clocks jump from 01:00 to 02:00.
@@ -233,7 +233,17 @@ function loadTripHistory(records) {
         const found = records
           .filter((record) => matches(record, query))
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        return { sort: () => ({ lean: async () => found }) };
+        let limit = found.length;
+        const chain = {
+          select: () => chain,
+          sort: () => chain,
+          limit: (count) => {
+            limit = count;
+            return chain;
+          },
+          lean: async () => found.slice(0, limit),
+        };
+        return chain;
       },
     },
   });
@@ -273,7 +283,7 @@ inEveryProcessZone("history months are the trip's own month", async () => {
     { _id: "ny-september", country: "US", timeZone: "America/New_York", createdAt: "2026-10-01T00:00:00Z" },
   ]);
 
-  const activity = await history.getTripHistoryActivityData("user");
+  const activity = await history.getTripHistoryActivityData("user", new Date("2026-10-11T00:00:00Z"));
   const groups = Object.fromEntries(
     activity.monthlyGroups.map((group) => [group.monthLabel, group.trips.map((trip) => trip.id)]),
   );
