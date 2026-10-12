@@ -159,6 +159,10 @@ The app ships with no account and no sample trips, so each demo starts from a ne
 
 ---
 
+## Demo operations
+
+See [demo security and data operations](docs/demo-operations.md) for password and attempt limits, session/cookie settings, host proxy verification, protected backup/export commands, account cleanup, and request-ID failure logs.
+
 ## Contributions
 Contributions are welcome!
 

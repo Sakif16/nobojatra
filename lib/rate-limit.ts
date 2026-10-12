@@ -36,6 +36,10 @@ export function createRateLimiter({ windowMs, max }: RateLimitOptions) {
     const existing = store.get(key);
 
     if (!existing) {
+      // Bound memory even when callers present many different identities.
+      if (store.size >= 10_000) {
+        return { allowed: false, limit: max, remaining: 0, resetAt: now + windowMs, retryAfter: Math.ceil(windowMs / 1000) };
+      }
       store.set(key, { count: 1, resetAt: now + windowMs });
 
       return {
@@ -67,18 +71,6 @@ export function createRateLimiter({ windowMs, max }: RateLimitOptions) {
       retryAfter: 0,
     };
   };
-}
-
-export function getClientIp(req: Request) {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  const firstForwardedIp = forwardedFor?.split(",")[0]?.trim();
-
-  return (
-    firstForwardedIp ||
-    req.headers.get("x-real-ip") ||
-    req.headers.get("cf-connecting-ip") ||
-    "anonymous"
-  );
 }
 
 export function getRateLimitHeaders(result: RateLimitResult) {

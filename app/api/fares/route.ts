@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/error-reporting";
 import { auth } from "@/lib/auth";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import {
@@ -22,7 +23,7 @@ type FareRequestBody = {
   routeId?: unknown;
 };
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
 
   if (!session) {
@@ -180,3 +181,5 @@ export async function POST(req: NextRequest) {
     results,
   });
 }
+
+export const POST = withRequestLogging("fare", "planner", handlePost);

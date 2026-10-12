@@ -17,7 +17,7 @@ export const requirePackage = createRequire(path.join(root, "package.json"));
 const ts = requirePackage("typescript");
 
 /** Real packages a module under test may use as they are. */
-const REAL_PACKAGES = new Set(["tz-lookup"]);
+const REAL_PACKAGES = new Set(["tz-lookup", "node:crypto", "node:async_hooks"]);
 
 /**
  * A stand-in for the ProviderUsage collection, so lib/provider-budget runs for

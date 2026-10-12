@@ -73,45 +73,31 @@ export async function deleteAccountData(
   const routes = await Route.find({ userId }).select("_id");
   const routeIds = routes.map((route) => route._id);
 
-  const [
-    alerts,
-    savedTrips,
-    trafficData,
-    tripHistory,
-    routesDeleted,
-    places,
-    profile,
-  ] =
-    await Promise.all([
-      Alert.deleteMany({ userId }),
-      // Saved trips are keyed by userId only — their alerts are removed by the
-      // Alert delete above, so no id collection is needed first.
-      SavedTrip.deleteMany({ userId }),
-      routeIds.length > 0
-        ? TrafficData.deleteMany({ routeId: { $in: routeIds } })
-        : Promise.resolve({ deletedCount: 0 }),
-      TripHistory.deleteMany({
-        $or: [
-          { userId },
-          ...(routeIds.length > 0 ? [{ routeId: { $in: routeIds } }] : []),
-        ],
-      }),
-      Route.deleteMany({ userId }),
-      Place.deleteMany({ userId }),
-      UserProfile.deleteOne({ userId }),
-    ]);
-
   const appDb = mongoose.connection.db;
+  if (!appDb) throw new Error("Mongoose connection has no database handle.");
 
-  if (!appDb) {
-    throw new Error("Mongoose connection has no database handle.");
-  }
-
-  const legacyCounts = await Promise.all(
-    LEGACY_USER_COLLECTIONS.map((name) =>
-      appDb.collection(name).deleteMany({ userId }),
-    ),
-  );
+  // Keep the owner routes until every dependent deletion has succeeded. If
+  // traffic deletion fails, a retry can still discover its route IDs.
+  // Settle all siblings before returning a failure so a retry cannot overlap
+  // unfinished operations from the previous attempt.
+  const results = await Promise.allSettled([
+    Alert.deleteMany({ userId }),
+    SavedTrip.deleteMany({ userId }),
+    routeIds.length > 0 ? TrafficData.deleteMany({ routeId: { $in: routeIds } }) : Promise.resolve({ deletedCount: 0 }),
+    TripHistory.deleteMany({
+      $or: [
+        { userId },
+        ...(routeIds.length > 0 ? [{ routeId: { $in: routeIds }, userId: { $exists: false } }] : []),
+      ],
+    }),
+    Place.deleteMany({ userId }),
+    UserProfile.deleteOne({ userId }),
+    ...LEGACY_USER_COLLECTIONS.map((name) => appDb.collection(name).deleteMany({ userId })),
+  ]);
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  const counts = results.map((result) => result.status === "fulfilled" ? result.value.deletedCount : 0);
+  const [alerts, savedTrips, trafficData, tripHistory, places, profile, ...legacyCounts] = counts;
 
   // Better Auth's internal delete covers `session`, `account`, and `user`, but
   // never `verification`. Both row types that reference a user — reset-password
@@ -124,15 +110,17 @@ export async function deleteAccountData(
     .collection("verification")
     .deleteMany({ value: userId });
 
+  const routesDeleted = await Route.deleteMany({ userId });
+
   return {
-    alerts: alerts.deletedCount,
-    savedTrips: savedTrips.deletedCount,
-    trafficData: trafficData.deletedCount,
-    tripHistory: tripHistory.deletedCount,
+    alerts,
+    savedTrips,
+    trafficData,
+    tripHistory,
     routes: routesDeleted.deletedCount,
-    places: places.deletedCount,
-    profile: profile.deletedCount,
-    tripInputRequests: legacyCounts.reduce((sum, result) => sum + result.deletedCount, 0),
+    places,
+    profile,
+    tripInputRequests: legacyCounts.reduce((sum, count) => sum + count, 0),
     verification: verification.deletedCount,
   };
 }
