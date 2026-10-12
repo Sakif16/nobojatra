@@ -1,3 +1,4 @@
+import { reportFailure } from "@/lib/error-reporting";
 // lib/fare-providers.ts
 // The single fare calculator for every vehicle the app prices. Both
 // /api/fares and /api/best-options call estimateFaresForRates() so the two
@@ -379,8 +380,7 @@ async function estimateOneFare(
       fareAdjustment: adjustment,
     };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "Pathao request failed.";
-    console.warn(`Pathao estimate failed for ${rate.vehicleType}: ${reason}`);
+    reportFailure("fare", "pathao", error);
 
     return {
       fare: rateCardFare,

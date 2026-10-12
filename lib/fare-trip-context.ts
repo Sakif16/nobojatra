@@ -1,3 +1,4 @@
+import { reportFailure } from "@/lib/error-reporting";
 import "server-only";
 
 import {
@@ -11,7 +12,6 @@ import connectMongoDB from "@/lib/mongodb";
 import {
   getTrafficForTrip,
   isDeparturePeakHour,
-  TrafficServiceError,
   type DepartureOptions,
   type TrafficPoint,
   type TripTrafficResult,
@@ -314,7 +314,7 @@ export async function getFareTripWeather(context: FareTripContext) {
       weatherUnavailable: false,
     };
   } catch (error) {
-    console.warn("Weather lookup failed:", error);
+    reportFailure("weather", "openweather", error);
     return { weather: null, weatherUnavailable: true };
   }
 }
@@ -331,11 +331,7 @@ export async function getFareTripTraffic(context: FareTripContext): Promise<{
     const traffic = await getTrafficForTrip(points, context.departure, context.country);
     return { traffic, trafficUnavailable: false };
   } catch (error) {
-    if (error instanceof TrafficServiceError) {
-      console.warn("Traffic lookup failed:", error.message);
-    } else {
-      console.warn("Traffic lookup failed:", error);
-    }
+    reportFailure("traffic", "tomtom", error);
     return { traffic: null, trafficUnavailable: true };
   }
 }

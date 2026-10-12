@@ -1,13 +1,13 @@
 import { isConfigured } from "@/lib/env";
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { MongoClient } from "mongodb";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { deleteAccountData } from "@/lib/account-cleanup";
 import { MONGODB_DB } from "@/lib/mongodb";
 
-const PASSWORD_REQUIREMENT_MESSAGE =
-  "Password must be at least 8 characters and include at least one number.";
+import { createAuthAttemptLimiter, getAuthSecurityOptions, isValidPassword, PASSWORD_REQUIREMENT_MESSAGE } from "@/lib/auth-security";
+import { reportFailure } from "@/lib/error-reporting";
 const DUPLICATE_EMAIL_MESSAGE = "An account with this email already exists.";
 const RESET_PASSWORD_TOKEN_TTL_SECONDS = 60 * 60;
 
@@ -66,8 +66,8 @@ This link expires in 1 hour. If you did not request this, you can ignore this em
   });
 
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Failed to send password reset email: ${details}`);
+    reportFailure("password_reset_email", "resend", { statusCode: response.status });
+    throw new Error("Password reset email delivery failed.");
   }
 }
 
@@ -117,8 +117,8 @@ If you did not request this, you can ignore this email.`,
   });
 
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Failed to send email verification email: ${details}`);
+    reportFailure("verification_email", "resend", { statusCode: response.status });
+    throw new Error("Verification email delivery failed.");
   }
 }
 
@@ -132,7 +132,10 @@ export const authMongoClient = new MongoClient(uri);
 // driver falls back to `test`, which would hide every existing account.
 export const authDb = authMongoClient.db(MONGODB_DB);
 
+const checkAuthAttempt = createAuthAttemptLimiter(process.env.BETTER_AUTH_SECRET ?? "");
+
 export const auth = betterAuth({
+  ...getAuthSecurityOptions(process.env),
   database: mongodbAdapter(authDb, { client: authMongoClient }),
   emailAndPassword: {
     enabled: true,
@@ -170,9 +173,9 @@ export const auth = betterAuth({
       beforeDelete: async (user) => {
         try {
           const summary = await deleteAccountData(user.id, authDb);
-          console.info(`Account cleanup for ${user.id}:`, summary);
+          console.info(JSON.stringify({ event: "account_cleanup_complete", counts: summary }));
         } catch (error) {
-          console.error(`Account cleanup failed for ${user.id}:`, error);
+          reportFailure("account_cleanup", "mongodb", error);
 
           // Fail closed. Throwing here stops Better Auth before it deletes the
           // user, so a partially cleaned account stays reachable and the user
@@ -189,16 +192,33 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/sign-up/email" && ctx.path !== "/reset-password") {
-        return;
-      }
-
-      const body =
-        ctx.body as
-          | { email?: unknown; newPassword?: unknown; password?: unknown }
-          | undefined;
+      const body = ctx.body as { email?: unknown; newPassword?: unknown; password?: unknown; revokeOtherSessions?: boolean } | undefined;
       const email = body?.email;
-      const password = ctx.path === "/reset-password" ? body?.newPassword : body?.password;
+      let identity = typeof email === "string" ? email.slice(0, 320) : null;
+      if (ctx.path === "/change-password" || ctx.path === "/delete-user" || ctx.path === "/verify-password") {
+        const session = await getSessionFromCtx(ctx);
+        identity = session?.user.id ?? null;
+      }
+      if (identity) {
+        const attempt = checkAuthAttempt(ctx.path, identity);
+        if (attempt && !attempt.allowed) {
+          throw new APIError("TOO_MANY_REQUESTS", {
+            code: "AUTH_ATTEMPTS_EXCEEDED", message: "Too many attempts. Please wait and try again.",
+          }, { "Retry-After": String(attempt.retryAfter) });
+        }
+      }
+      // Both deletion entry points require the current password, even if the
+      // built-in endpoint would otherwise accept a fresh session alone.
+      if (ctx.path === "/delete-user" && (typeof body?.password !== "string" || !body.password)) {
+        throw new APIError("BAD_REQUEST", { code: "PASSWORD_REQUIRED", message: "Enter your password to confirm account deletion." });
+      }
+      const passwordPaths = ["/sign-up/email", "/reset-password", "/change-password", "/set-password"];
+      if (!passwordPaths.includes(ctx.path)) return;
+      const password = ctx.path === "/sign-up/email" ? body?.password : body?.newPassword;
+      if (!isValidPassword(password)) {
+        throw new APIError("BAD_REQUEST", { code: "INVALID_PASSWORD", message: PASSWORD_REQUIREMENT_MESSAGE });
+      }
+      if (ctx.path === "/change-password" && body) body.revokeOtherSessions = true;
 
       if (ctx.path === "/sign-up/email" && typeof email === "string") {
         const existingUser = await ctx.context.internalAdapter.findUserByEmail(
@@ -213,12 +233,6 @@ export const auth = betterAuth({
         }
       }
 
-      if (typeof password !== "string" || !/\d/.test(password)) {
-        throw new APIError("BAD_REQUEST", {
-          code: "PASSWORD_MISSING_NUMBER",
-          message: PASSWORD_REQUIREMENT_MESSAGE,
-        });
-      }
     }),
   },
 });

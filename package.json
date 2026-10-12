@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "node --test \"tests/*.test.mjs\"",
     "seed:rates": "node --env-file=.env scripts/seed-vehicle-rates.mts",
-    "test:tomtom": "node --env-file=.env scripts/test-tomtom.js"
+    "test:tomtom": "node --env-file=.env scripts/test-tomtom.js",
+    "backup:demo": "node --env-file=.env scripts/backup-demo.mjs export",
+    "backup:verify": "node scripts/backup-demo.mjs verify"
   },
   "engines": {
     "node": ">=20.9.0"

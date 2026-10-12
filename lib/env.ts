@@ -129,6 +129,13 @@ export function checkEnvironment(env: Env): EnvironmentReport {
     (variable) => !isConfigured(env[variable.name]),
   ).map((variable) => `${variable.name} is not set: ${variable.effect}.`);
 
+  const trustedHeader = env.AUTH_TRUSTED_IP_HEADER?.trim().toLowerCase();
+  if (trustedHeader && !["x-forwarded-for", "x-real-ip", "cf-connecting-ip"].includes(trustedHeader)) {
+    problems.push("AUTH_TRUSTED_IP_HEADER must name a supported, host-verified header.");
+  } else if (!trustedHeader) {
+    warnings.push("No IP header is trusted: auth limits use shared per-path buckets until the demo host's proxy behavior is verified.");
+  }
+
   if (isConfigured(env.RESEND_API_KEY) && !isConfigured(env.RESEND_FROM_EMAIL)) {
     warnings.push(
       "RESEND_FROM_EMAIL is not set: reset emails go out from Resend's testing sender, which delivers only to the Resend account owner.",

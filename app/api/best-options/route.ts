@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/error-reporting";
 import { auth } from "@/lib/auth";
 import { estimateFaresForRates } from "@/lib/fare-providers";
 import {
@@ -42,7 +43,7 @@ function toTravelPriority(value: unknown): TravelPriority | null {
     : null;
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   // Step 1: require a session — same guard as /api/fares
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -221,3 +222,5 @@ export async function POST(req: NextRequest) {
     lastUpdated: new Date().toISOString(), // powers the "last updated" timestamp shown next to Refresh
   });
 }
+
+export const POST = withRequestLogging("ranking", "planner", handlePost);

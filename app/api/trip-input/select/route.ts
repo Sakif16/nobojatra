@@ -1,3 +1,5 @@
+import { reportFailure } from "@/lib/error-reporting";
+import { withRequestLogging } from "@/lib/error-reporting";
 import { auth } from "@/lib/auth";
 import { COUNTRY_CONFIG } from "@/lib/country-config";
 import { createTripConfirmedAlert } from "@/lib/alerts";
@@ -23,7 +25,7 @@ type SelectRequestBody = {
   vehicleType?: unknown;
 };
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
     return NextResponse.json({ success: false, message: "Authentication required." }, { status: 401 });
@@ -168,8 +170,10 @@ export async function POST(req: NextRequest) {
       currency: COUNTRY_CONFIG[country].currency,
     });
   } catch (error) {
-    console.error("Trip confirmation notification failed:", error);
+    reportFailure("save_plan_notification", "mongodb", error);
   }
 
   return NextResponse.json({ success: true, tripHistoryId: saved.id });
 }
+
+export const POST = withRequestLogging("save_plan", "planner", handlePost);

@@ -46,7 +46,7 @@ test("cached routes keep each user's labels and rate-limit cache hits", async ()
         NextResponse: { json: (body, init = {}) => ({
           body,
           status: init.status ?? 200,
-          headers: init.headers ?? {},
+          headers: new Headers(init.headers),
         }) },
       },
     },
@@ -67,7 +67,7 @@ test("cached routes keep each user's labels and rate-limit cache hits", async ()
 
   const first = await POST(request(trip("Private A")));
   assert.equal(first.status, 200);
-  assert.equal(first.headers["X-Route-Cache"], "MISS");
+  assert.equal(first.headers.get("X-Route-Cache"), "MISS");
   assert.equal(first.body.data.routes[0].legs[0].fromLabel, "Private A origin");
   assert.equal(JSON.stringify([...routeCache.values()]).includes("Private A"), false);
   assert.equal(Object.hasOwn([...routeCache.values()][0].routes[0].legs[0], "fromLabel"), false);
@@ -75,10 +75,10 @@ test("cached routes keep each user's labels and rate-limit cache hits", async ()
   userId = "user-B";
   const second = await POST(request(trip("Private B")));
   assert.equal(second.status, 200);
-  assert.equal(second.headers["X-Route-Cache"], "HIT");
+  assert.equal(second.headers.get("X-Route-Cache"), "HIT");
   // The limit is per account, so user B's first search is not charged for
   // user A's, even from the same address.
-  assert.equal(second.headers["X-RateLimit-Remaining"], "19");
+  assert.equal(second.headers.get("X-RateLimit-Remaining"), "19");
   assert.deepEqual(
     second.body.data.routes[0].legs.map(({ fromLabel, toLabel }) => [fromLabel, toLabel]),
     [["Private B origin", "Private B stop"], ["Private B stop", "Private B destination"]],
@@ -90,12 +90,12 @@ test("cached routes keep each user's labels and rate-limit cache hits", async ()
   for (let count = 0; count < 19; count += 1) {
     const hit = await POST(request(trip("Private B")));
     assert.equal(hit.status, 200);
-    assert.equal(hit.headers["X-Route-Cache"], "HIT");
+    assert.equal(hit.headers.get("X-Route-Cache"), "HIT");
   }
 
   const limited = await POST(request(trip("Private B")));
   assert.equal(limited.status, 429);
-  assert.equal(limited.headers["X-RateLimit-Remaining"], "0");
+  assert.equal(limited.headers.get("X-RateLimit-Remaining"), "0");
   assert.equal(providerCalls, 1);
   assert.equal(saved.length, 21);
 
@@ -103,5 +103,5 @@ test("cached routes keep each user's labels and rate-limit cache hits", async ()
   userId = "user-A";
   const other = await POST(request(trip("Private A")));
   assert.equal(other.status, 200);
-  assert.equal(other.headers["X-RateLimit-Remaining"], "18");
+  assert.equal(other.headers.get("X-RateLimit-Remaining"), "18");
 });

@@ -45,3 +45,8 @@ next-env.d.ts
 
 # pnpm local package cache
 .pnpm-store/
+
+# Demo data exports contain personal data and authentication records.
+/backups/
+*.ndjson.gz
+*.ndjson.gz.partial

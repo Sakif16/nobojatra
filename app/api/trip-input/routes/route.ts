@@ -1,3 +1,5 @@
+import { withRequestLogging } from "@/lib/error-reporting";
+import { reportFailure } from "@/lib/error-reporting";
 import {
   fetchRouteSuggestions,
   RouteServiceError,
@@ -144,7 +146,7 @@ function getRateLimitHeaders(rateLimit: ReturnType<typeof checkRateLimit>) {
   };
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
 
   if (!session) {
@@ -273,9 +275,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     if (error instanceof RouteServiceError) {
-      console.warn("Route suggestions failed:", error.message);
+      reportFailure("route", "openrouteservice", error);
     } else {
-      console.error("Route suggestions failed:", error);
+      reportFailure("route", "openrouteservice", error);
     }
 
     const message =
@@ -296,3 +298,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withRequestLogging("route", "openrouteservice", handlePost);
