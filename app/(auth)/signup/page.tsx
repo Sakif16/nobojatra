@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import ResendVerification from "@/components/auth/ResendVerification";
 import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import TextField from "@/components/auth/TextField";
@@ -31,6 +32,8 @@ export default function SignUpPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Set once the account exists but still has to be verified by email.
+  const [pendingEmail, setPendingEmail] = useState("");
 
   // Only comment on the confirmation once there is something to compare.
   const confirmState =
@@ -83,7 +86,14 @@ export default function SignUpPage() {
         callbackURL: "/",
       },
       {
-        onSuccess: () => {
+        onSuccess: (ctx) => {
+          // With verification required there is no session yet: the user
+          // finishes by clicking the emailed link, which signs them in.
+          if (!ctx.data?.token) {
+            setIsSubmitting(false);
+            setPendingEmail(email.trim());
+            return;
+          }
           // Home picks up any trip stashed before signup and runs it.
           router.refresh();
           router.push("/");
@@ -95,6 +105,36 @@ export default function SignUpPage() {
       }
     );
   };
+
+  if (pendingEmail) {
+    return (
+      <>
+        <MailCheck size={32} className="text-primary" />
+        <h1 className="mt-4 text-3xl font-bold tracking-tight text-foreground">
+          Verification email sent
+        </h1>
+        <p className="mt-2 text-muted-foreground">
+          We sent a verification link to{" "}
+          <span className="font-medium text-foreground">{pendingEmail}</span>.
+          Click it to activate your account. The link expires in an hour, and
+          it may land in your spam folder.
+        </p>
+        <div className="mt-8">
+          <ResendVerification email={pendingEmail} startCoolingDown />
+        </div>
+        <p className="mt-8 text-sm text-muted-foreground">
+          Wrong address?{" "}
+          <button
+            type="button"
+            onClick={() => setPendingEmail("")}
+            className="font-medium text-primary hover:underline"
+          >
+            Start over
+          </button>
+        </p>
+      </>
+    );
+  }
 
   return (
     <>

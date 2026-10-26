@@ -34,12 +34,12 @@ test("copied placeholders and whitespace never enable optional features", () => 
   for (const value of [undefined, "", "  ", "your_test_key"]) {
     assert.equal(env.isConfigured(value), false);
     assert.deepEqual(env.getServerFeatures({
-      TOMTOM_API_KEY: value, OPENWEATHER_API_KEY: value, RESEND_API_KEY: value,
+      TOMTOM_API_KEY: value, OPENWEATHER_API_KEY: value, MAILJET_API_KEY: value, MAILJET_SECRET_KEY: value, MAIL_FROM: value,
     }), { liveTraffic: false, weather: false, passwordResetEmail: false });
   }
   assert.equal(env.checkEnvironment(valid).unavailable.length, 5);
   assert.deepEqual(env.getServerFeatures({
-    TOMTOM_API_KEY: "traffic-key", OPENWEATHER_API_KEY: "weather-key", RESEND_API_KEY: "email-key",
+    TOMTOM_API_KEY: "traffic-key", OPENWEATHER_API_KEY: "weather-key", MAILJET_API_KEY: "email-key", MAILJET_SECRET_KEY: "email-secret", MAIL_FROM: "NoboJatra <hi@example.com>",
   }), env.ALL_FEATURES_ON);
 });
 
