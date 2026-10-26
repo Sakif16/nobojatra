@@ -73,8 +73,8 @@ export const OPTIONAL_VARIABLES: OptionalVariable[] = [
     effect: "live Pathao pricing is off; Pathao fares come from the rate card",
   },
   {
-    name: "RESEND_API_KEY",
-    effect: "password reset emails cannot be sent; the reset page says so",
+    name: "MAILJET_API_KEY",
+    effect: "password reset and verification emails cannot be sent; the reset page says so",
   },
   {
     name: "NEXT_PUBLIC_TM_MODEL_URL",
@@ -136,9 +136,9 @@ export function checkEnvironment(env: Env): EnvironmentReport {
     warnings.push("No IP header is trusted: auth limits use shared per-path buckets until the demo host's proxy behavior is verified.");
   }
 
-  if (isConfigured(env.RESEND_API_KEY) && !isConfigured(env.RESEND_FROM_EMAIL)) {
+  if (isConfigured(env.MAILJET_API_KEY) && !(isConfigured(env.MAILJET_SECRET_KEY) && isConfigured(env.MAIL_FROM))) {
     warnings.push(
-      "RESEND_FROM_EMAIL is not set: reset emails go out from Resend's testing sender, which delivers only to the Resend account owner.",
+      "MAILJET_SECRET_KEY or MAIL_FROM is not set: no email can be sent. MAIL_FROM must be a sender address verified in Mailjet.",
     );
   }
 
@@ -197,7 +197,10 @@ export function getServerFeatures(env: Env): ServerFeatures {
   return {
     liveTraffic: isConfigured(env.TOMTOM_API_KEY),
     weather: isConfigured(env.OPENWEATHER_API_KEY),
-    passwordResetEmail: isConfigured(env.RESEND_API_KEY),
+    passwordResetEmail:
+      isConfigured(env.MAILJET_API_KEY) &&
+      isConfigured(env.MAILJET_SECRET_KEY) &&
+      isConfigured(env.MAIL_FROM),
   };
 }
 

@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import ResendVerification from "@/components/auth/ResendVerification";
 import PasswordField from "@/components/auth/PasswordField";
 import TextField from "@/components/auth/TextField";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,10 +25,13 @@ export default function SignInPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Set when the password was right but the email is not verified yet.
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
+    setUnverifiedEmail("");
 
     const errors: FieldErrors = {};
     if (!email.trim()) errors.email = "Please enter your email.";
@@ -46,6 +50,13 @@ export default function SignInPage() {
 
     if (error) {
       setIsSubmitting(false);
+      // Better Auth only answers 403 once the password was correct, so this
+      // does not reveal whether an email has an account. It has already sent
+      // a fresh verification email.
+      if (error.status === 403 || error.code === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(email.trim());
+        return;
+      }
       setErrorMessage(LOGIN_ERROR_MESSAGE);
       return;
     }
@@ -101,6 +112,16 @@ export default function SignInPage() {
             </Link>
           </div>
         </div>
+
+        {unverifiedEmail ? (
+          <div className="space-y-4 rounded-xl bg-muted px-4 py-4">
+            <p role="alert" className="text-sm text-foreground">
+              Verify your email before signing in. We just sent a new link to{" "}
+              <span className="font-medium">{unverifiedEmail}</span>.
+            </p>
+            <ResendVerification email={unverifiedEmail} startCoolingDown />
+          </div>
+        ) : null}
 
         {errorMessage ? (
           <p

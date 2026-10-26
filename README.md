@@ -44,7 +44,7 @@ Live at: https://nobojatra.onrender.com
 - **TomTom** (live traffic delays and traffic map overlay)
 - **Nominatim / OpenStreetMap** (place search and map tiles)
 - **Leaflet** (maps)
-- **Resend** (password reset emails)
+- **Mailjet** (password reset and verification emails)
 
 ---
 
@@ -78,8 +78,8 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `OPENWEATHER_API_KEY` | Optional | Weather on fares and rankings. Without it, fares carry no weather adjustment and the screens say weather is not set up |
 | `TOMTOM_API_KEY` | Optional | Live traffic and the map's traffic overlay. Without it, times and fares use no traffic data and the screens say traffic is not set up |
 | `PATHAO_FARE_API` | Optional | Live Pathao pricing. Without it, fares come from the seeded rate card and are labelled as rate-card estimates |
-| `RESEND_API_KEY` | Optional | Sending password reset emails. Without it, the reset page says reset is not set up |
-| `RESEND_FROM_EMAIL` | Optional | Sender address. Must be on a domain verified in Resend. Without it, emails reach only the Resend account owner |
+| `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` | Optional | Sending password reset and verification emails through Mailjet. Without them, the reset page says reset is not set up |
+| `MAIL_FROM` | Optional | Sender address, verified in Mailjet. All three variables together also make sign-in require a verified email |
 | `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search is disabled and the planner explains why. Read at build time, so rebuild after changing it |
 | `MONGODB_DB` | Optional | Database for app and auth data. Defaults to `nobojatra`. Changing it on an existing database hides every existing account |
 | `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Defaults to the app name and this repository's URL. Set it only to add a contact email |
@@ -122,7 +122,7 @@ Use this configuration to reproduce the demo. These instructions describe the su
 
 - **Host:** one Node web service, built with `pnpm install --frozen-lockfile && pnpm build` and started with `pnpm start`.
 - **Database:** one MongoDB Atlas cluster, database `nobojatra`, seeded once with `pnpm seed:rates`.
-- **Environment:** the four required variables, with `BETTER_AUTH_URL` set to the public URL, plus `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`, `PATHAO_FARE_API`, `RESEND_API_KEY` and `NEXT_PUBLIC_TM_MODEL_URL`. Set `TZ=UTC` on the host.
+- **Environment:** the four required variables, with `BETTER_AUTH_URL` set to the public URL, plus `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`, `PATHAO_FARE_API`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM` and `NEXT_PUBLIC_TM_MODEL_URL`. Set `TZ=UTC` on the host.
 - **One instance only.** Per-account rate limits are counted in the server's memory, so a second instance would give every account a second allowance.
 
 Read the startup log after each deploy: it lists every optional feature that is off.
@@ -137,7 +137,7 @@ Server-side routing, place search, traffic, weather and live fare requests have 
 | TomTom | Traffic delay and the traffic overlay | Times and fares use no traffic data, and the screens say so. Always the case in Bangladesh, where TomTom has no traffic data |
 | OpenWeatherMap | Current weather for trips leaving now; a forecast for scheduled trips | Fares carry no weather adjustment and no vehicle is held back for weather. The screens say so |
 | Pathao fare service | Live Pathao pricing | Pathao fares come from the rate card and are labelled "Rate-card estimate" |
-| Resend | Password reset emails | The reset page says reset is not set up. Signed-in users are unaffected |
+| Mailjet | Password reset and verification emails | The reset page says reset is not set up. Signed-in users are unaffected |
 | Teachable Machine model | Photo search | Photo search is disabled with a message; place search still works |
 | Live cams app | The embedded camera page | The camera page shows an empty frame. Nothing else depends on it |
 
@@ -152,7 +152,7 @@ Server-side routing, place search, traffic, weather and live fare requests have 
 The app ships with no account and no sample trips, so each demo starts from a new sign-up.
 
 1. Open `/signup` and register with any email address and a password of at least 8 characters that includes a number. The address is not verified, so it does not need to be real.
-2. **Keep the password.** Reset emails reach only the Resend account owner unless a verified sender is configured, so a forgotten demo password usually cannot be recovered.
+2. **Keep the password.** Reset emails are only sent when Mailjet is configured with a verified sender, so without it a forgotten demo password cannot be recovered.
 3. Open **Profile** and choose the country to demo. Bangladesh offers rate-card estimates and, if configured and reachable, live Pathao pricing. Traffic is unavailable there; UK and US traffic requires TomTom configuration and coverage.
 4. Plan a trip, pick a route, open its fares and save the plan. That fills the dashboard, trip history and notifications.
 5. When finished, delete the account from **Profile**. This removes its trips, saved trips, saved places and notifications.
@@ -208,7 +208,7 @@ git push origin feature-name
 - **No live traffic in Bangladesh.** TomTom has no traffic data there, so Dhaka trips use no traffic delay and have no traffic overlay. Traffic works in the cities TomTom covers, such as London.
 - **Trips can be scheduled up to 5 days ahead.** A scheduled trip shows a forecast, which informs but never changes a fare or holds a vehicle back.
 - **Place search uses the public OpenStreetMap server**, whose usage policy does not allow search-as-you-type. It is acceptable for a small demo and could be blocked under real traffic. A wider launch needs its own search provider.
-- **Password reset emails reach only the Resend account owner** unless `RESEND_FROM_EMAIL` is on a domain verified in Resend. For any other address the page reports success but no email arrives.
+- **Emails can land in spam** unless the sender address is on a domain with authenticated sending. A Gmail sender is the most likely to be filtered.
 - **Email addresses are not verified.** The profile shows the status but offers no way to verify.
 - **Photo search recognises a fixed set of Dhaka landmarks** and nothing outside it.
 - **The camera page embeds a separate third-party app.** NoboJatra does not control its content or uptime.
