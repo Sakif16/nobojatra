@@ -26,12 +26,12 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
 
   if (trips.length === 0) {
     return (
-      <div className="mt-10">
+      <div>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
           <Repeat2 className="size-4 text-primary" />
           Plan again
         </h2>
-        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="py-2 text-sm text-muted-foreground">
           No trips to show in {serviceAreaName} yet. Plan a route above and the
           ones you repeat will turn up here.
         </p>
@@ -40,12 +40,12 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
   }
 
   return (
-    <div className="mt-10">
+    <div>
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
         <Repeat2 className="size-4 text-primary" />
         Plan again
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-1">
         {trips.map((trip) => {
           const key = `${trip.origin.lat},${trip.origin.lng}=>${trip.destination.lat},${trip.destination.lng}`;
           return (
@@ -69,20 +69,15 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
               // min-w-0: a grid item's automatic minimum size is its
               // min-content width, so without this a long address label widens
               // its column past the viewport instead of being truncated.
-              className="group flex min-w-0 flex-col items-start gap-1.5 rounded-2xl border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted"
+              className="group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted"
+              data-no-glow
             >
-              <div className="flex w-full min-w-0 items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                  {trip.origin.label}
-                </span>
-                <ArrowRight className="size-3.5 flex-shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </div>
-              <span className="w-full truncate text-sm font-medium text-foreground">
-                {trip.destination.label}
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground"><Repeat2 size={17} aria-hidden="true" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-foreground">{trip.origin.label.split(",")[0]} → {trip.destination.label.split(",")[0]}</span>
+                <span className="block text-xs text-muted-foreground">{trip.tripCount} {trip.tripCount === 1 ? "trip" : "trips"} in the last 30 days</span>
               </span>
-              <span className="mt-1 text-xs text-muted-foreground">
-                {trip.tripCount} trips in the last 30 days
-              </span>
+              <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
             </button>
           );
         })}

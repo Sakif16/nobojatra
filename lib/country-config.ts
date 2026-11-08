@@ -10,9 +10,6 @@
  *
  * Two things deliberately do NOT live here, because they do not actually vary:
  *
- *   - The map. ../components/map/RouteMap centres on the trip origin and both
- *     of its tile sources (Mapbox streets-v12, OpenStreetMap) are worldwide.
- *     There is nothing country-specific to select.
  *   - The weather provider. ./weather queries OpenWeather by raw lat/lng, which
  *     is global. Only the *fallback coordinate* below is country-specific.
  *
@@ -60,6 +57,8 @@ export type CountryConfig = {
   currencySymbol: string;
   /** Used when a route has no usable midpoint to read weather at. */
   fallbackWeatherPoint: { lat: number; lng: number };
+  /** Initial map view before a trip is selected. */
+  defaultMapView: { center: [number, number]; zoom: number };
   /**
    * The country's default IANA zone: the one a trip is read in when it has no
    * zone of its own (records written before trips stored one) and the one the
@@ -158,6 +157,7 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "BDT",
     currencySymbol: "৳",
     fallbackWeatherPoint: { lat: 23.8103, lng: 90.4125 },
+    defaultMapView: { center: [23.8103, 90.4125], zoom: 12 },
     timeZone: "Asia/Dhaka",
     timeZones: ["Asia/Dhaka"],
     liveTraffic: false,
@@ -187,6 +187,7 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "USD",
     currencySymbol: "$",
     fallbackWeatherPoint: { lat: 40.7128, lng: -74.006 },
+    defaultMapView: { center: [40.7128, -74.006], zoom: 12 },
     // Eastern time covers the largest share of the population.
     timeZone: "America/New_York",
     timeZones: US_TIME_ZONES,
@@ -207,6 +208,7 @@ export const COUNTRY_CONFIG: Record<CountryCode, CountryConfig> = {
     currency: "GBP",
     currencySymbol: "£",
     fallbackWeatherPoint: { lat: 51.5072, lng: -0.1276 },
+    defaultMapView: { center: [51.5072, -0.1276], zoom: 12 },
     timeZone: "Europe/London",
     timeZones: ["Europe/London"],
     liveTraffic: true,

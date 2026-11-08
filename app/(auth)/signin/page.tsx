@@ -7,6 +7,7 @@ import { type FormEvent, useState } from "react";
 import PasswordField from "@/components/auth/PasswordField";
 import TextField from "@/components/auth/TextField";
 import { buttonVariants } from "@/components/ui/button";
+import StatusMessage from "@/components/ui/status-message";
 import { authClient } from "@/lib/auth-client";
 
 // Deliberately generic: never reveal whether the email exists on this account.
@@ -103,12 +104,7 @@ export default function SignInPage() {
         </div>
 
         {errorMessage ? (
-          <p
-            role="alert"
-            className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {errorMessage}
-          </p>
+          <StatusMessage>{errorMessage}</StatusMessage>
         ) : null}
 
         <button
@@ -118,7 +114,7 @@ export default function SignInPage() {
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="motion-safe:animate-spin" />
               Signing in…
             </>
           ) : (

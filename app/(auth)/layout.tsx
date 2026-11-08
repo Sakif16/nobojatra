@@ -74,7 +74,7 @@ export default function AuthLayout({
           className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,color-mix(in_oklch,var(--primary),transparent_86%),transparent_55%)]"
         />
         <RouteArtwork
-          className="pointer-events-none absolute -right-16 bottom-0 h-[560px] w-[560px] text-foreground opacity-[0.13]"
+          className="pointer-events-none absolute inset-0 size-full opacity-40"
         />
 
         <div className="relative">

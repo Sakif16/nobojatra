@@ -1,13 +1,9 @@
 import {
   ArrowRight,
   CalendarClock,
-  CheckCircle2,
   Clock3,
   Cloud,
-  MapPin,
-  Route,
   TrafficCone,
-  Users,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -17,7 +13,12 @@ import {
 } from "@/lib/country-config";
 import type { ScheduledTripListItem } from "@/lib/trip-history";
 import { formatTripDateTime } from "@/lib/trip-time";
-import BackLink from "@/components/BackLink";
+import PageHeader from "@/components/ui/page-header";
+import Panel from "@/components/ui/panel";
+import Pill from "@/components/ui/pill";
+import Chip from "@/components/ui/chip";
+import EmptyState from "@/components/ui/empty-state";
+import DepartureCountdown from "@/components/scheduled-trips/DepartureCountdown";
 
 type Props = {
   trips: ScheduledTripListItem[];
@@ -66,214 +67,48 @@ function getPrimaryAction(trip: ScheduledTripListItem) {
   };
 }
 
-function EmptyState() {
-  return (
-    <div className="rounded-2xl border border-border bg-card px-6 py-10 text-center">
-      <CalendarClock className="mx-auto size-9 text-primary" />
-      <h1 className="mt-4 text-2xl font-bold text-foreground">No upcoming trips</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Scheduled route searches will appear here once their departure time is in the future.
-      </p>
-      <Link
-        href="/"
-        className="mt-5 inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        Plan a route
-      </Link>
-    </div>
-  );
-}
-
 export default function ScheduledTripsList({ trips }: Props) {
-  if (trips.length === 0) {
-    return (
-      <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-        <EmptyState />
-      </main>
-    );
-  }
-
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <BackLink href="/" label="Back to planner" className="mb-4" />
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Scheduled trips
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Upcoming planned departures. These are plans, not bookings.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        {trips.map((trip) => {
-          const action = getPrimaryAction(trip);
-
-          return (
-            <article
-              key={trip.id}
-              className="rounded-2xl border border-border bg-card px-5 py-5"
-            >
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary">
-                      <CalendarClock className="size-3.5" />
-                      {formatTripDateTime(trip.scheduledAt, trip.timeZone)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-secondary-foreground">
-                      {trip.vehicle ? (
-                        <CheckCircle2 className="size-3.5" />
-                      ) : (
-                        <Clock3 className="size-3.5" />
-                      )}
-                      {getStatus(trip)}
-                    </span>
-                  </div>
-
-                  <h2 className="mt-4 flex items-center gap-2 text-lg font-semibold text-foreground">
-                    <span className="truncate">{trip.originLabel}</span>
-                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{trip.destinationLabel}</span>
-                  </h2>
-
-                  <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Route className="size-4 text-primary" />
-                      {trip.distanceKm != null ? `${trip.distanceKm} km` : "Distance unavailable"}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Clock3 className="size-4 text-primary" />
-                      {formatMinutes(trip.durationMin)}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Users className="size-4 text-primary" />
-                      {trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <MapPin className="size-4 text-primary" />
-                      {trip.stops.length} stop{trip.stops.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 flex-col gap-2 lg:items-end">
-                  <p className="text-sm font-semibold text-foreground">
-                    {trip.vehicle?.displayName ?? "Ride not selected"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{formatTripFare(trip)}</p>
-                  <Link
-                    href={action.href}
-                    className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-                  >
-                    {action.label}
-                  </Link>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                <div className="rounded-xl border border-border bg-background/40 px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Timing
-                  </p>
-                  <div className="mt-2 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                    <span>
-                      Departure
-                      <strong className="mt-0.5 block text-foreground">
-                        {formatTripDateTime(trip.scheduledAt, trip.timeZone)}
-                      </strong>
-                    </span>
-                    <span>
-                      Arrival
-                      <strong className="mt-0.5 block text-foreground">
-                        {trip.estimatedArrivalAt
-                          ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone)
-                          : "Not available"}
-                      </strong>
-                    </span>
-                    <span>
-                      Travel
-                      <strong className="mt-0.5 block text-foreground">
-                        {formatMinutes(trip.travelDurationMin)}
-                      </strong>
-                    </span>
-                    <span>
-                      Wait
-                      <strong className="mt-0.5 block text-foreground">
-                        {formatMinutes(trip.dwellDurationMin)}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border bg-background/40 px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Conditions
-                  </p>
-                  <div className="mt-2 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="size-4 text-primary" />
-                      {trip.weatherUnavailable || !trip.weather
-                        ? "Weather not captured"
-                        : `${trip.weather.kind === "forecast" ? "Forecast when saved: " : "When saved: "}${trip.weather.temperatureCelsius}°C · ${trip.weather.severityBand}`}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <TrafficCone className="size-4 text-primary" />
-                      {trip.trafficUnavailable || !trip.traffic
-                        ? hasLiveTraffic(trip.country)
-                          ? "Traffic not captured"
-                          : liveTrafficUnavailableMessage(trip.country)
-                        : `${trip.traffic.congestionLevel} · ${trip.traffic.durationInTrafficMin} min`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {(trip.stops.length > 0 || trip.itinerary) && (
-                <div className="mt-3 rounded-xl border border-border bg-background/40 px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Route details
-                  </p>
-                  {trip.itinerary ? (
-                    <div className="mt-2 space-y-2">
-                      {trip.itinerary.legs.map((leg, index) => (
-                        <div
-                          key={`${trip.id}-${index}`}
-                          className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <span className="min-w-0 truncate text-foreground">
-                            {leg.fromLabel} {"->"} {leg.toLabel}
-                          </span>
-                          <span className="shrink-0">
-                            {leg.distanceKm} km · {formatMinutes(leg.durationMin)}
-                            {leg.dwellAfterMin > 0
-                              ? ` · ${formatMinutes(leg.dwellAfterMin)} wait`
-                              : ""}
-                          </span>
-                        </div>
-                      ))}
+      <div className="mb-6"><PageHeader title="Scheduled trips" back={{ href: "/", label: "Back to planner" }} subtitle="Upcoming planned departures. These are plans, not bookings." /></div>
+      {trips.length === 0 ? <EmptyState icon={<CalendarClock className="size-8" />} title="No upcoming trips" description="Scheduled route searches will appear here once their departure time is in the future." action={<Link href="/" className="mt-2 inline-flex rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Plan a trip</Link>} /> : (
+        <div className="space-y-4">
+          {trips.map((trip) => {
+            const action = getPrimaryAction(trip);
+            return <article key={trip.id}>
+              <Panel padding="lg">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Pill className="gap-1 bg-primary/10 text-primary"><CalendarClock className="size-3.5" aria-hidden />{formatTripDateTime(trip.scheduledAt, trip.timeZone)}</Pill>
+                      <DepartureCountdown scheduledAt={trip.scheduledAt} /><Pill>{getStatus(trip)}</Pill>
                     </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {trip.stops.map((stop, index) => (
-                        <span
-                          key={`${trip.id}-stop-${index}`}
-                          className="rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
-                        >
-                          {stop.label}
-                          {stop.dwellMinutes != null
-                            ? ` · ${stop.dwellMinutes} min`
-                            : ""}
-                        </span>
-                      ))}
+                    <h2 className="mt-4 flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground">
+                      <span className="min-w-0 truncate" title={trip.originLabel}>{trip.originLabel}</span><ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden /><span className="min-w-0 truncate" title={trip.destinationLabel}>{trip.destinationLabel}</span>
+                    </h2>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Chip label>{trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}</Chip>
+                      <Chip label>{trip.vehicle?.displayName ?? "Ride not selected"}</Chip><Chip label>{formatTripFare(trip)}</Chip>
+                      <Chip label>{trip.distanceKm != null ? `${trip.distanceKm} km` : "Distance unavailable"}</Chip><Chip label>{formatMinutes(trip.durationMin)}</Chip>
+                      <Chip label>{trip.stops.length} stop{trip.stops.length === 1 ? "" : "s"}</Chip>
                     </div>
-                  )}
+                  </div>
+                  <Link href={action.href} className="inline-flex shrink-0 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">{action.label}</Link>
                 </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm text-muted-foreground">
+                  <p className="flex items-start gap-2"><Clock3 className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>Arrival: {trip.estimatedArrivalAt ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone) : "Not available"} · Travel: {formatMinutes(trip.travelDurationMin)} · Wait: {formatMinutes(trip.dwellDurationMin)}</span></p>
+                  <p className="flex items-start gap-2"><Cloud className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>{trip.weatherUnavailable || !trip.weather ? "Weather not captured" : `${trip.weather.kind === "forecast" ? "Forecast when saved: " : "Weather when saved: "}${trip.weather.temperatureCelsius}°C · ${trip.weather.severityBand}`}</span></p>
+                  <p className="flex items-start gap-2"><TrafficCone className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>{trip.trafficUnavailable || !trip.traffic ? hasLiveTraffic(trip.country) ? "Traffic not captured" : liveTrafficUnavailableMessage(trip.country) : `Traffic when saved: ${trip.traffic.congestionLevel} · ${trip.traffic.durationInTrafficMin} min`}</span></p>
+                </div>
+                {(trip.stops.length > 0 || trip.itinerary) && <div className="mt-4 border-t border-border pt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Route details</p>
+                  {trip.itinerary ? <div className="mt-2 space-y-2">{trip.itinerary.legs.map((leg, index) => <div key={`${trip.id}-${index}`} className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"><span className="min-w-0 truncate text-foreground">{leg.fromLabel} → {leg.toLabel}</span><span className="shrink-0">{leg.distanceKm} km · {formatMinutes(leg.durationMin)}{leg.dwellAfterMin > 0 ? ` · ${formatMinutes(leg.dwellAfterMin)} wait` : ""}</span></div>)}</div> : <div className="mt-2 flex flex-wrap gap-2">{trip.stops.map((stop, index) => <Chip key={`${trip.id}-stop-${index}`} label>{stop.label}{stop.dwellMinutes != null ? ` · ${stop.dwellMinutes} min` : ""}</Chip>)}</div>}
+                </div>}
+              </Panel>
+            </article>;
+          })}
+        </div>
+      )}
     </main>
   );
 }

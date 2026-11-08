@@ -64,7 +64,7 @@ test("every route has a loading, error and not-found state to fall back on", () 
   // Error boundaries must be client components, and offer a way to retry.
   for (const file of ["app/(main)/error.tsx", "app/global-error.tsx"]) {
     assert.match(read(file), /^"use client";/);
-    assert.match(read(file), /onClick=\{reset\}/);
+    assert.match(read(file), /onClick=\{retry\}/);
   }
   // The raw error text is logged, not shown.
   assert.doesNotMatch(read("app/(main)/error.tsx"), /\{error\.message\}/);

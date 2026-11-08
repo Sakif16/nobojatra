@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import NotificationCenter from "./NotificationCenter";
 import type { AlertView } from "./types";
 import { readJson } from "@/lib/read-json";
+import Panel from "@/components/ui/panel";
 
 /**
  * Bell + unread badge + notification panel.
@@ -377,7 +378,7 @@ export default function NotificationBell() {
               ? `Notifications, ${unreadCount} unread`
               : "Notifications"
           }
-          className="relative inline-flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="relative inline-flex size-10 items-center justify-center rounded-full border border-border bg-background text-foreground transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <Bell className="size-4" aria-hidden />
 
@@ -393,7 +394,8 @@ export default function NotificationBell() {
 
         <Popover.Portal>
           <Popover.Positioner side="bottom" align="end" sideOffset={8}>
-            <Popover.Popup className="z-50 origin-top-right overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg outline-none transition-[opacity,transform] duration-200 ease-out data-[ending-style]:translate-y-1 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:translate-y-1 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
+            <Popover.Popup className="z-50 origin-top-right shadow-lg outline-none transition-[opacity,transform] duration-200 ease-out data-[ending-style]:translate-y-1 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:translate-y-1 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
+              <Panel padding="none" className="overflow-hidden bg-popover text-popover-foreground">
               <NotificationCenter
                 alerts={alerts}
                 loading={loading}
@@ -406,6 +408,7 @@ export default function NotificationBell() {
                 loadingMore={loadingMore}
                 onLoadMore={() => void loadOlder()}
               />
+              </Panel>
             </Popover.Popup>
           </Popover.Positioner>
         </Popover.Portal>

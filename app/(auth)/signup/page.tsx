@@ -8,6 +8,7 @@ import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import TextField from "@/components/auth/TextField";
 import { buttonVariants } from "@/components/ui/button";
+import StatusMessage from "@/components/ui/status-message";
 import { authClient } from "@/lib/auth-client";
 import {
   PASSWORD_REQUIREMENT_MESSAGE,
@@ -176,12 +177,7 @@ export default function SignUpPage() {
         />
 
         {formError ? (
-          <p
-            role="alert"
-            className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {formError}
-          </p>
+          <StatusMessage>{formError}</StatusMessage>
         ) : null}
 
         <button
@@ -191,7 +187,7 @@ export default function SignUpPage() {
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="motion-safe:animate-spin" />
               Creating account…
             </>
           ) : (

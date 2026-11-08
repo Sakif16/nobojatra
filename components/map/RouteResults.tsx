@@ -2,12 +2,13 @@
 
 import { cn } from "@/lib/utils";
 import {
-  ROUTE_COLORS,
   type RouteResult,
   type TripTrafficResult,
 } from "@/lib/routing";
 import { AlertTriangle, Clock3, Gauge } from "lucide-react";
 import { COUNTRY_CONFIG } from "@/lib/country-config";
+import ListRow from "@/components/ui/list-row";
+import Pill from "@/components/ui/pill";
 
 type Props = {
   routes: RouteResult[];
@@ -60,77 +61,34 @@ export default function RouteResults({
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-foreground">Route results</h2>
-          {routeSaveMessage && (
-            <span
-              className={cn(
-                "text-xs font-medium",
-                routeSaveStatus === "error"
-                  ? "text-destructive"
-                  : "text-muted-foreground"
-              )}
-            >
-              {routeSaveMessage}
-            </span>
-          )}
         </div>
-        {hasOneDistinctRoute && (
-          <p className="rounded-xl border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-            Only one distinct route found.
-          </p>
-        )}
-        {/* The route reaches a road near the place, not necessarily its door.
-            Shown here, while the user can still pick a better point. */}
-        {accessNotes.map((note) => (
-          <p
-            key={note}
-            className="flex items-start gap-2 rounded-xl border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground"
-          >
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            <span>{note}</span>
-          </p>
-        ))}
       </div>
 
       {!isMultiStop &&
-        routes.map((route) => {
+        routes.map((route, index) => {
           const active = route.id === (activeRouteId ?? routes[0].id);
           const badge = route.rank === 1 ? "Suggested" : "Alternative";
 
           return (
-            <button
+            <ListRow
               key={route.id}
-              type="button"
               onClick={() => onSelect(route.id)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors",
-                active
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-card hover:bg-muted"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className="size-3 rounded-full"
-                  style={{ background: route.legs[0]?.color ?? ROUTE_COLORS[0] }}
-                />
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Route {route.rank}
-                    <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-                      {badge}
-                    </span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {route.distanceKm} km · {route.durationMin} min
-                  </p>
-                </div>
-              </div>
-            </button>
+              selected={active}
+              style={{ animationDelay: `${index * 60}ms` }}
+              className="planner-fade-up"
+              leading={route.rank}
+              title={`Route ${route.rank}`}
+              pill={<Pill>{badge}</Pill>}
+              meta={<>
+                    {route.distanceKm} km • {route.durationMin} min
+                    {active && traffic && <span className={cn("ml-1 font-medium", { low: "text-emerald-400", moderate: "text-amber-400", high: "text-orange-400", severe: "text-red-400" }[traffic.totals.congestionLevel])}> • {traffic.totals.congestionLevel} traffic</span>}
+              </>}
+            />
           );
         })}
 
       {isMultiStop && (
-        <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <div className="planner-fade-up px-3 py-2">
           <p className="mb-2 text-sm font-medium text-foreground">
             {activeRoute.distanceKm} km · {activeRoute.durationMin} min total
           </p>
@@ -145,13 +103,10 @@ export default function RouteResults({
                 key={i}
                 className="flex items-start gap-2 text-xs text-muted-foreground"
               >
-                <span
-                  className="mt-1 size-2.5 flex-shrink-0 rounded-full"
-                  style={{ background: leg.color }}
-                />
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-foreground">{i === 0 ? "A" : i}</span>
                 <span className="min-w-0">
                   <span className="block truncate">
-                    {leg.fromLabel ?? `Leg ${i + 1}`} → {leg.toLabel ?? `Point ${i + 2}`}
+                    {leg.fromLabel ?? `Leg ${i + 1}`} → {leg.toLabel ?? `Point ${i + 2}`} <span className="text-muted-foreground">({i === activeRoute.legs.length - 1 ? "B" : i + 1})</span>
                   </span>
                   <span className="block">
                     {leg.distanceKm} km · {leg.durationMin} min
@@ -163,6 +118,15 @@ export default function RouteResults({
           </div>
         </div>
       )}
+
+      {hasOneDistinctRoute && <p className="px-3 text-xs text-muted-foreground">Only one distinct route found.</p>}
+      {routeSaveMessage && <p role="status" className={cn("px-3 text-xs", routeSaveStatus === "error" ? "text-destructive" : "text-muted-foreground")}>{routeSaveMessage}</p>}
+      {accessNotes.map((note) => (
+        <p key={note} className="flex items-start gap-2 px-3 text-xs text-muted-foreground">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>{note}</span>
+        </p>
+      ))}
 
       <TrafficSummary
         traffic={traffic}
@@ -184,7 +148,7 @@ function TrafficSummary({
 }) {
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+      <div className="px-3 text-xs text-muted-foreground">
         Checking live traffic...
       </div>
     );
@@ -192,7 +156,7 @@ function TrafficSummary({
 
   if (error) {
     return (
-      <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2 px-3 text-xs text-muted-foreground">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
         <span>{error}</span>
       </div>
@@ -208,14 +172,14 @@ function TrafficSummary({
     severe: "SEVERE",
   }[traffic.totals.congestionLevel];
   const levelClass = {
-    low: "bg-emerald-100 text-emerald-800",
-    moderate: "bg-amber-100 text-amber-800",
-    high: "bg-orange-100 text-orange-800",
-    severe: "bg-red-100 text-red-800",
+    low: "bg-emerald-400/15 text-emerald-400",
+    moderate: "bg-amber-400/15 text-amber-400",
+    high: "bg-orange-400/15 text-orange-400",
+    severe: "bg-red-400/15 text-red-400",
   }[traffic.totals.congestionLevel];
 
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3">
+    <div className="px-3 py-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Gauge className="size-4 text-primary" />
@@ -233,7 +197,7 @@ function TrafficSummary({
         </span>
       </div>
       {traffic.isPeakHour && (
-        <p className="mt-2 text-xs font-medium text-orange-700">
+        <p className="mt-2 text-xs font-medium text-primary">
           Planned departure falls in a{" "}
           {COUNTRY_CONFIG[traffic.country].label} peak-hour window.
         </p>

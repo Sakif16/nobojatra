@@ -6,9 +6,11 @@ import {
   ArrowUp,
   ArrowUpDown,
   Camera,
+  ChevronDown,
   LocateFixed,
   Minus,
   Plus,
+  Search,
   X,
 } from "lucide-react";
 import PlaceAutocomplete, { type SavedPlaceOption } from "./PlaceAutocomplete";
@@ -27,6 +29,7 @@ import { COUNTRY_CONFIG } from "@/lib/country-config";
 import { formatLocalDateTime } from "@/lib/trip-time";
 import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
+import Chip from "@/components/ui/chip";
 import { isConfigured } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +81,8 @@ type Props = {
   initialValues?: RouteFormValues | null;
   /** Home/Work/custom shortcuts shown when origin or destination is empty. */
   savedPlaces?: SavedPlaceOption[];
+  collapsed?: boolean;
+  onEdit?: () => void;
 };
 
 const MIN_PASSENGERS = 1;
@@ -90,7 +95,7 @@ const GEOLOCATION_MAX_AGE_MS = 60_000;
 // Stretches to the field's own height rather than hard-coding one, so the
 // button stays square with the input if the field padding ever changes.
 const cameraButtonClassName =
-  "flex w-11 flex-shrink-0 items-center justify-center rounded-xl border border-input bg-secondary/60 text-muted-foreground transition-colors hover:border-ring hover:bg-secondary hover:text-foreground";
+  "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 
 /**
  * The earliest and latest times the picker offers, as clock times in the
@@ -124,6 +129,8 @@ export default function RouteFinderForm({
   defaultPassengerCount = 2,
   initialValues,
   savedPlaces,
+  collapsed = false,
+  onEdit,
 }: Props) {
   const country = useCountry();
   // Public model URLs are frozen into the client bundle at build time.
@@ -406,7 +413,17 @@ export default function RouteFinderForm({
   }
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full">
+      {collapsed && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-3">
+          <p className="min-w-0 flex-1 text-sm text-foreground">
+            <span className="block truncate font-medium">{originLabel.split(",")[0]} → {destinationLabel.split(",")[0]}</span>
+            <span className="text-xs text-muted-foreground">{passengers} passenger{passengers === 1 ? "" : "s"} · {mode === "now" ? "Now" : "Scheduled"}{stops.length > 0 ? ` · ${stops.length} stop${stops.length === 1 ? "" : "s"}` : ""}</span>
+          </p>
+          <button type="button" onClick={onEdit} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted">Edit</button>
+        </div>
+      )}
+      <div hidden={collapsed} className="space-y-4">
       {/* Origin and destination sit on a shared rail, echoing a dot-to-square
           pickup/dropoff pair. */}
       <div className="relative space-y-2">
@@ -414,10 +431,11 @@ export default function RouteFinderForm({
           aria-hidden
           className="absolute top-6 bottom-6 left-[21px] w-px bg-border"
         />
-        <div className="flex items-stretch gap-2">
+        <div className="relative flex items-stretch">
           <div className="min-w-0 flex-1">
             <PlaceAutocomplete
               placeholder="Enter location"
+              className="bg-background/60 pr-20"
               value={originLabel}
               icon={
                 <span className="block size-2.5 rounded-full border-2 border-foreground" />
@@ -441,16 +459,18 @@ export default function RouteFinderForm({
             disabled={!photoSearchAvailable}
             aria-describedby={!photoSearchAvailable ? "photo-search-unavailable" : undefined}
             title={photoSearchAvailable ? "Identify from a photo" : "Photo search is not set up"}
-            className={cn(cameraButtonClassName, "disabled:opacity-50 disabled:cursor-not-allowed")}
+            className={cn(cameraButtonClassName, "absolute right-8 top-1/2 -translate-y-1/2 disabled:opacity-50 disabled:cursor-not-allowed")}
           >
             <Camera size={16} />
           </button>
+          <Search size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         </div>
 
-        <div className="flex items-stretch gap-2">
+        <div className="relative flex items-stretch">
           <div className="min-w-0 flex-1">
             <PlaceAutocomplete
               placeholder="Enter destination"
+              className="bg-background/60 pr-20"
               value={destinationLabel}
               icon={<span className="block size-2.5 bg-foreground" />}
               savedPlaces={savedPlaces}
@@ -472,10 +492,11 @@ export default function RouteFinderForm({
             disabled={!photoSearchAvailable}
             aria-describedby={!photoSearchAvailable ? "photo-search-unavailable" : undefined}
             title={photoSearchAvailable ? "Identify from a photo" : "Photo search is not set up"}
-            className={cn(cameraButtonClassName, "disabled:opacity-50 disabled:cursor-not-allowed")}
+            className={cn(cameraButtonClassName, "absolute right-8 top-1/2 -translate-y-1/2 disabled:opacity-50 disabled:cursor-not-allowed")}
           >
             <Camera size={16} />
           </button>
+          <Search size={16} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         </div>
       </div>
 
@@ -505,7 +526,7 @@ export default function RouteFinderForm({
           className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
         >
           <ArrowUpDown size={15} />
-          Swap origin and destination
+          <span aria-hidden="true">Swap</span><span className="sr-only">Swap origin and destination</span>
         </button>
       </div>
       {locationPrompt && (
@@ -514,63 +535,35 @@ export default function RouteFinderForm({
         </p>
       )}
 
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Passengers</span>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setPassengers((p) => Math.max(MIN_PASSENGERS, p - 1))}
-            disabled={passengers <= MIN_PASSENGERS}
-            aria-label="Remove a passenger"
-            className="flex size-7 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <Minus size={14} />
-          </button>
-          <span className="w-4 text-center text-sm font-medium text-foreground">
-            {passengers}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPassengers((p) => Math.min(MAX_PASSENGERS, p + 1))}
-            disabled={passengers >= MAX_PASSENGERS}
-            aria-label="Add a passenger"
-            className="flex size-7 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <Plus size={14} />
-          </button>
+      <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-input bg-background/60 px-3 py-1.5">
+        <span className="text-sm font-medium text-foreground">Passengers</span>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setPassengers((p) => Math.max(MIN_PASSENGERS, p - 1))} disabled={passengers <= MIN_PASSENGERS} aria-label="Remove a passenger" className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"><Minus size={14} /></button>
+          <span className="w-4 text-center text-sm font-medium text-foreground" aria-live="polite">{passengers}</span>
+          <button type="button" onClick={() => setPassengers((p) => Math.min(MAX_PASSENGERS, p + 1))} disabled={passengers >= MAX_PASSENGERS} aria-label="Add a passenger" className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"><Plus size={14} /></button>
         </div>
       </div>
 
-      <div className="flex overflow-hidden rounded-xl border border-input">
-        <button
-          type="button"
-          onClick={() => setMode("now")}
-          className={cn(
-            "flex-1 py-2.5 text-sm font-medium transition-colors",
-            mode === "now"
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary/60 text-muted-foreground hover:bg-secondary"
-          )}
-        >
-          Leave now
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const now = Date.now();
-            setClock(now);
-            setMode("schedule");
-            if (!scheduledTime) setScheduledTime(getScheduleBounds(now, timeZones).initial);
-          }}
-          className={cn(
-            "flex-1 py-2.5 text-sm font-medium transition-colors",
-            mode === "schedule"
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary/60 text-muted-foreground hover:bg-secondary"
-          )}
-        >
-          Schedule
-        </button>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="relative min-w-0">
+          <span className="sr-only">Departure time</span>
+          <select value={mode} onChange={(event) => {
+            const nextMode = event.target.value as "now" | "schedule";
+            if (nextMode === "schedule") {
+              const now = Date.now();
+              setClock(now);
+              if (!scheduledTime) setScheduledTime(getScheduleBounds(now, timeZones).initial);
+            }
+            setMode(nextMode);
+          }} className="h-12 w-full cursor-pointer appearance-none rounded-xl border border-input bg-background/60 pl-3 pr-9 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            <option value="now">Leave now</option>
+            <option value="schedule">Schedule</option>
+          </select>
+          <ChevronDown size={14} aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        </label>
+        <Chip buttonProps={{ onClick: addStop, disabled: stops.length >= MAX_STOPS }} className="flex h-12 min-w-0 items-center justify-between gap-2 rounded-xl border-input bg-background/60 px-3 text-sm font-medium text-foreground">
+          Stops ({stops.length}/{MAX_STOPS}) <Plus size={14} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+        </Chip>
       </div>
 
       {mode === "schedule" && (
@@ -592,19 +585,6 @@ export default function RouteFinderForm({
       )}
 
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Stops</span>
-          <button
-            type="button"
-            data-no-glow
-            onClick={addStop}
-            disabled={stops.length >= MAX_STOPS}
-            className="text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:cursor-not-allowed disabled:text-muted-foreground"
-          >
-            + Add stop ({stops.length}/{MAX_STOPS})
-          </button>
-        </div>
-
         {/* Each row wraps on narrow screens: the search field, the wait stepper
             and the reorder controls together exceed a phone's width, so the
             controls drop to a second line rather than squeezing the field to
@@ -702,6 +682,8 @@ export default function RouteFinderForm({
       >
         {loading ? loadingLabel : submitLabel}
       </button>
+
+      </div>
 
       <ImageLocationModal
         open={imageTarget !== null}

@@ -7,6 +7,7 @@ import type { RouteFormValues } from "@/components/map/RouteFinderForm";
 import { getSavedTrip } from "@/lib/saved-trips";
 import { getFrequentTrips, getHomeTripSummary } from "@/lib/trip-history";
 import { filterPlacesInServiceArea } from "@/lib/trip-input";
+import { getPlannerTrip } from "@/lib/planner-restore";
 
 export const metadata: Metadata = { title: "Plan a trip" };
 
@@ -20,7 +21,7 @@ type SavedPlaceDoc = {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ savedTrip?: string }>;
+  searchParams: Promise<{ savedTrip?: string; tripHistoryId?: string; routeId?: string }>;
 }) {
   const session = await getRequestSession();
 
@@ -35,12 +36,16 @@ export default async function Home({
   const country = resolveCountry((profile as { country?: unknown } | null)?.country);
 
   // "Plan this trip" on the saved-trips page links here with the trip's id.
-  const savedTripId = (await searchParams).savedTrip?.trim();
+  const params = await searchParams;
+  const savedTripId = params.savedTrip?.trim();
+  const tripHistoryId = params.tripHistoryId?.trim();
+  const routeId = params.routeId?.trim();
 
-  const [{ upcomingCount }, frequentTrips, savedTrip] = await Promise.all([
+  const [{ upcomingCount }, frequentTrips, savedTrip, restoredTrip] = await Promise.all([
     getHomeTripSummary(session.user.id),
     getFrequentTrips(session.user.id, { country }),
     savedTripId ? getSavedTrip(session.user.id, savedTripId) : null,
+    tripHistoryId && routeId ? getPlannerTrip(session.user.id, tripHistoryId, routeId) : null,
   ]);
 
   // Only the user's own trip, and only in the country it was saved in: its
@@ -79,6 +84,8 @@ export default async function Home({
       savedPlaces={savedPlaces}
       frequentTrips={frequentTrips}
       tripToPlan={tripToPlan}
+      restoredTrip={restoredTrip?.country === country ? restoredTrip : null}
+      restoreError={Boolean(tripHistoryId || routeId) && (!restoredTrip || restoredTrip.country !== country)}
     />
   );
 }

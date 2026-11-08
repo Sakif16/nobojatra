@@ -177,7 +177,7 @@ function getRouteTravelDurationMin(route: StoredRoute, totalDurationMin: number)
   return Math.max(1, totalDurationMin - getRouteDwellDurationMin(route));
 }
 
-function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
+export function normalizeRouteCoords(coords: unknown): LatLngTuple[] {
   if (!Array.isArray(coords)) return [];
   return coords.filter((coord): coord is LatLngTuple => {
     if (!Array.isArray(coord) || coord.length < 2) return false;

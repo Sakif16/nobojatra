@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { ArrowRight, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCountryConfig } from "@/components/country/CountryProvider";
@@ -8,7 +8,9 @@ import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
 import { buttonVariants } from "@/components/ui/button";
 import SavedTripForm from "./SavedTripForm";
 import type { SavedTripDetail } from "./types";
-import BackLink from "@/components/BackLink";
+import PageHeader from "@/components/ui/page-header";
+import ListRow from "@/components/ui/list-row";
+import Panel from "@/components/ui/panel";
 import { readJson } from "@/lib/read-json";
 import {
   filterAndSortSavedTrips,
@@ -41,6 +43,7 @@ export default function SavedTripsManager({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<SavedTripDetail | null>(null);
   // The trip whose delete button was pressed and is waiting to be confirmed.
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
@@ -79,6 +82,10 @@ export default function SavedTripsManager({
       if (!response.ok) throw new Error("Delete failed");
 
       setTrips((current) => current.filter((trip) => trip.id !== tripId));
+      if (editingTrip?.id === tripId) {
+        setEditingTrip(null);
+        setShowForm(false);
+      }
     } catch {
       setError("Could not delete this trip. Please try again.");
     }
@@ -89,28 +96,17 @@ export default function SavedTripsManager({
 
   return (
     <div className="flex flex-col gap-5">
-      <BackLink href="/" label="Back to planner" />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Saved trips</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Your trips in {serviceAreaName}. Open one in the planner with its
-            places already filled in.
-          </p>
-        </div>
-
-        {!showForm && (
+      <PageHeader title="Saved trips" back={{ href: "/", label: "Back to planner" }} subtitle={`Your trips in ${serviceAreaName}. Open one in the planner with its places already filled in.`} actions={!showForm && (
           <button
             type="button"
-            onClick={() => setShowForm(true)}
+            onClick={() => { setEditingTrip(null); setShowForm(true); }}
             disabled={listFull}
             className={buttonVariants({ size: "md" })}
           >
             <Plus className="size-4" aria-hidden />
-            New trip
+            New saved trip
           </button>
-        )}
-      </div>
+        )} />
 
       {/* The limit is shown before it is hit, not discovered when a save fails. */}
       {!loading && !error && maxTrips !== null && (
@@ -149,10 +145,13 @@ export default function SavedTripsManager({
 
       {showForm && (
         <SavedTripForm
+          key={editingTrip?.id ?? "new"}
+          initialTrip={editingTrip}
           savedPlaces={savedPlaces}
           onCancel={() => setShowForm(false)}
           onCreated={(trip) => {
-            setTrips((current) => [trip, ...current]);
+            setTrips((current) => editingTrip ? current.map((item) => item.id === trip.id ? trip : item) : [trip, ...current]);
+            setEditingTrip(null);
             setShowForm(false);
           }}
         />
@@ -186,54 +185,14 @@ export default function SavedTripsManager({
       )}
 
       {shownTrips.map((trip) => (
-        <article key={trip.id} className="rounded-2xl border border-border bg-card p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold text-foreground">
-                {trip.name}
-              </h3>
-              {/* Two lines rather than one truncated one: on a phone the
-                  column is narrow enough that truncating cuts the route off
-                  inside the origin, never reaching the destination. */}
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                {trip.origin.label} → {trip.destination.label}
-              </p>
-              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Users className="size-3" aria-hidden />
-                  {trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}
-                </span>
-                {trip.stops.length > 0 && (
-                  <span>
-                    {trip.stops.length} stop{trip.stops.length === 1 ? "" : "s"}
-                  </span>
-                )}
-              </p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
-              {/* Opens the planner with this trip filled in. The search is left
-                  to the user, who may want to set a departure time first. */}
-              <Link
-                href={`/?savedTrip=${trip.id}`}
-                className={buttonVariants({ variant: "outline_primary", size: "md" })}
-              >
-                Plan this trip
-                <ArrowRight className="size-4" aria-hidden />
-              </Link>
-              <button
-                type="button"
-                aria-label={`Delete ${trip.name}`}
-                aria-expanded={confirmingDeleteId === trip.id}
-                onClick={() =>
-                  setConfirmingDeleteId((current) => (current === trip.id ? null : trip.id))
-                }
-                className="rounded-md border border-border p-1.5 text-muted-foreground transition hover:bg-muted hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" aria-hidden />
-              </button>
-            </div>
-          </div>
+        <article key={trip.id}><Panel padding="sm">
+          <ListRow staticRow className="flex-wrap p-1" leading={<MapPin className="size-4 text-primary" aria-hidden />} title={trip.name}
+            meta={<><span className="block line-clamp-2">{trip.origin.label} → {trip.destination.label}</span><span className="block">{trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}{trip.stops.length > 0 && ` · ${trip.stops.length} stop${trip.stops.length === 1 ? "" : "s"}`}</span></>}
+            trailing={<span className="flex flex-wrap items-center gap-1.5">
+              <Link href={`/?savedTrip=${trip.id}`} className={buttonVariants({ variant: "outline_primary", size: "md" })}>Plan this trip <ArrowRight className="size-4" aria-hidden /></Link>
+              <button type="button" aria-label={`Edit ${trip.name}`} onClick={() => { setEditingTrip(trip); setShowForm(true); setConfirmingDeleteId(null); }} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="size-4" aria-hidden /></button>
+              <button type="button" aria-label={`Delete ${trip.name}`} aria-expanded={confirmingDeleteId === trip.id} onClick={() => setConfirmingDeleteId((current) => current === trip.id ? null : trip.id)} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="size-4" aria-hidden /></button>
+            </span>} />
 
           {/* Deleting cannot be undone, so the bin only asks. The trip goes
               when this is confirmed. */}
@@ -260,7 +219,7 @@ export default function SavedTripsManager({
               </div>
             </div>
           )}
-        </article>
+        </Panel></article>
       ))}
     </div>
   );

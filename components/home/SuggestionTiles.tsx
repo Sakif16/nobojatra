@@ -82,7 +82,7 @@ export default function SuggestionTiles() {
         {features.map((feature) => (
           <div
             key={feature.label}
-            className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_rgba(249,151,57,0.18)]"
+            className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_color-mix(in_oklch,var(--primary),transparent_82%)]"
           >
             <TileBody feature={feature} />
           </div>

@@ -14,7 +14,7 @@ export default function PasswordRequirements({ password }: Props) {
   if (password.length === 0) return null;
 
   return (
-    <ul aria-live="polite" className="mt-3 space-y-1.5">
+    <ul aria-label="Password requirements" aria-live="polite" className="mt-3 space-y-1.5">
       {PASSWORD_RULES.map((rule) => {
         const met = rule.test(password);
 
@@ -32,7 +32,7 @@ export default function PasswordRequirements({ password }: Props) {
                 met ? "bg-primary/15" : "bg-muted"
               )}
             >
-              {met ? <Check size={10} /> : <X size={10} />}
+              {met ? <Check size={10} aria-hidden /> : <X size={10} aria-hidden />}
             </span>
             {rule.label}
             <span className="sr-only">{met ? " — met" : " — not met"}</span>

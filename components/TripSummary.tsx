@@ -2,8 +2,6 @@
 
 import {
   AlertTriangle,
-  ArrowRight,
-  Calendar,
   Camera,
   Cloud,
   CloudOff,
@@ -12,7 +10,6 @@ import {
   History,
   MapPin,
   TrafficCone,
-  Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
@@ -27,7 +24,12 @@ import { getFareSourceLabel } from '@/lib/fare-source'
 import { buildPlanSummary } from '@/lib/plan-summary'
 import { formatTripDateTime } from '@/lib/trip-time'
 import { getWeatherReadingLabel } from '@/lib/weather-reading'
-import BackLink from "@/components/BackLink";
+import PageHeader from '@/components/ui/page-header'
+import Panel from '@/components/ui/panel'
+import Chip from '@/components/ui/chip'
+import ListRow from '@/components/ui/list-row'
+import EmptyState from '@/components/ui/empty-state'
+import { SkeletonRows } from '@/components/ui/skeleton'
 
 type WeatherBand = 'low' | 'moderate' | 'severe'
 type CongestionLevel = 'low' | 'moderate' | 'high' | 'severe'
@@ -181,9 +183,7 @@ export default function TripSummary({
     return (
       <main className="flex-1">
         <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-          <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-            Loading trip summary…
-          </p>
+          <SkeletonRows label="Loading trip summary…" />
         </div>
       </main>
     )
@@ -193,12 +193,7 @@ export default function TripSummary({
     return (
       <main className="flex-1">
         <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-          <p role="alert" className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error ?? 'Trip not found.'}
-          </p>
-          <Link href="/" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">
-            ← Back home
-          </Link>
+          <div role="alert"><EmptyState title="Trip not found" description={error ?? 'Trip not found.'} action={<Link href="/" className="text-sm font-medium text-primary hover:underline">Back to planner</Link>} /></div>
         </div>
       </main>
     )
@@ -240,136 +235,43 @@ export default function TripSummary({
   return (
     <main className="flex-1">
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <BackLink href="/" label="Back to planner" className="mb-4" />
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            {title}
-          </h1>
-          {/* Stacked on a phone: side by side, two long addresses truncate to
-              a few characters each and name neither place. */}
-          <p className="mt-2 flex min-w-0 flex-col text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-2">
-            <span className="truncate">{trip.originLabel}</span>
-            <ArrowRight className="my-0.5 size-3 shrink-0 rotate-90 sm:my-0 sm:size-3.5 sm:rotate-0" />
-            <span className="truncate">{trip.destinationLabel}</span>
-          </p>
-          {trip.vehicle && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              A saved plan is not a booking. No ride provider has been contacted.
-            </p>
-          )}
-        </div>
-
-        {!trip.vehicle ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-            <p className="text-sm font-medium text-foreground">No vehicle chosen yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Go back to the fare results and pick a ride to see a summary here.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {/* Chosen vehicle + cost */}
-            <div className="rounded-2xl border border-border bg-card px-4 py-4">
-              <div className="flex items-center gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-lg">
-                  {ICONS[vehicleKey] ?? '🚘'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-semibold text-foreground">
-                    {trip.vehicle.displayName}
-                  </p>
-                  <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Users className="size-3" aria-hidden />
-                    Up to {trip.vehicle.maxPassengers} · {trip.passengerCount} passenger
-                    {trip.passengerCount > 1 ? 's' : ''}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-lg font-bold tabular-nums text-foreground">
-                    {formatFare(trip.vehicle.fareLow, trip.vehicle.fareHigh, trip.country)}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {getFareSourceLabel(trip.vehicle.fareSource) ?? 'Estimated'}
-                  </div>
-                </div>
-              </div>
-              {trip.vehicle.fareSourceNote && (
-                <p className="mt-3 text-xs text-muted-foreground">{trip.vehicle.fareSourceNote}</p>
-              )}
+        <div className="mb-6"><PageHeader title={title} back={{ href: '/', label: 'Back to planner' }} subtitle={trip.vehicle ? 'A saved plan is not a booking. No ride provider has been contacted.' : 'Route details from your trip history.'} /></div>
+        <div className="flex flex-col gap-4">
+          <Panel>
+            <h2 className="text-sm font-semibold text-foreground">Route</h2>
+            <ol className="mt-3 space-y-0">
+              <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center border-l-2 border-border text-primary">●</span><span className="min-w-0 pb-4 text-sm text-foreground">{trip.originLabel}</span></li>
+              {trip.itinerary ? trip.itinerary.legs.map((leg, index) => {
+                const last = index === trip.itinerary!.legs.length - 1
+                return <li key={`${leg.fromLabel}-${leg.toLabel}-${index}`} className="flex gap-3"><span aria-hidden="true" className={`flex w-6 shrink-0 justify-center text-primary ${last ? '' : 'border-l-2 border-border'}`}>{last ? '■' : '●'}</span><span className={`min-w-0 text-sm text-foreground ${last ? '' : 'pb-4'}`}><span className="block">{leg.toLabel}</span><span className="block text-xs text-muted-foreground">{leg.distanceKm} km · {formatMinutes(leg.durationMin)}{leg.dwellAfterMin > 0 ? ` · ${formatMinutes(leg.dwellAfterMin)} wait` : ''}</span></span></li>
+              }) : <>
+                {trip.stopCount > 0 && <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center border-l-2 border-border text-primary">●</span><span className="pb-4 text-sm text-muted-foreground">{trip.stopCount} stop{trip.stopCount === 1 ? '' : 's'} · details unavailable</span></li>}
+                <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center text-primary">■</span><span className="text-sm text-foreground">{trip.destinationLabel}</span></li>
+              </>}
+            </ol>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Chip label>{trip.distanceKm != null ? `${trip.distanceKm} km` : 'Distance unavailable'}</Chip>
+              <Chip label>{formatMinutes(trip.durationMin)}</Chip><Chip label>{trip.passengerCount} passenger{trip.passengerCount === 1 ? '' : 's'}</Chip>
+              <Chip label>Est. departure: {trip.estimatedDepartureAt ? formatTripDateTime(trip.estimatedDepartureAt, trip.timeZone, { year: false }) : '—'}</Chip>
+              <Chip label>Est. arrival: {trip.estimatedArrivalAt ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone, { year: false }) : '—'}</Chip>
             </div>
-
-            {/* Time */}
-            <div className="grid grid-cols-2 gap-4 rounded-2xl border border-border bg-card px-4 py-4 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Total time</p>
-                <p className="mt-0.5 font-semibold text-foreground">{formatMinutes(trip.durationMin)}</p>
+            {trip.itinerary && <p className="mt-3 text-xs text-muted-foreground">{formatMinutes(trip.itinerary.travelDurationMin)} travel{trip.itinerary.dwellDurationMin > 0 ? ` · ${formatMinutes(trip.itinerary.dwellDurationMin)} wait` : ''}</p>}
+            {trip.vehicle ? <>
+              <ListRow staticRow className="mt-4 border-border bg-background/40" leading={ICONS[vehicleKey] ?? '🚘'} title={trip.vehicle.displayName}
+                meta={`Up to ${trip.vehicle.maxPassengers} · ${trip.passengerCount} passenger${trip.passengerCount === 1 ? '' : 's'}`}
+                trailing={<span className="block text-right"><span className="block text-sm font-bold tabular-nums text-foreground">{formatFare(trip.vehicle!.fareLow, trip.vehicle!.fareHigh, trip.country)}</span><span className="block text-xs text-muted-foreground">{getFareSourceLabel(trip.vehicle!.fareSource) ?? 'Estimated'}</span></span>} />
+              {trip.vehicle.fareSourceNote && <p className="mt-2 text-xs text-muted-foreground">{trip.vehicle.fareSourceNote}</p>}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Link href="/" className={buttonVariants({ variant: 'outline', size: 'md' })}><MapPin className="size-4" /> Plan another trip</Link>
+                <Link href="/trip-history" className={buttonVariants({ size: 'md' })}><History className="size-4" /> View trip history</Link>
+                <button type="button" onClick={() => void copyPlan()} className={buttonVariants({ variant: 'outline', size: 'md' })}><Copy className="size-4" /> Copy plan</button>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Distance</p>
-                <p className="mt-0.5 font-semibold text-foreground">
-                  {trip.distanceKm != null ? `${trip.distanceKm} km` : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Calendar className="size-3" aria-hidden />
-                  Est. departure
-                </p>
-                <p className="mt-0.5 font-semibold text-foreground">
-                  {trip.estimatedDepartureAt ? formatTripDateTime(trip.estimatedDepartureAt, trip.timeZone, { year: false }) : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Calendar className="size-3" aria-hidden />
-                  Est. arrival
-                </p>
-                <p className="mt-0.5 font-semibold text-foreground">
-                  {trip.estimatedArrivalAt ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone, { year: false }) : '—'}
-                </p>
-              </div>
-            </div>
-
-            {trip.itinerary && (
-              <div className="rounded-2xl border border-border bg-card px-4 py-4">
-                <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  <MapPin className="size-3.5" aria-hidden />
-                  Itinerary
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                  {formatMinutes(trip.itinerary.travelDurationMin)} travel
-                  {trip.itinerary.dwellDurationMin > 0
-                    ? ` · ${formatMinutes(trip.itinerary.dwellDurationMin)} wait`
-                    : ''}
-                </p>
-                <div className="mt-3 space-y-2">
-                  {trip.itinerary.legs.map((leg, index) => (
-                    <div
-                      key={`${leg.fromLabel}-${leg.toLabel}-${index}`}
-                      className="rounded-xl border border-border bg-background/40 px-3 py-2.5 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="min-w-0 truncate font-medium text-foreground">
-                          {leg.fromLabel} → {leg.toLabel}
-                        </p>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {leg.distanceKm} km
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatMinutes(leg.durationMin)}
-                        {leg.dwellAfterMin > 0
-                          ? ` · ${formatMinutes(leg.dwellAfterMin)} wait`
-                          : ''}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+              {copyStatus && <p role="status" className="mt-2 text-xs text-muted-foreground">{copyStatus}</p>}
+            </> : <div className="mt-4"><EmptyState title="No vehicle chosen yet" description="Go back to the fare results and pick a ride to see a summary here." /></div>}
+          </Panel>
+          {trip.vehicle && <>
             {/* Weather/traffic snapshot — explicitly a point-in-time reading */}
-            <div className="rounded-2xl border border-border bg-card px-4 py-4">
+            <Panel>
               <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 <Camera className="size-3.5" aria-hidden />
                 Conditions when you saved this plan
@@ -439,35 +341,10 @@ export default function TripSummary({
                   </div>
                 </div>
               </div>
-            </div>
+            </Panel>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href="/" className={buttonVariants({ variant: 'outline', size: 'md' })}>
-                <MapPin className="size-4" />
-                Plan another trip
-              </Link>
-              <Link href="/trip-history" className={buttonVariants({ size: 'md' })}>
-                <History className="size-4" />
-                View trip history
-              </Link>
-              {/* Puts the plan on the clipboard as a few lines of text, to
-                  paste into a message. Nothing is sent anywhere. */}
-              <button
-                type="button"
-                onClick={() => void copyPlan()}
-                className={buttonVariants({ variant: 'outline', size: 'md' })}
-              >
-                <Copy className="size-4" />
-                Copy plan
-              </button>
-            </div>
-            {copyStatus && (
-              <p role="status" className="text-xs text-muted-foreground">
-                {copyStatus}
-              </p>
-            )}
-          </div>
-        )}
+          </>}
+        </div>
       </div>
     </main>
   )

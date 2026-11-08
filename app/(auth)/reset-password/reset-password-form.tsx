@@ -7,6 +7,7 @@ import { type FormEvent, useState } from "react";
 import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import { buttonVariants } from "@/components/ui/button";
+import StatusMessage from "@/components/ui/status-message";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_REQUIREMENT_MESSAGE, isPasswordValid } from "@/lib/password";
 
@@ -128,20 +129,10 @@ export default function ResetPasswordForm({
         />
 
         {message ? (
-          <p
-            role="status"
-            className="rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            {message}
-          </p>
+          <StatusMessage tone="success">{message}</StatusMessage>
         ) : null}
         {errorMessage ? (
-          <p
-            role="alert"
-            className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {errorMessage}
-          </p>
+          <StatusMessage>{errorMessage}</StatusMessage>
         ) : null}
 
         <button
@@ -151,7 +142,7 @@ export default function ResetPasswordForm({
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="motion-safe:animate-spin" />
               Resetting…
             </>
           ) : (

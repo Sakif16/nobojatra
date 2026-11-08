@@ -14,6 +14,7 @@ export type SavedPlaceOption = {
 };
 
 type Props = {
+  id?: string;
   placeholder: string;
   value: string;
   onChange: (label: string) => void;
@@ -26,6 +27,7 @@ type Props = {
 };
 
 export default function PlaceAutocomplete({
+  id,
   placeholder,
   value,
   onChange,
@@ -121,6 +123,7 @@ export default function PlaceAutocomplete({
         </span>
       ) : null}
       <input
+        id={id}
         type="text"
         placeholder={placeholder}
         value={value}

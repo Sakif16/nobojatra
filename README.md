@@ -86,6 +86,7 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `NOMINATIM_BASE_URL` | Optional | Place-search server. Defaults to the public OpenStreetMap one |
 | `OPENWEATHER_BASE_URL` | Optional | OpenWeatherMap API URL. Defaults to the standard one |
 | `DEMO_BUDGET_<PROVIDER>` | Optional | Daily cap on calls to one provider, for example `DEMO_BUDGET_NOMINATIM=500`. Providers: `NOMINATIM`, `OPENROUTESERVICE`, `TOMTOM_ROUTING`, `TOMTOM_TILES`, `OPENWEATHER`, `PATHAO`. Defaults are in `lib/provider-budget.ts` |
+| `NEXT_PUBLIC_CARTO_API_KEY` | Optional | Public, website-restricted CARTO basemap key. Without it, the map uses OpenStreetMap tiles. Set it before building |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Leave unset | Mapbox is not used. Setting it switches to Mapbox map layers that aren't configured correctly |
 
 Never commit `.env` or put a real key in the code. A secret scan runs on every pull request and on every push to `main`.

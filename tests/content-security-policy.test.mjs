@@ -43,13 +43,13 @@ test("each outside origin is allowed for the one purpose that needs it", () => {
   const { LIVE_CAMS_ORIGIN } = load("lib/live-cams.ts");
   const policy = build({ photoModelUrl: TM_MODEL });
 
-  // Map tiles are images, from OpenStreetMap's servers and their a/b/c mirrors.
+  // CARTO's tile subdomains are allowed for images.
   assert.deepEqual(policy["img-src"], [
     "'self'",
     "blob:",
     "data:",
+    "https://*.basemaps.cartocdn.com",
     "https://tile.openstreetmap.org",
-    "https://*.tile.openstreetmap.org",
   ]);
   // The model link answers with a redirect to Google Cloud Storage; allowing
   // only the first host leaves photo search unable to download anything.

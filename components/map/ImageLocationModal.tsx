@@ -8,6 +8,8 @@ import { classifyLocationImage, type LocationPrediction } from "@/lib/image-clas
 import { resolveLocationClass, MIN_CONFIDENCE } from "@/lib/image-location-classes";
 import type { PlaceResult } from "@/lib/geocode";
 import { cn } from "@/lib/utils";
+import Panel from "@/components/ui/panel";
+import { Dialog } from "@base-ui/react/dialog";
 
 type Props = {
   open: boolean;
@@ -108,18 +110,18 @@ function ImageLocationModalContent({ onClose, onConfirm }: Omit<Props, "open">) 
     // Scrolls rather than clipping: with a preview loaded the card is taller
     // than a phone's viewport in landscape, and my-auto still centres it
     // whenever there is room.
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-background/80 p-4 backdrop-blur-sm sm:items-center">
-      <div className="my-auto w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-6">
+    <Dialog.Root open onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
+    <Dialog.Portal><Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm" />
+    <Dialog.Viewport className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain p-4 sm:items-center">
+      <Dialog.Popup className="my-auto w-full max-w-md outline-none"><Panel padding="lg" className="shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Identify location from a photo</h2>
-          <button
-            type="button"
-            onClick={handleClose}
+          <Dialog.Title className="text-lg font-semibold text-foreground">Identify location from a photo</Dialog.Title>
+          <Dialog.Close
             aria-label="Close"
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <X size={18} />
-          </button>
+          </Dialog.Close>
         </div>
 
         {/* Dropzone / preview */}
@@ -163,13 +165,13 @@ function ImageLocationModalContent({ onClose, onConfirm }: Omit<Props, "open">) 
         <div className="mt-3 min-h-[20px] text-sm">
           {status === "loading-model" && (
             <p className="flex items-center gap-1.5 text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-3.5 motion-safe:animate-spin" />
               Loading model…
             </p>
           )}
           {status === "classifying" && (
             <p className="flex items-center gap-1.5 text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-3.5 motion-safe:animate-spin" />
               Identifying location…
             </p>
           )}
@@ -222,7 +224,7 @@ function ImageLocationModalContent({ onClose, onConfirm }: Omit<Props, "open">) 
             Confirm
           </button>
         </div>
-      </div>
-    </div>
+      </Panel></Dialog.Popup>
+    </Dialog.Viewport></Dialog.Portal></Dialog.Root>
   );
 }

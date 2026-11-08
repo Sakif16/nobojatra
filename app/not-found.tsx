@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import EmptyState from "@/components/ui/empty-state";
+import { MapPinOff } from "lucide-react";
 
 export const metadata: Metadata = { title: "Page not found" };
 
@@ -8,19 +10,12 @@ export const metadata: Metadata = { title: "Page not found" };
 export default function NotFound() {
   return (
     <main className="flex min-h-screen flex-1 items-center justify-center px-4 py-16">
-      <div className="max-w-md text-center">
-        <p className="text-sm font-medium text-primary">404</p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          This page does not exist
-        </h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          The link may be mistyped, or the trip it pointed to may have been removed.
-        </p>
-        <div className="mt-6">
+      <div className="w-full max-w-md text-center">
+        <EmptyState pageHeading icon={<MapPinOff className="size-7" />} title="404 · This page does not exist" description="The link may be mistyped, or the trip it pointed to may have been removed." action={<div className="mt-3">
           <Link href="/" className={buttonVariants({ size: "md" })}>
             Back to planner
           </Link>
-        </div>
+        </div>} />
       </div>
     </main>
   );

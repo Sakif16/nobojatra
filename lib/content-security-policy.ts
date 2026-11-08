@@ -7,7 +7,7 @@ import { LIVE_CAMS_ORIGIN } from "@/lib/live-cams";
  * the app's own origin except the entries below, and each of those is here
  * because a feature stops working without it:
  *
- *   - Map tiles are images from OpenStreetMap's tile servers.
+ *   - Map tiles are images from CARTO, Mapbox, or OpenStreetMap.
  *   - The photo-search model is fetched from Teachable Machine, which answers
  *     with a redirect to Google Cloud Storage, so both have to be allowed.
  *   - The live-cams page frames one third-party app.
@@ -16,10 +16,7 @@ import { LIVE_CAMS_ORIGIN } from "@/lib/live-cams";
  * browser otherwise blocks it and says so in the console.
  */
 
-const OPENSTREETMAP_TILES = [
-  "https://tile.openstreetmap.org",
-  "https://*.tile.openstreetmap.org",
-];
+const CARTO_TILES = "https://*.basemaps.cartocdn.com";
 
 const MAPBOX_API = "https://api.mapbox.com";
 
@@ -88,7 +85,8 @@ export function buildContentSecurityPolicy({
       "'self'",
       "blob:",
       "data:",
-      ...OPENSTREETMAP_TILES,
+      CARTO_TILES,
+      "https://tile.openstreetmap.org",
       ...(mapboxEnabled ? [MAPBOX_API] : []),
     ],
     "font-src": ["'self'"],
