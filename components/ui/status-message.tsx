@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 
 /**
  * The one way to tell the user how something went.
@@ -28,16 +29,19 @@ export default function StatusMessage({
   className?: string;
   children: React.ReactNode;
 }) {
+  const Icon = tone === "error" ? AlertCircle : tone === "success" ? CheckCircle2 : Info;
   return (
     <p
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        size === "sm" ? "rounded-xl px-3 py-2 text-xs" : "rounded-2xl px-4 py-3 text-sm",
+        size === "sm" ? "rounded-xl px-3 py-2 text-xs" : "rounded-xl px-3 py-2.5 text-sm",
+        "flex items-start gap-2",
         TONE_STYLES[tone],
         className,
       )}
     >
-      {children}
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0">{children}</span>
     </p>
   );
 }

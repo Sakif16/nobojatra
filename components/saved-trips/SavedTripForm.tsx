@@ -12,6 +12,8 @@ import { clampPassengerCount } from "@/lib/vehicle-capacity";
 import type { SavedTripDetail } from "./types";
 import { readJson } from "@/lib/read-json";
 import StatusMessage from "@/components/ui/status-message";
+import Panel from "@/components/ui/panel";
+import { savedTripRequest } from "./saved-trip-request";
 
 /**
  * Creates a named trip: a name, two places and a party size.
@@ -23,19 +25,21 @@ export default function SavedTripForm({
   savedPlaces,
   onCreated,
   onCancel,
+  initialTrip,
 }: {
   savedPlaces: SavedPlaceOption[];
   onCreated: (trip: SavedTripDetail) => void;
   onCancel: () => void;
+  initialTrip?: SavedTripDetail | null;
 }) {
-  const [name, setName] = useState("");
-  const [originLabel, setOriginLabel] = useState("");
-  const [origin, setOrigin] = useState<PlaceResult | null>(null);
-  const [destinationLabel, setDestinationLabel] = useState("");
-  const [destination, setDestination] = useState<PlaceResult | null>(null);
+  const [name, setName] = useState(initialTrip?.name ?? "");
+  const [originLabel, setOriginLabel] = useState(initialTrip?.origin.label ?? "");
+  const [origin, setOrigin] = useState<PlaceResult | null>(initialTrip?.origin ?? null);
+  const [destinationLabel, setDestinationLabel] = useState(initialTrip?.destination.label ?? "");
+  const [destination, setDestination] = useState<PlaceResult | null>(initialTrip?.destination ?? null);
   // The field keeps what was typed, so it can be emptied while editing; the
   // count the form acts on is always inside the allowed range.
-  const [passengerInput, setPassengerInput] = useState("1");
+  const [passengerInput, setPassengerInput] = useState(String(initialTrip?.passengerCount ?? 1));
   const passengerCount = clampPassengerCount(passengerInput);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,16 +55,10 @@ export default function SavedTripForm({
     setSubmitting(true);
 
     try {
-      const response = await fetch("/api/saved-trips", {
-        method: "POST",
+      const response = await fetch(initialTrip ? `/api/saved-trips/${initialTrip.id}` : "/api/saved-trips", {
+        method: initialTrip ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          origin,
-          destination,
-          stops: [],
-          passengerCount,
-        }),
+        body: JSON.stringify(savedTripRequest({ name, origin, destination, passengerCount, initialTrip })),
       });
 
       const payload = await readJson<{
@@ -82,11 +80,12 @@ export default function SavedTripForm({
   }
 
   return (
-    <form
+    <Panel padding="lg"><form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5"
+      className="flex flex-col gap-4"
     >
-      <h2 className="text-sm font-semibold text-foreground">New saved trip</h2>
+      <h2 className="text-sm font-semibold text-foreground">{initialTrip ? "Edit saved trip" : "New saved trip"}</h2>
+      {initialTrip && initialTrip.stops.length > 0 && <p className="text-xs text-muted-foreground">Your {initialTrip.stops.length} saved stop{initialTrip.stops.length === 1 ? "" : "s"} will be kept.</p>}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="trip-name" className="text-xs font-medium text-muted-foreground">
@@ -174,6 +173,6 @@ export default function SavedTripForm({
           Cancel
         </button>
       </div>
-    </form>
+    </form></Panel>
   );
 }

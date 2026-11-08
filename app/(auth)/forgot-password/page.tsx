@@ -1,10 +1,11 @@
 "use client";
 
-import { Loader2, MailCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import TextField from "@/components/auth/TextField";
 import { buttonVariants } from "@/components/ui/button";
+import StatusMessage from "@/components/ui/status-message";
 import { authClient } from "@/lib/auth-client";
 import { isValidEmail } from "@/lib/password";
 
@@ -76,21 +77,10 @@ export default function ForgotPasswordPage() {
         />
 
         {message ? (
-          <p
-            role="status"
-            className="flex items-start gap-2 rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            <MailCheck size={16} className="mt-0.5 flex-shrink-0" />
-            {message}
-          </p>
+          <StatusMessage tone="success">{message}</StatusMessage>
         ) : null}
         {errorMessage ? (
-          <p
-            role="alert"
-            className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {errorMessage}
-          </p>
+          <StatusMessage>{errorMessage}</StatusMessage>
         ) : null}
 
         <button
@@ -100,7 +90,7 @@ export default function ForgotPasswordPage() {
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="motion-safe:animate-spin" />
               Sending…
             </>
           ) : (

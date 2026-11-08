@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Home, Briefcase, MapPin, Minus, Plus, Pencil, X } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { fieldClassName } from "@/components/ui/field-styles";
 import PlaceAutocomplete from "@/components/map/PlaceAutocomplete";
@@ -13,7 +13,12 @@ import {
 } from "@/lib/country-config";
 import type { PlaceResult } from "@/lib/geocode";
 import { readJson, UnexpectedResponseError } from "@/lib/read-json";
-import BackLink from "@/components/BackLink";
+import PageHeader from "@/components/ui/page-header";
+import Panel from "@/components/ui/panel";
+import Chip from "@/components/ui/chip";
+import ListRow from "@/components/ui/list-row";
+import { placeAfterTextChange, savedPlaceDraftError } from "@/lib/profile-place-draft";
+import { Dialog } from "@base-ui/react/dialog";
 
 type TravelPriority = "time" | "cost" | "comfort";
 
@@ -161,6 +166,11 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
     event.preventDefault();
     setMessage("");
     setErrorMessage("");
+    const draftError = savedPlaceDraftError([homeRow, workRow, ...customRows], customRows);
+    if (draftError) {
+      setErrorMessage(draftError);
+      return;
+    }
     setIsSaving(true);
 
     // The button is released in `finally`, so a dropped connection or a reply
@@ -248,13 +258,16 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
-      <div>
-        <BackLink href="/" label="Back to planner" className="mb-4" />
-        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Profile</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Manage your account and travel defaults.</p>
-      </div>
+      <PageHeader title="Profile" back={{ href: "/", label: "Back to planner" }} subtitle="Manage your account and travel defaults." />
 
-      <form onSubmit={handleSave} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start">
+      <nav aria-label="Profile sections" className="flex flex-wrap gap-2 lg:sticky lg:top-[calc(var(--app-header-height)+1rem)] lg:flex-col">
+        {[["account", "Account"], ["travel-defaults", "Travel defaults"], ["saved-places", "Saved places"], ["danger-zone", "Danger zone"]].map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-full px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{label}</a>)}
+      </nav>
+      <div className="space-y-6">
+
+      <form onSubmit={handleSave} className="space-y-4">
+        <Panel id="account" padding="lg" className="scroll-mt-24"><h2 className="mb-4 text-lg font-semibold">Account</h2>
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <label htmlFor="name" className="mb-2 block text-sm font-medium">
@@ -288,26 +301,14 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 md:grid-cols-2">
+        </Panel>
+        <Panel id="travel-defaults" padding="lg" className="scroll-mt-24"><h2 className="mb-4 text-lg font-semibold">Travel defaults</h2>
+        <div className="grid gap-6 md:grid-cols-2">
           <div>
             <span className="mb-2 block text-sm font-medium">Default Travel Priority</span>
-            {/* Same segmented-control shape as the trip form's Leave now / Schedule toggle. */}
-            <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-input">
+            <div role="group" aria-label="Default travel priority" className="flex flex-wrap gap-2">
               {travelPriorities.map((priority) => (
-                <label
-                  key={priority.value}
-                  className="flex h-11 cursor-pointer items-center justify-center bg-secondary/60 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground"
-                >
-                  <input
-                    type="radio"
-                    name="defaultTravelPriority"
-                    value={priority.value}
-                    checked={defaultTravelPriority === priority.value}
-                    onChange={() => setDefaultTravelPriority(priority.value)}
-                    className="sr-only"
-                  />
-                  {priority.label}
-                </label>
+                <Chip key={priority.value} selected={defaultTravelPriority === priority.value} buttonProps={{ onClick: () => setDefaultTravelPriority(priority.value) }}>{priority.label}</Chip>
               ))}
             </div>
           </div>
@@ -339,26 +340,20 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </div>
 
           <div>
-            <label htmlFor="passengers" className="mb-2 block text-sm font-medium">
+            <span id="passengers-label" className="mb-2 block text-sm font-medium">
               Default Passenger Count
-            </label>
-            <select
-              id="passengers"
-              value={defaultPassengerCount}
-              onChange={(event) => setDefaultPassengerCount(Number(event.target.value))}
-              className={fieldClassName(false, "h-11 py-0")}
-            >
-              {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
-            </select>
+            </span>
+            <div role="group" aria-labelledby="passengers-label" className="inline-flex items-center gap-3 rounded-full border border-input bg-secondary/40 p-1">
+              <button type="button" aria-label="Decrease default passengers" disabled={defaultPassengerCount <= 1} onClick={() => setDefaultPassengerCount((count) => Math.max(1, count - 1))} className="flex size-9 items-center justify-center rounded-full hover:bg-muted disabled:opacity-40"><Minus className="size-4" aria-hidden /></button>
+              <span aria-live="polite" className="min-w-4 text-center tabular-nums">{defaultPassengerCount}</span>
+              <button type="button" aria-label="Increase default passengers" disabled={defaultPassengerCount >= 8} onClick={() => setDefaultPassengerCount((count) => Math.min(8, count + 1))} className="flex size-9 items-center justify-center rounded-full hover:bg-muted disabled:opacity-40"><Plus className="size-4" aria-hidden /></button>
+            </div>
           </div>
         </div>
+        </Panel>
 
         {/* ── Saved Places ── */}
-        <div className="mt-8">
+        <Panel id="saved-places" padding="lg" className="scroll-mt-24">
           <span className="mb-1 block text-sm font-medium">Saved Places</span>
           <p className="mb-3 text-xs text-muted-foreground">
             These appear as one-tap shortcuts when searching for an origin or
@@ -368,71 +363,25 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </p>
 
           <div className="space-y-2.5">
-            {/* Home — fixed label */}
-            <div className="flex items-center gap-3 rounded-xl border border-input bg-secondary/40 px-3 py-2.5">
-              <span className="w-14 flex-shrink-0 text-sm font-medium text-foreground">Home</span>
-              <div className="flex-1">
-                <PlaceAutocomplete
-                  placeholder="Search for your home address"
-                  value={homeRow.placeLabel}
-                  onChange={(v) => setHomeRow((r) => ({ ...r, placeLabel: v, place: v ? r.place : null }))}
-                  onSelect={(place) => setHomeRow((r) => ({ ...r, place, placeLabel: place.label }))}
-                  className="border-none bg-transparent px-0 py-0 focus:bg-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Work — fixed label */}
-            <div className="flex items-center gap-3 rounded-xl border border-input bg-secondary/40 px-3 py-2.5">
-              <span className="w-14 flex-shrink-0 text-sm font-medium text-foreground">Work</span>
-              <div className="flex-1">
-                <PlaceAutocomplete
-                  placeholder="Search for your work address"
-                  value={workRow.placeLabel}
-                  onChange={(v) => setWorkRow((r) => ({ ...r, placeLabel: v, place: v ? r.place : null }))}
-                  onSelect={(place) => setWorkRow((r) => ({ ...r, place, placeLabel: place.label }))}
-                  className="border-none bg-transparent px-0 py-0 focus:bg-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Custom rows — editable label */}
-            {customRows.map((row) => (
-              <div
-                key={row.key}
-                className="flex items-center gap-3 rounded-xl border border-input bg-secondary/40 px-3 py-2.5"
-              >
-                <input
-                  type="text"
-                  value={row.label}
-                  onChange={(e) => updateCustomLabel(row.key, e.target.value)}
-                  placeholder="Label"
-                  maxLength={40}
-                  className="w-20 flex-shrink-0 rounded-lg border-none bg-transparent px-1 text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground focus:bg-secondary"
-                />
-                <div className="flex-1">
-                  <PlaceAutocomplete
-                    placeholder="Search for a place"
-                    value={row.placeLabel}
-                    onChange={(v) =>
-                      setCustomRows((rows) =>
-                        rows.map((r) => (r.key === row.key ? { ...r, placeLabel: v, place: v ? r.place : null } : r)),
-                      )
-                    }
-                    onSelect={(place) => selectCustomPlace(row.key, place)}
-                    className="border-none bg-transparent px-0 py-0 focus:bg-transparent"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeCustomRow(row.key)}
-                  aria-label="Remove saved place"
-                  className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ))}
+            <ListRow staticRow className="border-input bg-secondary/40" leading={<Home className="size-4 text-primary" aria-hidden />} title="Home"
+              meta={<PlaceAutocomplete id="profile-home-place" placeholder="Search for your home address" value={homeRow.placeLabel}
+                onChange={(v) => setHomeRow((r) => ({ ...r, placeLabel: v, place: placeAfterTextChange(r.place, v) }))}
+                onSelect={(place) => setHomeRow((r) => ({ ...r, place, placeLabel: place.label }))}
+                className="border-none bg-transparent px-0 py-0 focus:bg-transparent" />}
+              trailing={<span className="flex"><button type="button" onClick={() => document.getElementById("profile-home-place")?.focus()} aria-label="Edit home address" className="cursor-pointer rounded-full p-2 text-muted-foreground hover:bg-muted"><Pencil className="size-4" aria-hidden /></button><button type="button" aria-label="Remove home address" onClick={() => setHomeRow((row) => ({ ...row, placeLabel: "", place: null }))} className="rounded-full p-2 text-muted-foreground hover:bg-muted"><X className="size-4" aria-hidden /></button></span>} />
+            <ListRow staticRow className="border-input bg-secondary/40" leading={<Briefcase className="size-4 text-primary" aria-hidden />} title="Work"
+              meta={<PlaceAutocomplete id="profile-work-place" placeholder="Search for your work address" value={workRow.placeLabel}
+                onChange={(v) => setWorkRow((r) => ({ ...r, placeLabel: v, place: placeAfterTextChange(r.place, v) }))}
+                onSelect={(place) => setWorkRow((r) => ({ ...r, place, placeLabel: place.label }))}
+                className="border-none bg-transparent px-0 py-0 focus:bg-transparent" />}
+              trailing={<span className="flex"><button type="button" onClick={() => document.getElementById("profile-work-place")?.focus()} aria-label="Edit work address" className="cursor-pointer rounded-full p-2 text-muted-foreground hover:bg-muted"><Pencil className="size-4" aria-hidden /></button><button type="button" aria-label="Remove work address" onClick={() => setWorkRow((row) => ({ ...row, placeLabel: "", place: null }))} className="rounded-full p-2 text-muted-foreground hover:bg-muted"><X className="size-4" aria-hidden /></button></span>} />
+            {customRows.map((row, index) => <ListRow key={row.key} staticRow className="border-input bg-secondary/40"
+              leading={<MapPin className="size-4 text-primary" aria-hidden />}
+              title={<input type="text" value={row.label} onChange={(event) => updateCustomLabel(row.key, event.target.value)} placeholder="Label" aria-label="Saved place label" maxLength={40} className="w-full rounded-lg border-none bg-transparent px-1 text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground focus:bg-secondary" />}
+              meta={<PlaceAutocomplete id={`profile-place-${index}`} placeholder="Search for a place" value={row.placeLabel}
+                onChange={(v) => setCustomRows((rows) => rows.map((r) => r.key === row.key ? { ...r, placeLabel: v, place: placeAfterTextChange(r.place, v) } : r))}
+                onSelect={(place) => selectCustomPlace(row.key, place)} className="border-none bg-transparent px-0 py-0 focus:bg-transparent" />}
+              trailing={<span className="flex"><button type="button" onClick={() => document.getElementById(`profile-place-${index}`)?.focus()} aria-label={`Edit ${row.label || "saved place"}`} className="cursor-pointer rounded-full p-2 text-muted-foreground hover:bg-muted"><Pencil className="size-4" aria-hidden /></button><button type="button" onClick={() => removeCustomRow(row.key)} aria-label={`Remove ${row.label || "saved place"}`} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={16} aria-hidden /></button></span>} />)}
           </div>
 
           <button
@@ -443,7 +392,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           >
             + Add custom place ({totalSavedRows}/{MAX_SAVED_PLACES})
           </button>
-        </div>
+        </Panel>
 
         <div className="mt-6 rounded-xl border border-border bg-background p-4">
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
@@ -480,7 +429,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
         </div>
       </form>
 
-      <section className="rounded-2xl border border-destructive/40 bg-card p-6">
+      <Panel id="danger-zone" padding="lg" className="scroll-mt-24 border-destructive/40">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Delete Account</h2>
@@ -496,16 +445,18 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
             Delete Account
           </button>
         </div>
-      </section>
+      </Panel>
 
       {isDeleteOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
-            <h2 className="text-xl font-semibold text-foreground">Confirm Deletion</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+        <Dialog.Root open onOpenChange={(nextOpen) => { if (!nextOpen && !isDeleting) closeDeleteDialog(); }}>
+        <Dialog.Portal><Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm" />
+        <Dialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto px-4 py-4">
+          <Dialog.Popup className="w-full max-w-md outline-none"><Panel padding="lg" className="shadow-xl">
+            <Dialog.Title className="text-xl font-semibold text-foreground">Confirm Deletion</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-muted-foreground">
               Type DELETE and enter your password to permanently remove your account and
               related data. This cannot be undone.
-            </p>
+            </Dialog.Description>
             <label htmlFor="delete-confirmation" className="mt-5 mb-2 block text-sm font-medium">
               Type DELETE
             </label>
@@ -532,13 +483,12 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               </p>
             ) : null}
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={closeDeleteDialog}
+              <Dialog.Close
+                disabled={isDeleting}
                 className={buttonVariants({ variant: "outline", size: "md" })}
               >
                 Cancel
-              </button>
+              </Dialog.Close>
               <button
                 type="button"
                 onClick={handleDeleteAccount}
@@ -550,9 +500,11 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
                 {isDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
-          </div>
-        </div>
+          </Panel></Dialog.Popup>
+        </Dialog.Viewport></Dialog.Portal></Dialog.Root>
       ) : null}
+      </div>
+      </div>
     </main>
   );
 }

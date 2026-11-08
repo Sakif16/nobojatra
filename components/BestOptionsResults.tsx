@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, Sparkles, TrafficCone, Users, X } from "lucide-react";
+import { AlertTriangle, Cloud, CloudOff, CloudRain, RefreshCw, TrafficCone, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,8 +21,15 @@ import {
 } from "@/lib/weather-reading";
 import { ROUTE_COLORS, type LatLng, type RouteResult } from "@/lib/routing";
 import { cn } from "@/lib/utils";
-import BackLink from "@/components/BackLink";
+import TripProgress from "@/components/map/TripProgress";
 import EstimateNotes from "@/components/EstimateNotes";
+import MapShell from "@/components/layout/MapShell";
+import Chip from "@/components/ui/chip";
+import ListRow from "@/components/ui/list-row";
+import Panel from "@/components/ui/panel";
+import Pill from "@/components/ui/pill";
+import EmptyState from "@/components/ui/empty-state";
+import { SkeletonRows } from "@/components/ui/skeleton";
 
 // Lazy-loads the map client-side only — Leaflet needs the browser
 const RouteMap = dynamic(() => import("@/components/map/RouteMap"), {
@@ -133,17 +140,6 @@ interface BestOptionsApiResponse {
   scoringWeights?: ScoringWeights;
   lastUpdated?: string;
 }
-
-// Icon per provider-vehicleType key, same mapping used in FareResults
-const ICONS: Record<string, string> = {
-  "uber-go": "🚗",
-  "uber-moto": "🛵",
-  "uber-premier": "🚙",
-  "pathao-bike": "🏍️",
-  "pathao-car": "🚕",
-  "cng-auto": "🛺",
-  "uber-xl": "🚐",
-};
 
 const STARS = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
 
@@ -305,6 +301,7 @@ export default function BestOptionsResults({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [mapFitRequest, setMapFitRequest] = useState(0);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
@@ -493,340 +490,94 @@ export default function BestOptionsResults({
 
   return (
     <main className="flex-1">
-      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <BackLink
-          href={`/fares?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
-          label="Back to fare estimates"
-          className="mb-4"
-        />
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              Ranked Options
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              AI ranking: options are scored on time, cost and comfort for the
-              priority you pick, for this one route.
-            </p>
-            {trip && (
-              <>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {trip.originLabel} → {trip.destinationLabel}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {trip.distanceKm} km · {trip.passengers} passenger{trip.passengers > 1 ? "s" : ""}
-                </p>
-              </>
-            )}
+      <MapShell
+        sidebar={<>
+          <TripProgress current="ranked" tripHistoryId={tripHistoryId} routeId={routeId} />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Ranked options</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Options are scored on time, cost and comfort for your chosen priority and route.</p>
+            {trip && <p className="mt-2 text-sm text-muted-foreground">{trip.originLabel} → {trip.destinationLabel} · {trip.distanceKm} km · {trip.passengers} passenger{trip.passengers === 1 ? "" : "s"}</p>}
             <EstimateNotes adjustedTimes className="mt-2" />
-            {trafficNote && (
-              <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden />
-                {trafficNote}
-              </p>
-            )}
+            {trafficNote && <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground"><TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden /><span>{trafficNote}</span></p>}
           </div>
-
-          {/* Manual refresh — re-runs weather/traffic/scoring and updates the timestamp */}
-          <div className="flex flex-col items-start gap-1.5 sm:items-end">
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={loading || refreshing}
-              className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
-            >
-              <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-              Refresh
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={handleRefresh} disabled={loading || refreshing || confirming} className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60">
+              <RefreshCw className={cn("size-3.5", refreshing && "motion-safe:animate-spin")} aria-hidden="true" /> Refresh
             </button>
-            {lastUpdatedLabel && (
-              <p className="text-[11px] text-muted-foreground">Last updated {lastUpdatedLabel}</p>
-            )}
+            {lastUpdatedLabel && <p className="text-xs text-muted-foreground">Last updated {lastUpdatedLabel}</p>}
           </div>
-        </div>
-
-        <div
-          className={
-            canShowMap
-              ? "flex w-full flex-col gap-6 lg:h-[70vh] lg:flex-row"
-              : "w-full max-w-2xl"
-          }
-        >
-          <div
-            className={
-              canShowMap
-                ? "flex flex-col lg:w-105 lg:shrink-0 lg:overflow-y-auto lg:pr-2"
-                : "flex w-full flex-col"
-            }
-          >
-            {loading ? (
-              <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-                Ranking the options…
-              </p>
-            ) : error ? (
-              <p role="alert" className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
-              </p>
-            ) : (
-              <>
-                {/* ── Dismissible weather banner — repeats the fares page's
-                    weather reading, plus a congestion line, in a card the
-                    user can close ── */}
-                {showBanner && (
-                  <div className={cn("mb-4 rounded-2xl border px-3.5 py-3", weatherClassName(weather, weatherUnavailable))}>
-                    <div className="flex items-center gap-2">
-                      <span className="shrink-0">{weatherIcon(weather, weatherUnavailable)}</span>
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
-                      {weather && (
-                        <span className="shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
-                          {weather.severityScore}/10
-                        </span>
-                      )}
-                      {/* Dismiss button — hides the banner until the next refresh */}
-                      <button
-                        type="button"
-                        onClick={() => setBannerDismissed(true)}
-                        aria-label="Dismiss weather banner"
-                        className="shrink-0 rounded-full p-1 opacity-60 transition-opacity hover:opacity-100"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-
-                    {weather && (
-                      <p className="mt-2 text-[11px] opacity-70">
-                        {getWeatherReadingLabel(weather, timeZone)}.{" "}
-                        {weather.kind === "forecast" ? `${FORECAST_ADVISORY} ` : ""}
-                        {WEATHER_SEVERITY_LIMITS}
-                      </p>
-                    )}
-
-                    {congestionText && (
-                      <p className="mt-2 flex items-center gap-1.5 text-xs opacity-85">
-                        <TrafficCone className="size-3.5 shrink-0" />
-                        {congestionText}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {isPriorityChanging ? (
-                  <div className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-                    Re-scoring for {PRIORITY_OPTIONS.find((priority) => priority.value === pendingPriority)?.label ?? "selected"} priority...
-                  </div>
-                ) : options.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-                    <p className="text-sm font-medium text-foreground">No options available right now</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Passenger capacity or weather restrictions block every option for this trip.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        {options.length > 1
-                          ? `${options.length} options, ranked`
-                          : "1 option fits this trip"}
-                      </p>
-                      <div
-                        role="group"
-                        aria-label="Scoring priority"
-                        className="flex overflow-hidden rounded-full border border-border bg-secondary p-0.5"
-                      >
-                        {PRIORITY_OPTIONS.map((priority) => {
-                          const active = priority.value === activePriority;
-
-                          return (
-                            <button
-                              key={priority.value}
-                              type="button"
-                              aria-pressed={active}
-                              disabled={loading || refreshing}
-                              onClick={() => handlePriorityChange(priority.value)}
-                              className={cn(
-                                "rounded-full px-3 py-1 text-[10px] font-semibold tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                                active
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              {priority.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <p className="mb-3 text-[11px] leading-snug text-muted-foreground">
-                      {options.length > 1
-                        ? scoringWeights &&
-                          scoringRule(scoringWeights, options[0].riskBasis ?? "weather_and_traffic")
-                        : "Only one option fits this trip, so there is nothing to rank it against."}
-                    </p>
-
-                    {/* ── Ranked cards ── */}
-                    <div className="flex flex-col gap-3">
-                      {options.map((option) => {
-                        const key = `${option.provider}-${option.vehicleType}`;
-                        const isSelected = selectedKey === key;
-                        const adjustmentLabel = getFareAdjustmentLabel(option.fareAdjustment);
-
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            aria-pressed={isSelected}
-                            onClick={() => setSelectedKey(isSelected ? null : key)}
-                            className={cn(
-                              "flex w-full flex-col gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors",
-                              isSelected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted",
-                            )}
-                          >
-                            {/* Row 1: icon, name, comfort stars, best-for tag */}
-                            <div className="flex w-full items-center gap-3">
-                              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
-                                {ICONS[key] ?? "🚘"}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                {/* Wraps rather than truncating: on a phone the
-                                    tag squeezed longer names down to
-                                    "CNG Auto-ri…". */}
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                  <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                                    {option.displayName}
-                                  </span>
-                                  {option.bestFor && (
-                                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase", bestForClass(option.bestFor))}>
-                                      Best for {option.bestFor}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                  <span className="tracking-tight">{STARS(option.comfortScore)}</span>
-                                  <span aria-hidden>·</span>
-                                  <span className="flex items-center gap-1">
-                                    <Users className="size-3" aria-hidden />
-                                    {option.maxPassengers}
-                                  </span>
-                                  <span aria-hidden>·</span>
-                                  {/* An estimate from the car route, not a
-                                      measured time for this vehicle. */}
-                                  <span>est. {option.adjustedDurationMin} min</span>
-                                </div>
-                              </div>
-                              {/* Fare range — "Estimated" label per the spec */}
-                              <div className="shrink-0 text-right">
-                                <div className="text-sm font-semibold tabular-nums text-foreground">
-                                  {formatFare(option.fare.low, option.fare.high, country)}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground">
-                                  {getFareSourceLabel(option.fareSource) ?? "Estimated"}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Row 2: risk badge */}
-                            <div className="flex items-center gap-2">
-                              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide", riskBadgeClass(option.riskBand, option.riskBasis ?? "weather_and_traffic"))}>
-                                {riskBadgeLabel(option.riskBand, option.riskBasis ?? "weather_and_traffic")}
-                              </span>
-                              {/* A score only places an option among the others;
-                                  with one option it measures nothing. */}
-                              {options.length > 1 && (
-                                <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold tracking-wide text-secondary-foreground">
-                                  Score {scoreLabel(option.score)}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* The live lookup failed and this is the rate card
-                                standing in for it. */}
-                            {option.fareSourceNote && (
-                              <p className="flex items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-[11px] leading-snug text-muted-foreground">
-                                <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
-                                {option.fareSourceNote}
-                              </p>
-                            )}
-
-                            {adjustmentLabel && (
-                              <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
-                                <Sparkles className="mt-px size-3 shrink-0" aria-hidden />
-                                {adjustmentLabel}
-                              </p>
-                            )}
-
-                            {/* Row 3: pros/cons chips — up to 3 pros, 2 cons */}
-                            {(option.pros.length > 0 || option.cons.length > 0) && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {option.pros.map((pro) => (
-                                  <span
-                                    key={pro}
-                                    className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600"
-                                  >
-                                    + {pro}
-                                  </span>
-                                ))}
-                                {option.cons.map((con) => (
-                                  <span
-                                    key={con}
-                                    className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive"
-                                  >
-                                    − {con}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {selectedOption && (
-                      <div className="mt-4 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3.5">
-                        {confirmError && (
-                          <p role="alert" className="mb-2 text-xs text-destructive">
-                            {confirmError}
-                          </p>
+          {loading ? <SkeletonRows label="Ranking the options…" /> : error ? (
+            <div role="alert"><EmptyState title="Could not load ranked options" description={error} /></div>
+          ) : <>
+            {showBanner && <div className={cn("rounded-xl border px-3 py-2.5", weatherClassName(weather, weatherUnavailable))}>
+              <div className="flex items-center gap-2"><span aria-hidden="true">{weatherIcon(weather, weatherUnavailable)}</span><p className="min-w-0 flex-1 text-sm font-medium">{title}</p>
+                {weather && <Pill className="border border-current/30 bg-transparent text-current tabular-nums">{weather.severityScore}/10</Pill>}
+                <button type="button" onClick={() => setBannerDismissed(true)} aria-label="Dismiss weather banner" className="rounded-full p-1 opacity-60 hover:opacity-100"><X className="size-3.5" /></button>
+              </div>
+              {weather && <p className="mt-2 text-xs opacity-80">{getWeatherReadingLabel(weather, timeZone)}. {weather.kind === "forecast" ? `${FORECAST_ADVISORY} ` : ""}{WEATHER_SEVERITY_LIMITS}</p>}
+              {congestionText && <p className="mt-2 flex items-center gap-1.5 text-xs opacity-85"><TrafficCone className="size-3.5 shrink-0" aria-hidden />{congestionText}</p>}
+            </div>}
+            {isPriorityChanging ? <SkeletonRows label={`Re-scoring for ${PRIORITY_OPTIONS.find((priority) => priority.value === pendingPriority)?.label ?? "selected"} priority…`} /> : options.length === 0 ? (
+              <EmptyState title="No options available right now" description="Passenger capacity or weather restrictions block every option for this trip." />
+            ) : <>
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{options.length > 1 ? `${options.length} options, ranked` : "1 option fits this trip"}</p>
+                <div role="group" aria-label="Scoring priority" className="flex flex-wrap gap-2">
+                  {PRIORITY_OPTIONS.map((priority) => <Chip key={priority.value} selected={priority.value === activePriority} buttonProps={{ disabled: loading || refreshing || confirming, onClick: () => handlePriorityChange(priority.value) }}>{priority.label}</Chip>)}
+                </div>
+                <p className="mt-2 text-xs leading-snug text-muted-foreground">{options.length > 1 ? scoringWeights && scoringRule(scoringWeights, options[0].riskBasis ?? "weather_and_traffic") : "Only one option fits this trip, so there is nothing to rank it against."}</p>
+              </div>
+              <div className="space-y-2">
+                {options.map((option, index) => {
+                  const key = `${option.provider}-${option.vehicleType}`;
+                  const isSelected = selectedKey === key;
+                  const adjustmentLabel = getFareAdjustmentLabel(option.fareAdjustment);
+                  const basis = option.riskBasis ?? "weather_and_traffic";
+                  return <ListRow key={key} selected={isSelected} disabled={confirming || refreshing}
+                    onClick={() => { setSelectedKey(isSelected ? null : key); setConfirmError(null); }}
+                    className={cn(!isSelected && "border-border bg-card")}
+                    leading={index + 1}
+                    title={option.displayName}
+                    pill={index === 0 && options.length > 1 ? <Pill>#1</Pill> : undefined}
+                    meta={<>
+                      <span className="block">{STARS(option.comfortScore)} · Capacity: {option.maxPassengers} · est. {option.adjustedDurationMin} min</span>
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        <Pill className={cn("border text-[10px]", riskBadgeClass(option.riskBand, basis))}>{riskBadgeLabel(option.riskBand, basis)}</Pill>
+                        {options.length > 1 && (
+                          <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">Score {scoreLabel(option.score)}</span>
                         )}
-                        <button
-                          type="button"
-                          onClick={handleConfirm}
-                          disabled={confirming}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-                        >
-                          {confirming
-                            ? "Saving…"
-                            : `Save plan with ${selectedOption.displayName} · est. ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
-                        </button>
-                        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                          This saves your choice. It does not book a ride.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Map — shows only the selected route's polyline. Since every
-              option shares one route geometry, "filtering to the selected
-              route" is inherent here rather than swapping between polylines. */}
-          {canShowMap && map?.origin && map?.destination && (
-            <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
-              <RouteMap
-                country={country}
-                origin={map.origin}
-                destination={map.destination}
-                stops={map.stops}
-                routes={mapRoutes}
-                activeRouteId={map.route.id}
-              />
-            </div>
-          )}
-        </div>
-
-      </div>
+                        {option.bestFor && <Pill className={cn("text-[10px]", bestForClass(option.bestFor))}>Best for {option.bestFor}</Pill>}
+                      </span>
+                      {option.fareSourceNote && <span className="mt-1 block">{option.fareSourceNote}</span>}
+                      {option.weatherRestricted && option.restrictionReason && <span className="mt-1 block text-primary">{option.restrictionReason}</span>}
+                      {adjustmentLabel && <span className="mt-1 block text-primary">{adjustmentLabel}</span>}
+                      {(option.pros.length > 0 || option.cons.length > 0) && <span className="mt-1 flex flex-wrap gap-1">
+                        {option.pros.map((pro) => <Pill key={`pro-${pro}`} className="bg-emerald-500/10 text-emerald-600">+ {pro}</Pill>)}
+                        {option.cons.map((con) => <Pill key={`con-${con}`} className="bg-destructive/10 text-destructive">− {con}</Pill>)}
+                      </span>}
+                    </>}
+                    trailing={<span className="block text-right"><span className="block text-sm font-semibold tabular-nums text-foreground">{formatFare(option.fare.low, option.fare.high, country)}</span><span className="block text-[10px] text-muted-foreground">{getFareSourceLabel(option.fareSource) ?? "Estimated"}</span></span>}
+                  />;
+                })}
+              </div>
+            </>}
+          </>}
+        </>}
+        map={canShowMap && map?.origin && map?.destination ? <RouteMap square choreographed country={country} origin={map.origin} destination={map.destination} stops={map.stops} routes={mapRoutes} activeRouteId={map.route.id} fitRequest={mapFitRequest} showFitControl={!selectedOption || refreshing} /> : <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">{loading ? "Loading map…" : "Map unavailable for this trip."}</div>}
+        overlay={selectedOption && !refreshing && <section aria-label="Selected ranked option" className="planner-fade-up">
+          <Panel className="bg-card/95 shadow-lg backdrop-blur">
+            <h2 className="text-base font-semibold text-foreground">{selectedOption.displayName}</h2>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{getFareSourceLabel(selectedOption.fareSource) ?? "Estimated"}</p>
+            {options.length > 1 && <p className="mt-3 text-sm font-medium text-foreground">Score {scoreLabel(selectedOption.score)} / 100</p>}
+            {options.length > 1 && scoringWeights && <p className="mt-1 text-xs text-muted-foreground">{scoringRule(scoringWeights, selectedOption.riskBasis ?? "weather_and_traffic")}</p>}
+            {confirmError && <p role="alert" className="mt-3 text-xs text-destructive">{confirmError}</p>}
+            <button type="button" onClick={handleConfirm} disabled={confirming} className="mt-4 flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">{confirming ? "Saving…" : "Save plan"}</button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">This saves your choice. It does not book a ride.</p>
+            {canShowMap && <button type="button" onClick={() => setMapFitRequest((request) => request + 1)} className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">Fit route</button>}
+          </Panel>
+        </section>}
+      />
     </main>
   );
 }

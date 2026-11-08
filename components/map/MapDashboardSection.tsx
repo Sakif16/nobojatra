@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
 import RouteFinderForm, { type RouteFormValues } from "./RouteFinderForm";
 import PlanAgainCards, { type FrequentTripCard } from "@/components/home/PlanAgainCards";
 import RouteResults from "./RouteResults";
 import { useCountry } from "@/components/country/CountryProvider";
 import { useServerFeatures } from "@/components/features/FeatureProvider";
-import { buttonVariants } from "@/components/ui/button";
+import RouteDetailCard from "./RouteDetailCard";
+import TripProgress from "./TripProgress";
+import MapShell from "@/components/layout/MapShell";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import type { SavedPlaceOption } from "./PlaceAutocomplete";
 import {
   fetchRoutes,
@@ -29,6 +31,7 @@ import { formatTripDateTime } from "@/lib/trip-time";
 import { canRequestTraffic, describeTrafficUnavailable } from "@/lib/feature-messages";
 import { readJson } from "@/lib/read-json";
 import StatusMessage from "@/components/ui/status-message";
+import type { RestoredPlannerTrip } from "@/lib/planner-restore";
 
 function getTrafficPointsForRoute(route: RouteResult) {
   const indices = getTrafficSampleIndices(route);
@@ -68,8 +71,9 @@ type TripValidationResponse =
     };
 
 type Props = {
+  plannerHeader?: React.ReactNode;
   defaultPassengerCount?: number;
-  /** Rendered beside the form until there are results to show a map for. */
+  /** Feature information shown below Plan Again. */
   aside?: React.ReactNode;
   /** Home/Work/custom shortcuts shown when origin or destination is empty. */
   savedPlaces?: SavedPlaceOption[];
@@ -84,6 +88,8 @@ type Props = {
    * trip chosen with "Plan this trip".
    */
   initialTrip?: RouteFormValues | null;
+  initialResults?: RestoredPlannerTrip | null;
+  restoreError?: boolean;
 };
 
 function getFirstValidationError(errors: TripValidationErrors) {
@@ -126,28 +132,37 @@ export default function MapDashboardSection(props: Props) {
 }
 
 function Planner({
+  plannerHeader,
   defaultPassengerCount,
   aside,
   savedPlaces,
   frequentTrips,
   initialTrip,
+  initialResults,
+  restoreError,
 }: Props) {
   const country = useCountry();
+  const restored = initialResults?.country === country ? initialResults : null;
   const features = useServerFeatures();
   const router = useRouter();
-  const [origin, setOrigin] = useState<TripLocation | null>(null);
-  const [destination, setDestination] = useState<TripLocation | null>(null);
-  const [stops, setStops] = useState<TripLocation[]>([]);
-  const [routes, setRoutes] = useState<RouteResult[]>([]);
+  const [origin, setOrigin] = useState<TripLocation | null>(restored?.values.origin ?? null);
+  const [destination, setDestination] = useState<TripLocation | null>(restored?.values.destination ?? null);
+  const [stops, setStops] = useState<TripLocation[]>(restored?.values.stops ?? []);
+  const [routes, setRoutes] = useState<RouteResult[]>(restored?.routes ?? []);
   const [traffic, setTraffic] = useState<TripTrafficResult | null>(null);
   const [trafficLoading, setTrafficLoading] = useState(false);
-  const [trafficError, setTrafficError] = useState<string | null>(null);
+  const [trafficError, setTrafficError] = useState<string | null>(restored ? "Traffic has not been refreshed for this restored route. Travel times are estimates without live traffic." : null);
   const [trafficDeparture, setTrafficDeparture] =
-    useState<TrafficDeparture | null>(null);
+    useState<TrafficDeparture | null>(restored ? { departureMode: restored.values.departureMode, scheduledAt: restored.scheduledAt, timeZone: restored.timeZone } : null);
   const trafficRequestRef = useRef(0);
-  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
-  const [tripHistoryId, setTripHistoryId] = useState<string | null>(null);
-  const [historyMessage, setHistoryMessage] = useState<string | null>(null);
+  const [activeRouteId, setActiveRouteId] = useState<string | null>(restored?.selectedRouteId ?? null);
+  const [searchSequence, setSearchSequence] = useState(0);
+  const [routeChanged, setRouteChanged] = useState(false);
+  const [passengerCount, setPassengerCount] = useState(restored?.values.passengerCount ?? 1);
+  const [mapFitRequest, setMapFitRequest] = useState(0);
+  const [editingTrip, setEditingTrip] = useState(false);
+  const [tripHistoryId, setTripHistoryId] = useState<string | null>(restored?.tripHistoryId ?? null);
+  const [historyMessage, setHistoryMessage] = useState<string | null>(restored ? "Restored from trip history" : null);
   const [routeSaveStatus, setRouteSaveStatus] = useState<RouteSaveStatus>("idle");
   // The route search the screen is waiting on. A search that is replaced or
   // made irrelevant is aborted, and its answer ignored if it still arrives.
@@ -156,19 +171,20 @@ function Planner({
   const routeSelectRef = useRef(0);
   const routeSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(restoreError ? "This trip or route could not be restored in the current country." : null);
   // The revision keys the form, so every Plan Again click remounts it with
   // that trip, even when a trip was already restored.
   const [restoredTrip, setRestoredTrip] = useState<{
     values: RouteFormValues;
     revision: number;
-  } | null>(initialTrip ? { values: initialTrip, revision: 0 } : null);
+  } | null>(restored ? { values: restored.values, revision: 0 } : initialTrip ? { values: initialTrip, revision: 0 } : null);
 
   // Leaving the planner, or remounting it for another country, drops the
   // search in flight with it.
   useEffect(() => () => searchRef.current?.abort(), []);
 
   async function handleRouteSelect(routeId: string) {
+    if (routeId !== activeRouteId) setRouteChanged(true);
     setActiveRouteId(routeId);
 
     const selectedRoute = routes.find((route) => route.id === routeId);
@@ -286,6 +302,7 @@ function Planner({
   }
 
   async function findRoutes(values: RouteFormValues) {
+    setEditingTrip(false);
     clearResults();
 
     // Whichever search was started last owns the screen. An earlier one that
@@ -339,7 +356,10 @@ function Planner({
       setOrigin(originPt);
       setDestination(destPt);
       setStops(stopPts);
+      setPassengerCount(validation.data.passengerCount);
       setRoutes(result.routes);
+      setSearchSequence((sequence) => sequence + 1);
+      setRouteChanged(false);
       setTripHistoryId(result.tripHistoryId);
       setHistoryMessage(
         result.tripHistoryId ? "Saved to trip history" : null
@@ -404,20 +424,10 @@ function Planner({
 
   return (
     <>
-      <div
-        className={
-          hasResults
-            ? "flex w-full flex-col gap-6 lg:h-[70vh] lg:flex-row"
-            : "grid w-full gap-8 lg:grid-cols-2 lg:items-start"
-        }
-      >
-        <div
-          className={
-            hasResults
-              ? "flex flex-col gap-4 lg:w-[380px] lg:flex-shrink-0 lg:overflow-y-auto lg:pr-2"
-              : "flex w-full max-w-md flex-col gap-6"
-          }
-        >
+      <MapShell
+        sidebar={ <>
+          <TripProgress current="route" />
+          {plannerHeader}
           <RouteFinderForm
             key={restoredTrip ? `restored-${restoredTrip.revision}` : "fresh"}
             onSubmit={handleSubmit}
@@ -427,16 +437,18 @@ function Planner({
             initialValues={restoredTrip?.values ?? null}
             submitLabel="Find best route"
             savedPlaces={savedPlaces}
+            collapsed={hasResults && !editingTrip}
+            onEdit={() => setEditingTrip(true)}
           />
 
           {error && <StatusMessage>{error}</StatusMessage>}
 
-          {loading && <StatusMessage tone="info">Finding route options...</StatusMessage>}
+          {loading && <SkeletonRows label="Finding route options..." />}
 
           {hasResults && (
             <>
               {trafficDeparture?.scheduledAt && (
-                <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                <p className="px-3 text-xs text-muted-foreground">
                   Departing{" "}
                   {formatTripDateTime(
                     trafficDeparture.scheduledAt,
@@ -446,6 +458,7 @@ function Planner({
               )}
 
               <RouteResults
+                key={searchSequence}
                 routes={routes}
                 activeRouteId={activeRouteId}
                 onSelect={handleRouteSelect}
@@ -456,28 +469,16 @@ function Planner({
                 trafficError={trafficError}
                 accessNotes={accessNotes}
               />
-
-
-              <button
-                type="button"
-                onClick={handleViewFares}
-                className={buttonVariants({
-                  variant: "outline_primary",
-                  size: "form",
-                })}
-              >
-                View fare estimates
-                <ArrowRight />
-              </button>
             </>
           )}
-        </div>
-
-        {!hasResults && aside}
-
-        {hasResults && origin && destination && (
-          <div className="h-[500px] w-full flex-shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
+        </> }
+        map={
             <RouteMap
+              square
+              choreographed
+              routeChanged={routeChanged}
+              fitRequest={mapFitRequest}
+              showFitControl={false}
               country={country}
               origin={origin}
               destination={destination}
@@ -488,12 +489,31 @@ function Planner({
               traffic={traffic}
               trafficLoading={trafficLoading}
             />
-          </div>
-        )}
-      </div>
+        }
+        overlay={hasResults && origin && destination && shownRoute ? (
+              <RouteDetailCard
+                key={searchSequence}
+                route={shownRoute}
+                origin={origin.label}
+                destination={destination.label}
+                passengers={passengerCount}
+                traffic={traffic}
+                trafficLoading={trafficLoading}
+                trafficError={trafficError}
+                departure={trafficDeparture?.scheduledAt ? formatTripDateTime(trafficDeparture.scheduledAt, trafficDeparture.timeZone) : null}
+                accessNote={accessNotes[0]}
+                canViewFares={Boolean(tripHistoryId)}
+                onViewFares={handleViewFares}
+                onFitRoute={() => setMapFitRequest((request) => request + 1)}
+              />
+          ) : null}
+      />
       {frequentTrips && (
-        <PlanAgainCards trips={frequentTrips} onPlanAgain={handlePlanAgain} />
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <PlanAgainCards trips={frequentTrips} onPlanAgain={handlePlanAgain} />
+        </div>
       )}
+      {aside && <div className="mx-auto w-full max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">{aside}</div>}
     </>
   );
 }

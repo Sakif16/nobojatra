@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Globe } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useCountry } from "./CountryProvider";
 import { COUNTRY_CONFIG, COUNTRY_OPTIONS, isCountryCode } from "@/lib/country-config";
+
+const FLAGS = { BD: "🇧🇩", US: "🇺🇸", UK: "🇬🇧" } as const;
 
 /**
  * Switches the active country from the dashboard header.
@@ -62,15 +64,12 @@ export default function CountrySwitcher({ className }: { className?: string }) {
     <div className={className}>
       <label className="relative inline-flex items-center">
         <span className="sr-only">Country</span>
-        <Globe
-          className="pointer-events-none absolute left-3 size-4 text-muted-foreground"
-          aria-hidden="true"
-        />
+        <span className="pointer-events-none absolute left-3 text-base" aria-hidden="true">{FLAGS[country]}</span>
         <select
           value={country}
           disabled={busy}
           onChange={(event) => handleChange(event.target.value)}
-          className="h-10 cursor-pointer appearance-none rounded-lg border border-border bg-card py-2 pr-9 pl-9 text-sm font-medium text-foreground outline-none transition-colors hover:bg-muted focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-10 cursor-pointer appearance-none rounded-full border border-border bg-card py-2 pr-9 pl-9 text-sm font-medium text-foreground outline-none transition-colors hover:bg-muted focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {COUNTRY_OPTIONS.map((code) => (
             <option
@@ -81,7 +80,7 @@ export default function CountrySwitcher({ className }: { className?: string }) {
               // colours cover the browsers that do honour option styling.
               className="bg-popover text-popover-foreground"
             >
-              {COUNTRY_CONFIG[code].label}
+              {code} · {COUNTRY_CONFIG[code].label}
             </option>
           ))}
         </select>

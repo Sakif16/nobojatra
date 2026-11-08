@@ -34,7 +34,7 @@ export default function LiveCamsFrame() {
     <div className="relative min-h-[500px] w-full overflow-hidden rounded-3xl border border-border bg-card">
       {!loaded && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-card text-center">
-          {!failed && <RefreshCw className="size-5 animate-spin text-muted-foreground" />}
+          {!failed && <RefreshCw className="size-5 motion-safe:animate-spin text-muted-foreground" />}
           <p role="status" className="text-sm font-medium text-foreground">
             {failed ? "The external camera page did not finish loading." : "Loading external camera page…"}
           </p>

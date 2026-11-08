@@ -9,10 +9,10 @@ import { useEffect } from "react";
  */
 export default function GlobalError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     console.error("Application failed to render:", error);
@@ -27,14 +27,15 @@ export default function GlobalError({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#111",
+          background: "#19120e",
           color: "#f5f5f5",
           fontFamily: "system-ui, sans-serif",
           padding: "1.5rem",
           textAlign: "center",
         }}
       >
-        <main>
+        <main style={{ maxWidth: "28rem", border: "1px solid #514033", borderRadius: "1rem", background: "#241a14", padding: "2rem" }}>
+          <span aria-hidden="true" style={{ display: "block", color: "#f99739", fontSize: "1.5rem", marginBottom: ".75rem" }}>!</span>
           <h1 style={{ fontSize: "1.5rem", margin: 0 }}>NoboJatra could not start</h1>
           <p role="alert" style={{ marginTop: "0.75rem", opacity: 0.8 }}>
             Something went wrong loading the app. Please try again.
@@ -46,20 +47,23 @@ export default function GlobalError({
           )}
           <button
             type="button"
-            onClick={reset}
+            onClick={retry}
             style={{
               marginTop: "1.5rem",
               padding: "0.625rem 1.25rem",
               borderRadius: "0.5rem",
-              border: "1px solid #f5f5f5",
-              background: "transparent",
-              color: "inherit",
+              border: "1px solid #f99739",
+              background: "#f99739",
+              color: "#19120e",
               font: "inherit",
               cursor: "pointer",
             }}
           >
             Try again
           </button>
+          {/* A full document navigation works even if the app router failed. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <p><a href="/" style={{ color: "#f99739", fontSize: ".875rem" }}>Back to planner</a></p>
         </main>
       </body>
     </html>

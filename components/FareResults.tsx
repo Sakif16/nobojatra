@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Cloud, CloudOff, CloudRain, Sparkles, TrafficCone, Users } from 'lucide-react'
+import { AlertTriangle, Cloud, CloudOff, CloudRain, TrafficCone } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -29,8 +29,14 @@ import {
   WEATHER_SEVERITY_LIMITS,
 } from '@/lib/weather-reading'
 import { cn } from '@/lib/utils'
-import BackLink from "@/components/BackLink";
+import TripProgress from "@/components/map/TripProgress";
 import EstimateNotes from "@/components/EstimateNotes";
+import MapShell from '@/components/layout/MapShell'
+import ListRow from '@/components/ui/list-row'
+import Panel from '@/components/ui/panel'
+import Pill from '@/components/ui/pill'
+import EmptyState from '@/components/ui/empty-state'
+import { SkeletonRows } from '@/components/ui/skeleton'
 
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
   ssr: false,
@@ -239,6 +245,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const [sort, setSort] = useState<FareSort>('default')
   const [confirming, setConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [mapFitRequest, setMapFitRequest] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -361,343 +368,100 @@ export default function FareResults({ tripHistoryId, routeId }: {
 
   return (
     <main className="flex-1">
-      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-8 max-w-3xl">
-          <BackLink href="/" label="Back to planner" className="mb-4" />
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Available Services
-          </h1>
-          {trip && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {trip.originLabel} → {trip.destinationLabel}
-            </p>
-          )}
-          {trip && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers > 1 ? 's' : ''}
-            </p>
-          )}
-          {/* Names the country the estimates belong to. Without it, a fare in
-              an unfamiliar currency reads as a bug rather than as a trip
-              planned in another country. */}
-          {!loading && results.length > 0 && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Showing services for {COUNTRY_CONFIG[country].label} · fares in{' '}
-              {COUNTRY_CONFIG[country].currency}
-            </p>
-          )}
-          <EstimateNotes className="mt-2 max-w-2xl" />
-          {!loading && trafficUnavailable && (
-            <p className="mt-2 flex max-w-2xl items-start gap-1.5 text-xs text-muted-foreground">
+      <MapShell
+        sidebar={<>
+          <TripProgress current="fares" tripHistoryId={tripHistoryId} routeId={routeId} canRank={Boolean(trip)} />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Fare estimates</h1>
+            {trip && <p className="mt-2 text-sm text-muted-foreground">
+              {trip.originLabel} → {trip.destinationLabel} · {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers === 1 ? '' : 's'}
+            </p>}
+            {!loading && results.length > 0 && <p className="mt-1 text-xs text-muted-foreground">
+              {COUNTRY_CONFIG[country].label} · fares in {COUNTRY_CONFIG[country].currency}
+            </p>}
+            <EstimateNotes className="mt-2" />
+            {!loading && trafficUnavailable && <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
               <TrafficCone className="mt-px size-3.5 shrink-0" aria-hidden />
-              {describeTrafficUnavailable(country, features)}{' '}
-              Fares include no traffic adjustment.
-            </p>
-          )}
-          {/* Entry point into the Route Comparison Display. Reuses the same
-              tripHistoryId + routeId this page already received, so
-              /ranked-options can look up the exact same trip and route rather
-              than re-deriving anything from scratch. */}
-          {trip && (
-            <Link
-              href={`/ranked-options?tripHistoryId=${tripHistoryId}&routeId=${routeId}`}
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Sparkles className="size-4" />
-              Rank these options →
-            </Link>
-          )}
-        </div>
-
-        {/* Mirrors the dashboard's results layout: a fixed-width scrolling
-            column beside a map that fills the rest of the 70vh row. */}
-        <div
-          className={
-            canShowMap
-              ? 'flex w-full flex-col gap-6 lg:h-[70vh] lg:flex-row'
-              : 'w-full max-w-2xl'
-          }
-        >
-          <div
-            className={
-              canShowMap
-                ? 'flex flex-col lg:w-95 lg:shrink-0 lg:overflow-y-auto lg:pr-2'
-                : 'flex w-full flex-col'
-            }
-          >
-            {loading ? (
-              <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-                Calculating fares…
-              </p>
-            ) : error ? (
-              <p
-                role="alert"
-                className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              >
-                {error}
-              </p>
-            ) : results.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-                <p className="text-sm font-medium text-foreground">No fares available</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  We could not find any services for this trip.
-                </p>
-              </div>
-            ) : (
-              <>
-                {weatherTitle && (
-                  <div
-                    className={cn(
-                      'mb-4 rounded-2xl border px-3.5 py-3',
-                      getWeatherClassName(weather, weatherUnavailable),
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="shrink-0">
-                        {getWeatherIcon(weather, weatherUnavailable)}
-                      </span>
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {weatherTitle}
-                      </p>
-                      {weather && (
-                        <span className="shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-[11px] font-medium tabular-nums">
-                          {weather.severityScore}/10
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Stacked stats rather than one long sentence — the sentence
-                        form wrapped to three lines in this column. */}
-                    {weather ? (
-                      <>
-                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-2">
-                          {WEATHER_STATS.map((stat) => (
-                            <div key={stat.label}>
-                              <dt className="opacity-70">{stat.label}</dt>
-                              <dd className="mt-0.5 font-medium tabular-nums">
-                                {stat.format(weather)}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                        <p className="mt-2.5 text-[11px] opacity-70">
-                          {getWeatherReadingLabel(weather, timeZone)},{' '}
-                          {weather.kind === 'forecast' ? 'for the' : 'measured at the'}{' '}
-                          {getWeatherSourceLabel(weather, country)}
-                        </p>
-                        {weather.kind === 'forecast' && (
-                          <p className="mt-1.5 text-[11px] opacity-70">{FORECAST_ADVISORY}</p>
-                        )}
-                        <p className="mt-1.5 text-[11px] opacity-70">{WEATHER_SEVERITY_LIMITS}</p>
-                      </>
-                    ) : (
-                      weatherDescription && (
-                        <p className="mt-1.5 text-xs opacity-85">{weatherDescription}</p>
-                      )
-                    )}
-                  </div>
-                )}
-
-                {available.length > 0 ? (
-                  <>
-                    <div className="mb-2 flex items-baseline justify-between gap-2">
-                      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                        {available.length} option{available.length > 1 ? 's' : ''}
-                      </p>
-                      {/* Sorts what is already on the page; nothing is re-fetched. */}
-                      <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        Sort
-                        <select
-                          value={sort}
-                          onChange={(event) => setSort(event.target.value as FareSort)}
-                          className="rounded-md border border-border bg-background px-1.5 py-1 text-[11px] text-foreground"
-                        >
-                          {FARE_SORT_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="flex flex-col gap-2.5">
-                      {available.map((v) => {
-                        const key = `${v.provider}-${v.vehicleType}`
-                        const isSelected = selected === key
-                        const adjustmentLabel = getFareAdjustmentLabel(v.fareAdjustment)
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            aria-pressed={isSelected}
-                            onClick={() => setSelected(isSelected ? null : key)}
-                            className={cn(
-                              'flex w-full flex-col gap-2 rounded-2xl border px-3.5 py-3 text-left transition-colors',
-                              isSelected
-                                ? 'border-primary bg-primary/10'
-                                : 'border-border bg-card hover:bg-muted',
-                            )}
-                          >
-                            <div className="flex w-full items-center gap-3">
-                              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base">
-                                {ICONS[key] ?? '🚘'}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium text-foreground">
-                                  {v.displayName}
-                                </div>
-                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                  <span className="tracking-tight">
-                                    {STARS(v.comfortScore)}
-                                  </span>
-                                  <span aria-hidden>·</span>
-                                  <span className="flex items-center gap-1">
-                                    <Users className="size-3" aria-hidden />
-                                    {v.maxPassengers}
-                                  </span>
-                                </div>
-                              </div>
-                              {/* tabular-nums keeps the fare ranges aligned down the column */}
-                              <div className="shrink-0 text-right">
-                                <div className="text-sm font-semibold tabular-nums text-foreground">
-                                  {formatFare(v.fare.low, v.fare.high, country)}
-                                </div>
-                                {getFareSourceLabel(v.fareSource) && (
-                                  <div className="text-[10px] text-muted-foreground">
-                                    {getFareSourceLabel(v.fareSource)}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* The live lookup failed and this is the rate card
-                                standing in for it. */}
-                            {v.fareSourceNote && (
-                              <p className="flex items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-[11px] leading-snug text-muted-foreground">
-                                <AlertTriangle className="mt-px size-3 shrink-0" aria-hidden />
-                                {v.fareSourceNote}
-                              </p>
-                            )}
-
-                            {v.weatherRestricted && v.restrictionReason && (
-                              <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
-                                <CloudRain className="mt-px size-3 shrink-0" aria-hidden />
-                                {v.restrictionReason}
-                              </p>
-                            )}
-
-                            {adjustmentLabel && (
-                              <p className="flex items-start gap-1.5 rounded-lg bg-primary/10 px-2 py-1 text-[11px] leading-snug text-primary">
-                                <Sparkles className="mt-px size-3 shrink-0" aria-hidden />
-                                {adjustmentLabel}
-                              </p>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-
-                    {selectedOption && (
-                      <div className="mt-4 rounded-2xl border border-primary/30 bg-primary/5 px-3.5 py-3">
-                        {confirmError && (
-                          <p role="alert" className="mb-2 text-xs text-destructive">
-                            {confirmError}
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleConfirm}
-                          disabled={confirming}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-                        >
-                          {confirming
-                            ? 'Saving…'
-                            : `Save plan with ${selectedOption.displayName} · est. ${formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}`}
-                        </button>
-                        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                          This saves your choice. It does not book a ride.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center">
-                    <p className="text-sm font-medium text-foreground">
-                      No services available right now
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Passenger capacity or weather restrictions block every option.
-                    </p>
-                  </div>
-                )}
-
-                {unavailable.length > 0 && (
-                  <div className="mt-6">
-                    <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Unavailable
-                    </p>
-                    {/* The party size is set in the planner, so the way to
-                        bring a too-small vehicle back is one step away. */}
-                    {hasCapacityExclusion(unavailable) && (
-                      <p className="mb-2.5 text-xs text-muted-foreground">
-                        Some vehicles are too small for {passengers} passenger
-                        {passengers > 1 ? 's' : ''}.{' '}
-                        <Link href="/" className="font-medium text-primary hover:underline">
-                          Change the passenger count in the planner
-                        </Link>
-                        .
-                      </p>
-                    )}
-                    <div className="flex flex-col gap-2.5">
-                      {unavailable.map((v) => {
-                        const key = `${v.provider}-${v.vehicleType}`
-                        return (
-                          <div
-                            key={key}
-                            aria-disabled
-                            className="flex w-full items-center gap-3 rounded-2xl border border-border/60 bg-card/50 px-3.5 py-3"
-                          >
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-base opacity-50 grayscale">
-                              {ICONS[key] ?? '🚘'}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-muted-foreground">
-                                {v.displayName}
-                              </div>
-                              {/* The reason already names the blocker, so the
-                                  old duplicate badge under the price is gone. */}
-                              <div className="mt-0.5 text-xs leading-snug text-muted-foreground/75">
-                                {describeUnavailable(v, passengers)}
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground/60 line-through">
-                              {formatFare(v.fare.low, v.fare.high, country)}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+              <span>{describeTrafficUnavailable(country, features)} Fares include no traffic adjustment.</span>
+            </p>}
           </div>
+          {loading ? <SkeletonRows label="Calculating fares…" /> : error ? (
+            <div role="alert"><EmptyState title="Could not load fares" description={error} /></div>
+          ) : results.length === 0 ? (
+            <EmptyState title="No fares available" description="We could not find any services for this trip." />
+          ) : <>
+            {weatherTitle && <details className={cn('rounded-xl border px-3 py-2.5', getWeatherClassName(weather, weatherUnavailable))}>
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span aria-hidden="true">{getWeatherIcon(weather, weatherUnavailable)}</span>
+                <span className="min-w-0 flex-1">{weatherTitle}</span>
+                {weather && <Pill className="border border-current/30 bg-transparent text-current tabular-nums">{weather.severityScore}/10</Pill>}
+                <span aria-hidden="true">⌄</span><span className="sr-only">Show weather details</span>
+              </summary>
+              {weather ? <>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  {WEATHER_STATS.map((stat) => <div key={stat.label}><dt className="opacity-70">{stat.label}</dt><dd className="mt-0.5 font-medium tabular-nums">{stat.format(weather)}</dd></div>)}
+                </dl>
+                <p className="mt-2 text-xs opacity-80">{getWeatherReadingLabel(weather, timeZone)}, {weather.kind === 'forecast' ? 'for the' : 'measured at the'} {getWeatherSourceLabel(weather, country)}</p>
+                {weather.kind === 'forecast' && <p className="mt-1.5 text-xs opacity-80">{FORECAST_ADVISORY}</p>}
+                <p className="mt-1.5 text-xs opacity-80">{WEATHER_SEVERITY_LIMITS}</p>
+              </> : weatherDescription && <p className="mt-2 text-xs">{weatherDescription}</p>}
+            </details>}
 
-          {canShowMap && map?.origin && map?.destination && (
-            <div className="h-125 w-full shrink-0 overflow-hidden rounded-3xl border border-border lg:h-full lg:flex-1">
-              <RouteMap
-                country={country}
-                origin={map.origin}
-                destination={map.destination}
-                stops={map.stops}
-                routes={mapRoutes}
-                activeRouteId={map.route.id}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+            {available.length > 0 ? <>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{available.length} option{available.length === 1 ? '' : 's'}</h2>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">Sort
+                  <select value={sort} onChange={(event) => setSort(event.target.value as FareSort)} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs text-foreground">
+                    {FARE_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="space-y-2">
+                {available.map((v) => {
+                  const key = `${v.provider}-${v.vehicleType}`
+                  const isSelected = selected === key
+                  const adjustmentLabel = getFareAdjustmentLabel(v.fareAdjustment)
+                  return <ListRow key={key} selected={isSelected} disabled={confirming} onClick={() => { setSelected(isSelected ? null : key); setConfirmError(null) }}
+                    className={cn(!isSelected && 'border-border bg-card')}
+                    leading={<span aria-hidden="true">{ICONS[key] ?? '🚘'}</span>}
+                    title={v.displayName}
+                    meta={<>
+                      <span className="block">{STARS(v.comfortScore)} · Capacity: {v.maxPassengers}</span>
+                      {v.fareSourceNote && <span className="mt-1 block">{v.fareSourceNote}</span>}
+                      {v.weatherRestricted && v.restrictionReason && <span className="mt-1 block text-primary">{v.restrictionReason}</span>}
+                      {adjustmentLabel && <span className="mt-1 block text-primary">{adjustmentLabel}</span>}
+                    </>}
+                    trailing={<span className="block text-right"><span className="block text-sm font-semibold tabular-nums text-foreground">{formatFare(v.fare.low, v.fare.high, country)}</span>{getFareSourceLabel(v.fareSource) && <span className="block text-[10px] text-muted-foreground">{getFareSourceLabel(v.fareSource)}</span>}</span>}
+                  />
+                })}
+              </div>
+            </> : <EmptyState title="No services available right now" description="Passenger capacity or weather restrictions block every option." />}
+
+            {unavailable.length > 0 && <section aria-labelledby="unavailable-heading" className="mt-2">
+              <h2 id="unavailable-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Unavailable</h2>
+              {hasCapacityExclusion(unavailable) && <p className="mb-2 text-xs text-muted-foreground">Some vehicles are too small for {passengers} passenger{passengers === 1 ? '' : 's'}. <Link href={`/?${new URLSearchParams({ tripHistoryId, routeId })}`} className="font-medium text-primary hover:underline">Change the passenger count in the planner</Link>.</p>}
+              <div className="space-y-2">
+                {unavailable.map((v) => <ListRow key={`${v.provider}-${v.vehicleType}`} disabled className="border-border bg-card opacity-60"
+                  leading={<span aria-hidden="true">{ICONS[`${v.provider}-${v.vehicleType}`] ?? '🚘'}</span>}
+                  title={v.displayName} meta={describeUnavailable(v, passengers)}
+                  trailing={<span className="text-sm font-semibold tabular-nums text-muted-foreground line-through">{formatFare(v.fare.low, v.fare.high, country)}</span>} />)}
+              </div>
+            </section>}
+          </>}
+        </>}
+        map={canShowMap && map?.origin && map?.destination ? <RouteMap square choreographed country={country} origin={map.origin} destination={map.destination} stops={map.stops} routes={mapRoutes} activeRouteId={map.route.id} fitRequest={mapFitRequest} showFitControl={!selectedOption} /> : <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">{loading ? 'Loading map…' : 'Map unavailable for this trip.'}</div>}
+        overlay={selectedOption && <section aria-label="Selected fare details" className="planner-fade-up">
+          <Panel className="bg-card/95 shadow-lg backdrop-blur">
+            <h2 className="text-base font-semibold text-foreground">{selectedOption.displayName}</h2>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}</p>
+            {getFareSourceLabel(selectedOption.fareSource) && <p className="mt-1 text-xs text-muted-foreground">{getFareSourceLabel(selectedOption.fareSource)}</p>}
+            {confirmError && <p role="alert" className="mt-3 text-xs text-destructive">{confirmError}</p>}
+            <button type="button" onClick={handleConfirm} disabled={confirming} className="mt-4 flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">{confirming ? 'Saving…' : 'Save plan'}</button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">This saves your choice. It does not book a ride.</p>
+            {canShowMap && <button type="button" onClick={() => setMapFitRequest((request) => request + 1)} className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">Fit route</button>}
+          </Panel>
+        </section>}
+      />
     </main>
   )
 }

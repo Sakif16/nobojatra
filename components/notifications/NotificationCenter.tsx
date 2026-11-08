@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AlertView } from "./types";
+import ListRow from "@/components/ui/list-row";
 
 /**
  * Presentational half of the notification center. The bell owns the data and
@@ -19,7 +20,7 @@ import type { AlertView } from "./types";
 
 const SEVERITY_STYLES = {
   info: "text-muted-foreground",
-  warning: "text-orange-700 dark:text-orange-400",
+  warning: "text-primary",
   critical: "text-destructive",
 } as const;
 
@@ -56,44 +57,13 @@ function AlertRow({
   const Icon = alert.severity === "critical" ? AlertTriangle : Info;
 
   return (
-    <li
-      className={cn(
-        "flex gap-3 border-b border-border px-4 py-3 last:border-b-0",
-        pending && "opacity-50",
-      )}
-    >
-      <Icon
-        className={cn("mt-0.5 size-4 shrink-0", SEVERITY_STYLES[alert.severity])}
-        aria-hidden
-      />
-
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{alert.title}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{alert.message}</p>
-
-        <p className="mt-1 text-[11px] text-muted-foreground">{timeAgo(alert.createdAt)}</p>
-
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => onDismiss(alert.id)}
-            disabled={pending}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none"
-          >
-            <X className="size-3" aria-hidden />
-            Dismiss
-          </button>
-          <button
-            type="button"
-            onClick={() => onSnooze(alert.id)}
-            disabled={pending}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:bg-muted disabled:pointer-events-none"
-          >
-            <Clock3 className="size-3" aria-hidden />
-            Snooze 1h
-          </button>
-        </div>
-      </div>
+    <li className={cn("border-b border-border px-1 py-1 last:border-b-0", pending && "opacity-50")}>
+      <ListRow staticRow className="items-start" leading={<Icon className={cn("size-4", SEVERITY_STYLES[alert.severity])} aria-hidden />} title={alert.title}
+        meta={<><span className="mt-0.5 block line-clamp-1" title={alert.message}>{alert.message}</span><span className="mt-1 block text-[11px]">{timeAgo(alert.createdAt)}</span>
+          <span className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => onDismiss(alert.id)} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:pointer-events-none"><X className="size-3" aria-hidden /> Dismiss</button>
+            <button type="button" onClick={() => onSnooze(alert.id)} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:pointer-events-none"><Clock3 className="size-3" aria-hidden /> Snooze 1h</button>
+          </span></>} />
     </li>
   );
 }

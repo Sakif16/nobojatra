@@ -20,9 +20,9 @@ test("text placed in Leaflet's HTML cannot become markup", () => {
   assert.equal(escapeHtml("Dhanmondi 27"), "Dhanmondi 27");
 
   // The marker icon is the one place a raw HTML string is built.
-  assert.match(map, /">\$\{escapeHtml\(label\)\}<\/div>`/);
-  assert.match(map, /background:\$\{escapeHtml\(color\)\};/);
-  assert.doesNotMatch(map, /">\$\{label\}<\/div>/);
+  assert.match(map, /\$\{escapeHtml\(label\)\}/);
+  assert.match(map, /\$\{escapeHtml\(name\)\}/);
+  assert.doesNotMatch(map, /planner-pin-name">\$\{name\}/);
 });
 
 test("each marker names its place, as text", () => {
@@ -46,12 +46,13 @@ test("the map can be brought back to the route, and refits when a stop changes",
 });
 
 test("only the providers whose tiles are on screen are credited", () => {
-  // Without a Mapbox token the base map is OpenStreetMap's and says only that.
-  assert.match(map, /MAPBOX_TOKEN \? `\$\{MAPBOX_ATTRIBUTION\} \$\{OSM_ATTRIBUTION\}` : OSM_ATTRIBUTION/);
+  // The base map credits its provider and OpenStreetMap data.
+  assert.match(map, /MAPBOX_TOKEN \? `\$\{MAPBOX_ATTRIBUTION\} \$\{OSM_ATTRIBUTION\}` : CARTO_API_KEY \? `\$\{OSM_ATTRIBUTION\} \$\{CARTO_ATTRIBUTION\}` : OSM_ATTRIBUTION/);
   // The traffic overlay carries its own credit, shown only while it is on.
   assert.match(map, /attribution=\{MAPBOX_TOKEN \? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION\}/);
   assert.match(map, /tomtom\.com/);
-  // OpenStreetMap's current tile address, not the retired a/b/c mirrors.
-  assert.match(map, /"https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png"/);
-  assert.doesNotMatch(map, /\{s\}\.tile\.openstreetmap\.org/);
+  assert.match(map, /https:\/\/\{s\}\.basemaps\.cartocdn\.com\/dark_all\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.match(map, /encodeURIComponent\(CARTO_API_KEY\)/);
+  assert.match(map, /https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/);
+  assert.match(map, /mapbox\/dark-v11/);
 });
