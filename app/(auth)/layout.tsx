@@ -8,7 +8,9 @@ import {
 } from "lucide-react";
 import BackToSignIn from "@/components/auth/BackToSignIn";
 import RouteArtwork from "@/components/auth/RouteArtwork";
+import { FeatureProvider } from "@/components/features/FeatureProvider";
 import { COUNTRY_CONFIG, COUNTRY_OPTIONS } from "@/lib/country-config";
+import { getServerFeatures } from "@/lib/env";
 
 // Read from the country config so this panel cannot fall behind the countries
 // the app actually serves — it is the first thing a visitor sees.
@@ -149,7 +151,9 @@ export default function AuthLayout({
                 ))}
               </ul>
             </div>
-            {children}
+            <FeatureProvider features={getServerFeatures(process.env)}>
+              {children}
+            </FeatureProvider>
           </div>
         </main>
       </div>
