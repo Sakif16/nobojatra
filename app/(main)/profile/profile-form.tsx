@@ -43,6 +43,8 @@ type ProfileFormProps = {
     email: string;
     emailVerified: boolean;
     createdAt: string;
+    /** False for Google-only accounts, which confirm deletion without one. */
+    hasPassword: boolean;
   };
   initialProfile: {
     country: CountryCode;
@@ -231,7 +233,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
         },
         body: JSON.stringify({
           confirmation: deleteConfirmation,
-          password: deletePassword,
+          ...(initialUser.hasPassword ? { password: deletePassword } : {}),
         }),
       });
       const result = await readJson<{ message?: string }>(response);
@@ -454,8 +456,9 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           <Dialog.Popup className="w-full max-w-md outline-none"><Panel padding="lg" className="shadow-xl">
             <Dialog.Title className="text-xl font-semibold text-foreground">Confirm Deletion</Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-              Type DELETE and enter your password to permanently remove your account and
-              related data. This cannot be undone.
+              {initialUser.hasPassword
+                ? "Type DELETE and enter your password to permanently remove your account and related data. This cannot be undone."
+                : "Type DELETE to permanently remove your account and related data. This cannot be undone. If you signed in more than 15 minutes ago, you will be asked to sign in again first."}
             </Dialog.Description>
             <label htmlFor="delete-confirmation" className="mt-5 mb-2 block text-sm font-medium">
               Type DELETE
@@ -466,17 +469,21 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               onChange={(event) => setDeleteConfirmation(event.target.value)}
               className={fieldClassName(false)}
             />
-            <label htmlFor="delete-password" className="mt-4 mb-2 block text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="delete-password"
-              type="password"
-              autoComplete="current-password"
-              value={deletePassword}
-              onChange={(event) => setDeletePassword(event.target.value)}
-              className={fieldClassName(Boolean(deleteError))}
-            />
+            {initialUser.hasPassword ? (
+              <>
+                <label htmlFor="delete-password" className="mt-4 mb-2 block text-sm font-medium">
+                  Password
+                </label>
+                <input
+                  id="delete-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={deletePassword}
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  className={fieldClassName(Boolean(deleteError))}
+                />
+              </>
+            ) : null}
             {deleteError ? (
               <p role="alert" className="mt-2 text-sm text-destructive">
                 {deleteError}
@@ -493,7 +500,9 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={
-                  deleteConfirmation !== "DELETE" || deletePassword.length === 0 || isDeleting
+                  deleteConfirmation !== "DELETE" ||
+                  (initialUser.hasPassword && deletePassword.length === 0) ||
+                  isDeleting
                 }
                 className={buttonVariants({ variant: "destructive", size: "md" })}
               >

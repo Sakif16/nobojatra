@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { MongoClient } from "mongodb";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { isConfigured } from "@/lib/env";
 import { deleteAccountData } from "@/lib/account-cleanup";
 import { MONGODB_DB } from "@/lib/mongodb";
 
@@ -20,6 +21,8 @@ export const authMongoClient = new MongoClient(uri);
 // Named explicitly so auth data never follows the URI path. Without a path the
 // driver falls back to `test`, which would hide every existing account.
 export const authDb = authMongoClient.db(MONGODB_DB);
+
+const googleConfigured = isConfigured(process.env.GOOGLE_CLIENT_ID) && isConfigured(process.env.GOOGLE_CLIENT_SECRET);
 
 const checkAuthAttempt = createAuthAttemptLimiter(process.env.BETTER_AUTH_SECRET ?? "");
 
@@ -63,6 +66,27 @@ export const auth = betterAuth({
         url,
       }).catch(() => {});
     },
+  },
+  // Google sign-in is only registered when both credentials are set, so a
+  // server without them behaves exactly as before.
+  socialProviders: googleConfigured
+    ? {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID as string,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+          // Always show the account chooser instead of silently reusing
+          // whichever Google account the browser is signed in to.
+          prompt: "select_account" as const,
+        },
+      }
+    : {},
+  account: {
+    // A Google sign-in joins an existing account with the same email only when
+    // Google vouches for the address AND that account's email is verified here
+    // (Better Auth's requireLocalEmailVerified default). An unverified
+    // password account cannot be taken over by someone who merely registered
+    // the address first.
+    accountLinking: { enabled: true },
   },
   user: {
     changeEmail: {
@@ -114,8 +138,14 @@ export const auth = betterAuth({
       }
       // Both deletion entry points require the current password, even if the
       // built-in endpoint would otherwise accept a fresh session alone.
+      // A Google-only account has no password to enter. It is confirmed by a
+      // fresh session instead: Better Auth refuses the deletion unless the user
+      // signed in within the last 15 minutes.
       if (ctx.path === "/delete-user" && (typeof body?.password !== "string" || !body.password)) {
-        throw new APIError("BAD_REQUEST", { code: "PASSWORD_REQUIRED", message: "Enter your password to confirm account deletion." });
+        const accounts = identity ? await ctx.context.internalAdapter.findAccounts(identity) : [];
+        if (accounts.some((account) => account.providerId === "credential")) {
+          throw new APIError("BAD_REQUEST", { code: "PASSWORD_REQUIRED", message: "Enter your password to confirm account deletion." });
+        }
       }
       const passwordPaths = ["/sign-up/email", "/reset-password", "/change-password", "/set-password"];
       if (!passwordPaths.includes(ctx.path)) return;
@@ -141,3 +171,10 @@ export const auth = betterAuth({
     }),
   },
 });
+
+/** False for accounts created through Google only, which have no password. */
+export async function userHasPassword(userId: string) {
+  const { internalAdapter } = await auth.$context;
+  const accounts = await internalAdapter.findAccounts(userId);
+  return accounts.some((account) => account.providerId === "credential");
+}

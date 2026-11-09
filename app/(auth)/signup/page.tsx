@@ -4,6 +4,7 @@ import { Check, Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import GoogleSignIn from "@/components/auth/GoogleSignIn";
 import ResendVerification from "@/components/auth/ResendVerification";
 import PasswordField from "@/components/auth/PasswordField";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
@@ -235,6 +236,8 @@ export default function SignUpPage() {
           )}
         </button>
       </form>
+
+      <GoogleSignIn />
 
       <p className="mt-8 text-sm text-muted-foreground">
         Already have an account?{" "}

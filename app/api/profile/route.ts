@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { auth, userHasPassword } from "@/lib/auth";
 import {
   COUNTRY_OPTIONS,
   DEFAULT_COUNTRY,
@@ -84,6 +84,8 @@ async function getSession(headers: Headers) {
 // whatever the upstream said rather than inventing a generic failure.
 const DELETE_ERROR_MESSAGES: Record<string, string> = {
   INVALID_PASSWORD: "That password is incorrect.",
+  SESSION_EXPIRED:
+    "For safety, sign in again (with Google if that is how you sign in) and delete your account within 15 minutes.",
   CREDENTIAL_ACCOUNT_NOT_FOUND:
     "This account has no password set, so it cannot be deleted this way.",
   ACCOUNT_CLEANUP_FAILED:
@@ -400,7 +402,10 @@ export async function DELETE(req: NextRequest) {
 
   // Deleting an account is irreversible, so it needs more than a live cookie.
   // Better Auth verifies this against the stored credential hash.
-  if (typeof body.password !== "string" || body.password.length === 0) {
+  // Accounts that only ever signed in with Google have no password; for those
+  // Better Auth requires a session that is under 15 minutes old instead.
+  const password = typeof body.password === "string" ? body.password : "";
+  if (password.length === 0 && (await userHasPassword(session.user.id))) {
     return NextResponse.json(
       { success: false, message: "Enter your password to confirm account deletion." },
       { status: 400 },
@@ -415,7 +420,7 @@ export async function DELETE(req: NextRequest) {
   // keys, so it reported "Account deleted." over an account that still worked.
   const authResponse = await auth.api.deleteUser({
     headers: req.headers,
-    body: { password: body.password },
+    body: password ? { password } : {},
     asResponse: true,
   });
 

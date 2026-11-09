@@ -39,6 +39,7 @@ export function getAuthSecurityOptions(env: Record<string, string | undefined>) 
       customRules: {
         "/sign-up/email": { window: 600, max: 5 },
         "/sign-in/email": { window: 60, max: 10 },
+        "/sign-in/social": { window: 60, max: 10 },
         "/request-password-reset": { window: 900, max: 3 },
         "/send-verification-email": { window: 600, max: 3 },
         "/reset-password": { window: 900, max: 5 },

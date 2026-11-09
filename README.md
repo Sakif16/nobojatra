@@ -78,6 +78,7 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `OPENWEATHER_API_KEY` | Optional | Weather on fares and rankings. Without it, fares carry no weather adjustment and the screens say weather is not set up |
 | `TOMTOM_API_KEY` | Optional | Live traffic and the map's traffic overlay. Without it, times and fares use no traffic data and the screens say traffic is not set up |
 | `PATHAO_FARE_API` | Optional | Live Pathao pricing. Without it, fares come from the seeded rate card and are labelled as rate-card estimates |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional | Turns on the "Continue with Google" button. See [Google sign-in](#google-sign-in). Without them the button is hidden |
 | `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` | Optional | Sending password reset and verification emails through Mailjet. Without them, the reset page says reset is not set up |
 | `MAIL_FROM` | Optional | Sender address, verified in Mailjet. All three variables together also make sign-in require a verified email |
 | `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search is disabled and the planner explains why. Read at build time, so rebuild after changing it |
@@ -90,6 +91,17 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Leave unset | Mapbox is not used. Setting it switches to Mapbox map layers that aren't configured correctly |
 
 Never commit `.env` or put a real key in the code. A secret scan runs on every pull request and on every push to `main`.
+
+### Google sign-in
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) open **APIs & Services → OAuth consent screen** and set one up (External, with your app name and email).
+2. Open **Credentials → Create credentials → OAuth client ID**, choose **Web application**, and add these **Authorized redirect URIs**:
+   - `http://localhost:3000/api/auth/callback/google`
+   - `https://nobojatra.onrender.com/api/auth/callback/google`
+3. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, locally and in the host's environment settings. `BETTER_AUTH_URL` must be the exact URL users visit.
+4. While the consent screen is in **Testing**, only the test users you list there can sign in. Publish it to let anyone in.
+
+A Google sign-in joins an existing password account with the same email only if that account's email is already verified. Accounts created through Google have no password, so deleting one is confirmed by signing in again within 15 minutes.
 
 ### 3) Seed the fare rates
 ```bash
@@ -123,7 +135,7 @@ Use this configuration to reproduce the demo. These instructions describe the su
 
 - **Host:** one Node web service, built with `pnpm install --frozen-lockfile && pnpm build` and started with `pnpm start`.
 - **Database:** one MongoDB Atlas cluster, database `nobojatra`, seeded once with `pnpm seed:rates`.
-- **Environment:** the four required variables, with `BETTER_AUTH_URL` set to the public URL, plus `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`, `PATHAO_FARE_API`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM` and `NEXT_PUBLIC_TM_MODEL_URL`. Set `TZ=UTC` on the host.
+- **Environment:** the four required variables, with `BETTER_AUTH_URL` set to the public URL, plus `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`, `PATHAO_FARE_API`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `NEXT_PUBLIC_TM_MODEL_URL`. Set `TZ=UTC` on the host.
 - **One instance only.** Per-account rate limits are counted in the server's memory, so a second instance would give every account a second allowance.
 
 Read the startup log after each deploy: it lists every optional feature that is off.
