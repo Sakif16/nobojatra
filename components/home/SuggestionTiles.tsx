@@ -28,8 +28,8 @@ const features: Feature[] = [
     icon: <CalendarClock className="size-6" />,
   },
   {
-    label: "AI route ranking",
-    description: "Scores your options on time, cost and comfort",
+    label: "Best overall ranking",
+    description: "Ranks ride options on cost, comfort and conditions",
     icon: <Route className="size-6" />,
   },
   {
@@ -82,7 +82,7 @@ export default function SuggestionTiles() {
         {features.map((feature) => (
           <div
             key={feature.label}
-            className="flex cursor-default flex-col rounded-lg border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_color-mix(in_oklch,var(--primary),transparent_82%)]"
+            className="flex cursor-default flex-col rounded-2xl border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-primary/45 hover:shadow-[0_0_24px_color-mix(in_oklch,var(--primary),transparent_82%)]"
           >
             <TileBody feature={feature} />
           </div>

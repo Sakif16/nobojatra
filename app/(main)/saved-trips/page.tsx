@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import PageContainer from "@/components/ui/page-container";
 import SavedTripsManager from "@/components/saved-trips/SavedTripsManager";
 import { resolveCountry } from "@/lib/country-config";
 import { getRequestProfile, getRequestSession } from "@/lib/request-context";
@@ -42,8 +43,8 @@ export default async function SavedTripsPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer>
       <SavedTripsManager savedPlaces={savedPlaces} />
-    </main>
+    </PageContainer>
   );
 }

@@ -1,11 +1,13 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   MapContainer,
   TileLayer,
   Polyline,
   Marker,
+  Pane,
   Tooltip,
   useMap,
 } from "react-leaflet";
@@ -56,13 +58,6 @@ function AnimatedRoute({ positions, layer, delay, duration }: { positions: Route
   return <Polyline ref={line} positions={positions} pathOptions={{ ...options[layer], lineCap: "round", lineJoin: "round", className: `planner-route planner-route-${layer}`, interactive: false }} />;
 }
 
-// The map used to have no zoom floor and no bounds, so a scroll wheel could
-// zoom out forever and repeat the world. Clamp it to something that still
-// shows a whole country, and keep panning inside one copy of the world.
-const MIN_ZOOM = 3;
-const MAX_ZOOM = 18;
-const WORLD_BOUNDS = L.latLngBounds([-85, -180], [85, 180]);
-
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY?.trim();
 
@@ -75,6 +70,9 @@ const MAPBOX_ATTRIBUTION = '&copy; <a href="https://www.mapbox.com/about/maps/">
 const CARTO_ATTRIBUTION = '&copy; <a href="https://carto.com/attributions">CARTO</a>';
 const TOMTOM_ATTRIBUTION = '&copy; <a href="https://www.tomtom.com/">TomTom</a>';
 
+/** Space kept clear around a fitted route, in pixels. */
+const FIT_PADDING = 48;
+
 /** The place's own name, without the address a search result appends to it. */
 function placeName(point: LatLng) {
   return (point.label ?? point.name)?.split(",")[0]?.trim() || null;
@@ -86,16 +84,18 @@ function markerTitle(role: string, point: LatLng) {
   return name ? `${role}: ${name}` : role;
 }
 
+/** The size of a card floating over the map's bottom-right corner. */
+export type MapOverlayReserve = { width: number; height: number };
+
 type Props = {
   square?: boolean;
-  fitRequest?: number;
-  showFitControl?: boolean;
   choreographed?: boolean;
   routeChanged?: boolean;
   /**
    * The country the trip is in. Decides whether the traffic overlay and
-   * legend are offered at all: where there is no live traffic the overlay
-   * tiles are blank, which looks like clear roads.
+   * legend are offered at all — where there is no live traffic the overlay
+   * tiles are blank, which looks like clear roads — and how far the map can
+   * be zoomed out and panned.
    */
   country: CountryCode;
   origin?: LatLng | null;
@@ -106,21 +106,24 @@ type Props = {
   onSelectRoute?: (id: string) => void;
   traffic?: TripTrafficResult | null;
   trafficLoading?: boolean;
+  /**
+   * A card the page floats over the map's bottom-right corner on wide
+   * screens. Fitting the route keeps it out from under the card.
+   */
+  overlayReserve?: MapOverlayReserve | null;
 };
 
 function TrafficLegend({
   traffic,
   loading,
-  inPlanner,
 }: {
   traffic: TripTrafficResult | null | undefined;
   loading: boolean | undefined;
-  inPlanner: boolean;
 }) {
   if (!traffic && !loading) return null;
 
   return (
-    <div className={`pointer-events-none absolute z-1000 flex flex-col gap-1.5 rounded-xl border border-border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur ${inPlanner ? "bottom-12 left-3" : "right-3 top-3"}`}>
+    <div className="pointer-events-none absolute top-3 right-3 z-1000 flex flex-col gap-1.5 rounded-xl border border-border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
       {loading ? (
         <span className="text-muted-foreground">Checking live traffic…</span>
       ) : (
@@ -148,17 +151,52 @@ function TrafficLegend({
   );
 }
 
+/**
+ * Padding for fitting the route. On wide screens a page may float a card over
+ * the map's bottom-right corner; the route gives up a strip on one side so it
+ * never ends under the card — the right side or the bottom, whichever leaves
+ * it more room. Below `lg` the card sits under the map, so nothing is kept.
+ */
+function fitPadding(map: L.Map, reserve: MapOverlayReserve | null | undefined): L.FitBoundsOptions {
+  const edge = L.point(FIT_PADDING, FIT_PADDING);
+
+  if (!reserve || !window.matchMedia("(min-width: 1024px)").matches) {
+    return { paddingTopLeft: edge, paddingBottomRight: edge };
+  }
+
+  const { x: width, y: height } = map.getSize();
+  const roomIfRightKept = (width - reserve.width) * height;
+  const roomIfBottomKept = width * (height - reserve.height);
+
+  return {
+    paddingTopLeft: edge,
+    paddingBottomRight:
+      roomIfRightKept >= roomIfBottomKept
+        ? L.point(FIT_PADDING + reserve.width, FIT_PADDING)
+        : L.point(FIT_PADDING, FIT_PADDING + reserve.height),
+  };
+}
+
 function FitBounds({
   origin,
   destination,
   stops,
   routes,
   fitRequest,
+  reserve,
 }: { origin: LatLng; destination: LatLng; stops: LatLng[]; routes: RouteResult[];
   /** Bumped by the "Fit route" button to refit after the user has panned away. */
   fitRequest: number;
+  reserve: MapOverlayReserve | null | undefined;
 }) {
   const map = useMap();
+  // Read at fit time rather than refitting when it changes: a card appearing
+  // (a vehicle being picked) should not move a map the user is looking at.
+  const reserveRef = useRef(reserve);
+
+  useEffect(() => {
+    reserveRef.current = reserve;
+  });
 
   useEffect(() => {
     const points: [number, number][] = [
@@ -169,7 +207,8 @@ function FitBounds({
     ];
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 });
+    // Capped so a very short trip is not shown at street-corner zoom.
+    map.fitBounds(bounds, { ...fitPadding(map, reserveRef.current), maxZoom: 16 });
     // Re-run whenever the route set or any waypoint changes, and when the user
     // asks for the route back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,19 +217,62 @@ function FitBounds({
   return null;
 }
 
-function DefaultMapView({ country }: { country: CountryCode }) {
+/**
+ * Keeps the map on the country being planned in: it cannot be panned away
+ * from it, or zoomed out past the level that shows all of it. Without this the
+ * map zoomed out to a repeating world with empty space above and below it.
+ * Recomputed when the map is resized, since the zoom that fits the country
+ * depends on the map's size.
+ */
+function CountryLimits({ country }: { country: CountryCode }) {
   const map = useMap();
+
   useEffect(() => {
-    const { center, zoom } = COUNTRY_CONFIG[country].defaultMapView;
-    map.setView(center, zoom);
+    const { west, south, east, north } = COUNTRY_CONFIG[country].bounds;
+    const bounds = L.latLngBounds([south, west], [north, east]).pad(0.1);
+    const applyMinZoom = () => map.setMinZoom(Math.max(2, map.getBoundsZoom(bounds, false)));
+
+    map.setMaxBounds(bounds);
+    applyMinZoom();
+    map.on("resize", applyMinZoom);
+
+    return () => {
+      map.off("resize", applyMinZoom);
+    };
   }, [country, map]);
+
   return null;
+}
+
+/**
+ * Renders its children as a Leaflet control, so it stacks with the zoom
+ * buttons in the same corner instead of being placed by hand beside them.
+ * Clicks and scrolls on it stay with the control rather than reaching the map.
+ */
+function MapControl({ position, children }: { position: L.ControlPosition; children: ReactNode }) {
+  const map = useMap();
+  const [element] = useState(() => {
+    const div = L.DomUtil.create("div", "leaflet-bar planner-map-control");
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  });
+
+  useEffect(() => {
+    const control = new L.Control({ position });
+    control.onAdd = () => element;
+    control.addTo(map);
+
+    return () => {
+      control.remove();
+    };
+  }, [element, map, position]);
+
+  return createPortal(children, element);
 }
 
 export default function RouteMap({
   square = false,
-  fitRequest: externalFitRequest = 0,
-  showFitControl = true,
   choreographed = false,
   routeChanged = false,
   country,
@@ -202,6 +284,7 @@ export default function RouteMap({
   onSelectRoute,
   traffic,
   trafficLoading,
+  overlayReserve,
 }: Props) {
   const [showTrafficTiles, setShowTrafficTiles] = useState(false);
   const [fitRequest, setFitRequest] = useState(0);
@@ -210,7 +293,6 @@ export default function RouteMap({
   const trafficAvailable = canRequestTraffic(country, useServerFeatures());
   const hasTrip = Boolean(origin && destination);
   const isRoundTrip = Boolean(origin && destination && destination.lat === origin.lat && destination.lng === origin.lng);
-  const mapRef = useRef<L.Map | null>(null);
   const originIcon = useMemo(() => origin ? numberedIcon("A", placeName(origin), 0, choreographed) : undefined, [origin, choreographed]);
   const stopIcons = useMemo(() => stops.map((stop, index) => numberedIcon(index + 1, placeName(stop), index + 1, choreographed)), [stops, choreographed]);
   const destinationIcon = useMemo(() => destination ? numberedIcon("B", placeName(destination), stops.length + 1, choreographed) : undefined, [destination, stops.length, choreographed]);
@@ -247,8 +329,6 @@ export default function RouteMap({
         }))
       : null;
 
-  // Visual helpers intentionally removed: directional arrows disabled.
-
   return (
     /*
      * `isolate` is load-bearing, not cosmetic. Leaflet's stylesheet gives its
@@ -261,51 +341,64 @@ export default function RouteMap({
      * Isolating here rather than at each call site keeps the guarantee with the
      * component that owns the Leaflet instance: every map gets it for free.
      */
-    <div className="planner-map relative isolate h-full w-full bg-(--map-bg)">
+    <div className="planner-map relative isolate h-full w-full">
+      {/* One map for the component's whole life. It used to be keyed on
+          whether a trip was shown, so every search and every edit to the
+          form destroyed it and built a new one — reloading every tile and
+          flashing the empty map each time. A new trip now just refits it;
+          a cleared trip leaves the view where it was. */}
       <MapContainer
-        key={hasTrip ? "trip" : "empty"}
         center={origin && destination ? [origin.lat, origin.lng] : COUNTRY_CONFIG[country].defaultMapView.center}
         zoom={origin && destination ? 13 : COUNTRY_CONFIG[country].defaultMapView.zoom}
-        zoomControl={hasTrip}
-        minZoom={MIN_ZOOM}
-        maxZoom={MAX_ZOOM}
-        maxBounds={WORLD_BOUNDS}
-        maxBoundsViscosity={1}
-        worldCopyJump={false}
+        zoomControl
         scrollWheelZoom
-        ref={mapRef}
+        maxBoundsViscosity={1}
         style={{ height: "100%", width: "100%", borderRadius: square ? 0 : "1rem" }}
       >
-        {/* Both basemap providers use OpenStreetMap data. */}
+        {/* Both basemap providers use OpenStreetMap data. `{r}` asks CARTO
+            for high-resolution tiles on high-density screens; Leaflet's
+            detectRetina is left off, since the two together loaded tiles a
+            zoom level too detailed at double resolution. */}
         <TileLayer
           attribution={
             MAPBOX_TOKEN ? `${MAPBOX_ATTRIBUTION} ${OSM_ATTRIBUTION}` : CARTO_API_KEY ? `${OSM_ATTRIBUTION} ${CARTO_ATTRIBUTION}` : OSM_ATTRIBUTION
           }
-          className={MAPBOX_TOKEN || CARTO_API_KEY ? "route-base-tiles" : "route-base-tiles route-base-tiles-osm"}
+          // The warm tint is for the dark basemaps. The OpenStreetMap
+          // fallback is a light map, darkened by its own filter instead so it
+          // neither flashes white nor clashes with the dark app.
+          className={MAPBOX_TOKEN || CARTO_API_KEY ? "route-base-tiles" : "route-base-tiles-osm"}
           subdomains="abcd"
           noWrap
-          bounds={WORLD_BOUNDS}
+          // Keep a ring of loaded tiles around the view, and load new ones
+          // once a zoom settles rather than at every step of it: fewer empty
+          // tiles to show through while moving.
           keepBuffer={6}
           updateWhenZooming={false}
-          detectRetina
           url={
             MAPBOX_TOKEN
               ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
               : CARTO_API_KEY
-                ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
+                ? `https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
                 : "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           }
         />
+
+        {/* CARTO's labels for dark maps: light text on a dark halo, drawn in
+            their own pane above the streets and below the route. An earlier
+            version inverted the light map's labels, which turned their white
+            halos black — black blotches on the brightened roads. */}
+        {!MAPBOX_TOKEN && CARTO_API_KEY && <Pane name="place-labels" style={{ zIndex: 350, pointerEvents: "none" }}>
+          <TileLayer className="route-place-labels" subdomains="abcd" noWrap keepBuffer={6} updateWhenZooming={false}
+            url={`https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`} />
+        </Pane>}
 
         {/* Traffic tile overlay (Mapbox or TomTom) */}
         {hasTrip && trafficAvailable && trafficTileUrl && showTrafficTiles && (
           <TileLayer
             attribution={MAPBOX_TOKEN ? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION}
             url={trafficTileUrl}
-            noWrap
-            bounds={WORLD_BOUNDS}
-            keepBuffer={4}
             opacity={0.9}
+            noWrap
           />
         )}
 
@@ -380,42 +473,42 @@ export default function RouteMap({
           </Marker>
         )}
 
-        {origin && destination ? <FitBounds
+        <CountryLimits country={country} />
+        {origin && destination && <FitBounds
           origin={origin}
           destination={destination}
           stops={stops}
           routes={routes}
-          fitRequest={fitRequest + externalFitRequest}
-        /> : <DefaultMapView country={country} />}
+          fitRequest={fitRequest}
+          reserve={overlayReserve}
+        />}
+
+        {/* Under the zoom buttons. Once the user pans or zooms away there was
+            no way back to the whole route short of searching again. */}
+        {hasTrip && <MapControl position="topleft">
+          <button
+            type="button"
+            onClick={() => setFitRequest((request) => request + 1)}
+            aria-label="Fit route"
+            title="Fit route"
+          >
+            <Maximize2 size={15} aria-hidden="true" />
+          </button>
+        </MapControl>}
+
+        {hasTrip && trafficAvailable && <MapControl position="topleft">
+          <button
+            type="button"
+            onClick={() => setShowTrafficTiles((s) => !s)}
+            aria-pressed={showTrafficTiles}
+            className="planner-map-control-label"
+          >
+            <TrafficCone size={14} aria-hidden="true" /> Traffic
+          </button>
+        </MapControl>}
       </MapContainer>
 
-      {/* Once the user pans or zooms away there was no way back to the route
-          short of searching again. */}
-      {hasTrip && showFitControl && <div className="absolute right-3 bottom-6 z-1000">
-        <button
-          type="button"
-          onClick={() => setFitRequest((request) => request + 1)}
-          className="flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-2 text-xs text-card-foreground shadow-sm"
-        >
-          <Maximize2 size={14} aria-hidden="true" /> Fit route
-        </button>
-      </div>}
-
-      {hasTrip && trafficAvailable && (
-        <>
-          <div className="absolute left-3 top-24 z-1000">
-            <button
-              type="button"
-              onClick={() => setShowTrafficTiles((s) => !s)}
-              aria-pressed={showTrafficTiles}
-              className="flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-2 text-xs text-card-foreground shadow-sm"
-            >
-              <TrafficCone size={14} aria-hidden="true" /> Traffic
-            </button>
-          </div>
-          {showTrafficTiles && <TrafficLegend traffic={traffic} loading={trafficLoading} inPlanner={!showFitControl} />}
-        </>
-      )}
+      {hasTrip && trafficAvailable && showTrafficTiles && <TrafficLegend traffic={traffic} loading={trafficLoading} />}
     </div>
   );
 }

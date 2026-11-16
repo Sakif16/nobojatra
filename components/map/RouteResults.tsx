@@ -105,8 +105,8 @@ export default function RouteResults({
               >
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-foreground">{i === 0 ? "A" : i}</span>
                 <span className="min-w-0">
-                  <span className="block truncate">
-                    {leg.fromLabel ?? `Leg ${i + 1}`} → {leg.toLabel ?? `Point ${i + 2}`} <span className="text-muted-foreground">({i === activeRoute.legs.length - 1 ? "B" : i + 1})</span>
+                  <span className="block truncate" title={`${leg.fromLabel ?? ""} → ${leg.toLabel ?? ""}`}>
+                    {leg.fromLabel?.split(",")[0].trim() || `Leg ${i + 1}`} → {leg.toLabel?.split(",")[0].trim() || `Point ${i + 2}`} <span className="text-muted-foreground">({i === activeRoute.legs.length - 1 ? "B" : i + 1})</span>
                   </span>
                   <span className="block">
                     {leg.distanceKm} km · {leg.durationMin} min

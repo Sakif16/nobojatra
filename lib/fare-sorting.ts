@@ -4,19 +4,27 @@
  * Everything here works on data the fares page already has, so sorting never
  * asks the server for anything.
  */
-export type FareSort = "default" | "fare" | "comfort" | "seats";
+export type FareSort = "default" | "fare" | "comfort" | "seats" | "best";
 
+/**
+ * The orders the fares page offers. "Best overall" is the ranking that used
+ * to have a page of its own (/ranked-options): the same options, scored on
+ * time, cost and comfort by the profile's travel priority. "Default order" is
+ * not offered: the server already lists options by lowest fare.
+ */
 export const FARE_SORT_OPTIONS: Array<{ value: FareSort; label: string }> = [
-  { value: "default", label: "Default order" },
-  { value: "fare", label: "Lowest fare first" },
-  { value: "comfort", label: "Most comfortable first" },
-  { value: "seats", label: "Most seats first" },
+  { value: "fare", label: "Lowest fare" },
+  { value: "comfort", label: "Most comfortable" },
+  { value: "seats", label: "Most seats" },
+  { value: "best", label: "Best overall" },
 ];
 
 type Sortable = {
   fare: { mid: number };
   comfortScore: number;
   maxPassengers: number;
+  /** Position in the ranking; absent for an option that was not ranked. */
+  ranking?: { rank: number } | null;
 };
 
 /**
@@ -30,6 +38,8 @@ export function sortFareOptions<T extends Sortable>(options: T[], sort: FareSort
     fare: (first, second) => first.fare.mid - second.fare.mid,
     comfort: (first, second) => second.comfortScore - first.comfortScore,
     seats: (first, second) => second.maxPassengers - first.maxPassengers,
+    best: (first, second) =>
+      (first.ranking?.rank ?? Number.POSITIVE_INFINITY) - (second.ranking?.rank ?? Number.POSITIVE_INFINITY),
   };
 
   return options

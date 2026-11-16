@@ -44,7 +44,7 @@ export default function AuthedHome({
         restoredTrip={restoredTrip}
         restoreError={restoreError}
         plannerHeader={
-          <div className="mb-6 space-y-3">
+          <div className="space-y-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Plan a route</h1>
               <p className="mt-1 text-sm text-muted-foreground">Welcome back, {userName}</p>

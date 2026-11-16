@@ -9,8 +9,7 @@ import RouteResults from "./RouteResults";
 import { useCountry } from "@/components/country/CountryProvider";
 import { useServerFeatures } from "@/components/features/FeatureProvider";
 import RouteDetailCard from "./RouteDetailCard";
-import TripProgress from "./TripProgress";
-import MapShell from "@/components/layout/MapShell";
+import MapShell, { MAP_OVERLAY_RESERVE } from "@/components/layout/MapShell";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import type { SavedPlaceOption } from "./PlaceAutocomplete";
 import {
@@ -109,7 +108,7 @@ function getFirstValidationError(errors: TripValidationErrors) {
 const RouteMap = dynamic(() => import("./RouteMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-3xl bg-(--map-bg) text-sm text-[#c9c6c1]">
+    <div className="flex h-full w-full items-center justify-center bg-(--map-background) text-sm text-muted-foreground">
       Loading map…
     </div>
   ),
@@ -159,7 +158,6 @@ function Planner({
   const [searchSequence, setSearchSequence] = useState(0);
   const [routeChanged, setRouteChanged] = useState(false);
   const [passengerCount, setPassengerCount] = useState(restored?.values.passengerCount ?? 1);
-  const [mapFitRequest, setMapFitRequest] = useState(0);
   const [editingTrip, setEditingTrip] = useState(false);
   const [tripHistoryId, setTripHistoryId] = useState<string | null>(restored?.tripHistoryId ?? null);
   const [historyMessage, setHistoryMessage] = useState<string | null>(restored ? "Restored from trip history" : null);
@@ -167,6 +165,7 @@ function Planner({
   // The route search the screen is waiting on. A search that is replaced or
   // made irrelevant is aborted, and its answer ignored if it still arrives.
   const searchRef = useRef<AbortController | null>(null);
+  const plannerTopRef = useRef<HTMLDivElement>(null);
   // Route choices are stored one at a time, in the order they were clicked.
   const routeSelectRef = useRef(0);
   const routeSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -390,12 +389,17 @@ function Planner({
   }
 
   // "Plan Again": refill the form with the trip and re-run the search.
+  //
+  // The cards sit below the full-height map, so the search they start runs
+  // off-screen. Scroll back up to the planner, where its results appear.
   function handlePlanAgain(values: RouteFormValues) {
     setRestoredTrip((previous) => ({
       values,
       revision: (previous?.revision ?? 0) + 1,
     }));
     void findRoutes(values);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    plannerTopRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }
 
   const hasResults = origin !== null && destination !== null && routes.length > 0;
@@ -424,9 +428,11 @@ function Planner({
 
   return (
     <>
+      {/* Plan Again scrolls back to here. The margin keeps it below the
+          sticky navbar. */}
+      <div ref={plannerTopRef} aria-hidden="true" className="scroll-mt-(--app-header-height)" />
       <MapShell
         sidebar={ <>
-          <TripProgress current="route" />
           {plannerHeader}
           <RouteFinderForm
             key={restoredTrip ? `restored-${restoredTrip.revision}` : "fresh"}
@@ -439,6 +445,9 @@ function Planner({
             savedPlaces={savedPlaces}
             collapsed={hasResults && !editingTrip}
             onEdit={() => setEditingTrip(true)}
+            // Only while the results still match the form: any edit clears
+            // them, and then there is no summary to go back to.
+            onDoneEditing={hasResults && editingTrip ? () => setEditingTrip(false) : undefined}
           />
 
           {error && <StatusMessage>{error}</StatusMessage>}
@@ -477,8 +486,7 @@ function Planner({
               square
               choreographed
               routeChanged={routeChanged}
-              fitRequest={mapFitRequest}
-              showFitControl={false}
+              overlayReserve={hasResults ? MAP_OVERLAY_RESERVE : null}
               country={country}
               origin={origin}
               destination={destination}
@@ -500,11 +508,11 @@ function Planner({
                 traffic={traffic}
                 trafficLoading={trafficLoading}
                 trafficError={trafficError}
+                liveTrafficAvailable={canRequestTraffic(country, features)}
                 departure={trafficDeparture?.scheduledAt ? formatTripDateTime(trafficDeparture.scheduledAt, trafficDeparture.timeZone) : null}
                 accessNote={accessNotes[0]}
                 canViewFares={Boolean(tripHistoryId)}
                 onViewFares={handleViewFares}
-                onFitRoute={() => setMapFitRequest((request) => request + 1)}
               />
           ) : null}
       />

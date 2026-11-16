@@ -56,12 +56,11 @@ test("every screen that shows a fare shows where it came from", () => {
 
   for (const file of [
     "components/FareResults.tsx",
-    "components/BestOptionsResults.tsx",
     "components/TripSummary.tsx",
   ]) {
     assert.match(read(file), /getFareSourceLabel\(/, `${file} does not label the fare source`);
   }
-  for (const file of ["components/FareResults.tsx", "components/BestOptionsResults.tsx", "components/TripSummary.tsx"]) {
+  for (const file of ["components/FareResults.tsx", "components/TripSummary.tsx"]) {
     assert.match(read(file), /\{[^}]*fareSourceNote\}/, `${file} does not show the fallback note`);
   }
   // The plan is saved with the source the user was shown.

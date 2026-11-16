@@ -44,6 +44,12 @@ export default function PlaceAutocomplete({
   const [focused, setFocused] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The text the user last typed here, or null once they pick a place. Only
+  // that text is searched. A value set from outside — a picked suggestion's
+  // full address, a restored trip, a saved place, a swap, a photo match — is
+  // already a chosen place: searching it re-opened the list the user had
+  // just closed, and every prefilled field searched on page load.
+  const [typedValue, setTypedValue] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +61,9 @@ export default function PlaceAutocomplete({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (value.trim().length < 2) {
+    // Searched only while the field has focus and holds what was typed in it,
+    // so a list never opens on a field the user is not using.
+    if (value.trim().length < 2 || !focused || value !== typedValue) {
       debounceRef.current = setTimeout(() => {
         setResults([]);
         setError(null);
@@ -99,7 +107,7 @@ export default function PlaceAutocomplete({
     // `country` is a dependency so switching country re-runs the search that
     // is already on screen against the new one, rather than leaving stale
     // suggestions the user could pick and then fail validation with.
-  }, [value, hasSavedPlaces, focused, country]);
+  }, [value, typedValue, hasSavedPlaces, focused, country]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -127,7 +135,10 @@ export default function PlaceAutocomplete({
         type="text"
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          setTypedValue(e.target.value);
+          onChange(e.target.value);
+        }}
         onFocus={() => {
           // Clicking into an already-empty field doesn't change `value`, so
           // this can't rely on the effect above re-running — it needs its
@@ -163,6 +174,7 @@ export default function PlaceAutocomplete({
                   key={saved.label}
                   type="button"
                   onClick={() => {
+                    setTypedValue(null);
                     onSelect(saved.place);
                     setOpen(false);
                     setFocused(false);
@@ -196,6 +208,7 @@ export default function PlaceAutocomplete({
                     key={place.id ?? `${place.lat}-${place.lng}-${i}`}
                     type="button"
                     onClick={() => {
+                      setTypedValue(null);
                       onSelect(place);
                       setOpen(false);
                       setFocused(false);

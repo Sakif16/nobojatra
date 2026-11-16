@@ -10,13 +10,23 @@ function Wordmark() {
   return <Link href="/" aria-label="NoboJatra home" className="inline-flex shrink-0 items-center gap-2 font-semibold text-foreground"><span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary"><Route className="size-5" aria-hidden /></span><span className="hidden sm:inline">NoboJatra</span></Link>;
 }
 
+/*
+ * Full width, with the same 16/24px side padding as the map sidebar, so the
+ * logo sits over the sidebar's content edge instead of floating in a centred
+ * 1280px column above an edge-to-edge map.
+ *
+ * The height is set on the header itself. Box sizing puts the bottom border
+ * inside it, so the header is exactly --app-header-height tall — the number
+ * the map layout subtracts. With the height on an inner row the border added
+ * a pixel and the planner scrolled by one.
+ */
 export default async function Navbar() {
   const session = await getRequestSession();
 
   if (!session) {
     return (
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-[var(--app-header-height)] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 h-(--app-header-height) border-b border-border bg-background/95 backdrop-blur-xl">
+        <div className="flex h-full w-full items-center justify-between px-4 sm:px-6">
           <Wordmark />
           <div className="flex items-center gap-3">
             {/* buttonVariants on the Link itself: an <a> inside a <button> is
@@ -40,8 +50,8 @@ export default async function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-[var(--app-header-height)] max-w-7xl items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:gap-6 lg:px-8">
+    <header className="sticky top-0 z-40 h-(--app-header-height) border-b border-border bg-background/95 backdrop-blur-xl">
+      <div className="flex h-full w-full items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:gap-6">
         <Wordmark />
 
         <PrimaryNav className="min-w-0 flex-1" />

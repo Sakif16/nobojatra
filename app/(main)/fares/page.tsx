@@ -6,7 +6,7 @@ import { getRequestSession } from '@/lib/request-context'
 export const metadata: Metadata = { title: 'Fare estimates' }
 
 interface Props {
-  searchParams: Promise<{ tripHistoryId?: string; routeId?: string }>
+  searchParams: Promise<{ tripHistoryId?: string; routeId?: string; sort?: string }>
 }
 
 export default async function FaresPage({ searchParams }: Props) {
@@ -26,6 +26,7 @@ export default async function FaresPage({ searchParams }: Props) {
     <FareResults
       tripHistoryId={tripHistoryId}
       routeId={routeId}
+      initialSort={params.sort === 'best' ? 'best' : undefined}
     />
   )
 }

@@ -14,6 +14,8 @@ import {
 import type { PlaceResult } from "@/lib/geocode";
 import { readJson, UnexpectedResponseError } from "@/lib/read-json";
 import PageHeader from "@/components/ui/page-header";
+import StatusMessage from "@/components/ui/status-message";
+import PageContainer from "@/components/ui/page-container";
 import Panel from "@/components/ui/panel";
 import Chip from "@/components/ui/chip";
 import ListRow from "@/components/ui/list-row";
@@ -259,7 +261,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
+    <PageContainer className="flex flex-col gap-8">
       <PageHeader title="Profile" back={{ href: "/", label: "Back to planner" }} subtitle="Manage your account and travel defaults." />
 
       <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start">
@@ -308,11 +310,14 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <span className="mb-2 block text-sm font-medium">Default Travel Priority</span>
-            <div role="group" aria-label="Default travel priority" className="flex flex-wrap gap-2">
+            <div role="group" aria-label="Default travel priority" aria-describedby="priority-hint" className="flex flex-wrap gap-2">
               {travelPriorities.map((priority) => (
                 <Chip key={priority.value} selected={defaultTravelPriority === priority.value} buttonProps={{ onClick: () => setDefaultTravelPriority(priority.value) }}>{priority.label}</Chip>
               ))}
             </div>
+            <p id="priority-hint" className="mt-2 text-xs text-muted-foreground">
+              Sets how the &ldquo;Best overall&rdquo; order on fare estimates weighs time, cost and comfort.
+            </p>
           </div>
 
           <div>
@@ -396,7 +401,7 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
           </button>
         </Panel>
 
-        <div className="mt-6 rounded-xl border border-border bg-background p-4">
+        <Panel>
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Account Created</dt>
@@ -407,18 +412,10 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
               <dd className="mt-1 font-medium text-foreground">{initialUser.email}</dd>
             </div>
           </dl>
-        </div>
+        </Panel>
 
-        {message ? (
-          <p role="status" className="mt-5 text-sm text-primary">
-            {message}
-          </p>
-        ) : null}
-        {errorMessage ? (
-          <p role="alert" className="mt-5 text-sm text-destructive">
-            {errorMessage}
-          </p>
-        ) : null}
+        {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
+        {errorMessage ? <StatusMessage>{errorMessage}</StatusMessage> : null}
 
         <div className="mt-6 flex justify-end">
           <button
@@ -514,6 +511,6 @@ export default function ProfileForm({ initialUser, initialProfile }: ProfileForm
       ) : null}
       </div>
       </div>
-    </main>
+    </PageContainer>
   );
 }

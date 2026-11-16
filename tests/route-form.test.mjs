@@ -39,3 +39,31 @@ test("an empty stop is marked where it is", () => {
   assert.match(form, /showStopErrors && stop\.place === null && \(\s*<p role="alert"/);
   assert.match(form, /Choose a place for stop \{i \+ 1\}/);
 });
+
+const autocomplete = fs.readFileSync(path.join(root, "components/map/PlaceAutocomplete.tsx"), "utf8");
+const planner = fs.readFileSync(path.join(root, "components/map/MapDashboardSection.tsx"), "utf8");
+const card = fs.readFileSync(path.join(root, "components/map/RouteDetailCard.tsx"), "utf8");
+
+test("place search runs only on text typed into a focused field", () => {
+  // A picked place, a restored trip or a photo match writes the field from
+  // outside; searching that re-opened the list and searched on page load.
+  assert.match(autocomplete, /!focused \|\| value !== typedValue/);
+  assert.match(autocomplete, /setTypedValue\(e\.target\.value\)/);
+  assert.equal(autocomplete.match(/setTypedValue\(null\);\s*onSelect\(/g)?.length, 2);
+});
+
+test("Plan Again brings the planner back into view", () => {
+  assert.match(planner, /plannerTopRef\.current\?\.scrollIntoView\(/);
+  assert.match(planner, /prefers-reduced-motion: reduce/);
+});
+
+test("an unchanged trip opened with Edit can be folded back", () => {
+  assert.match(planner, /onDoneEditing=\{hasResults && editingTrip \?/);
+  assert.match(form, /onDoneEditing && \(/);
+  assert.match(form, /\(collapsed \? editButtonRef : doneButtonRef\)\.current\?\.focus\(\)/);
+});
+
+test("the route card does not call missing live traffic a failure", () => {
+  assert.match(card, /liveTrafficAvailable && trafficError\s*\?\s*"Traffic unavailable"\s*:\s*"No live traffic"/);
+  assert.match(planner, /liveTrafficAvailable=\{canRequestTraffic\(country, features\)\}/);
+});

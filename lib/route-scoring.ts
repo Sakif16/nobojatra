@@ -324,7 +324,9 @@ export function rankRouteOptions({
   // sort best-first by composite score, then use priority-specific tie-breaks
   // so equal-duration/equal-score cases still feel aligned with the selected
   // Speed/Budget/Comfort mode.
-  return withTags
-    .sort((a, b) => compareRankedOptions(a, b, normalizedPriority))
-    .slice(0, 3);
+  //
+  // Every usable option is ranked. The old ranked-options page kept only the
+  // top three; as the fares page's "Best overall" sort, every row needs a
+  // place in the order.
+  return withTags.sort((a, b) => compareRankedOptions(a, b, normalizedPriority));
 }

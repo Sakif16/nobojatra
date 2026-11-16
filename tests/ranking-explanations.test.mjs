@@ -142,9 +142,29 @@ test("the stated ranking rule is the one the score uses", () => {
 });
 
 test("a vehicle's time is shown as an estimate, and a lone option gets no score", () => {
-  const screen = fs.readFileSync(path.join(root, "components/BestOptionsResults.tsx"), "utf8");
+  // The ranking is the "Best overall" sort on the fares page.
+  const screen = fs.readFileSync(path.join(root, "components/FareResults.tsx"), "utf8");
 
-  assert.match(screen, /est\. \{option\.adjustedDurationMin\} min/);
-  assert.match(screen, /options\.length > 1 && \(\s*<span[^>]*>\s*Score/);
+  assert.match(screen, /est\. \$\{v\.ranking\.adjustedDurationMin\} min/);
+  assert.match(screen, /const showRanking = sort === 'best' && available\.length > 1/);
+  assert.match(screen, /showRanking && v\.ranking && <span[^>]*>\s*<Pill[^>]*>\{riskBadgeLabel/);
   assert.match(screen, /nothing to rank it against/);
+});
+
+test("the ranking is served with the fares, and the old page sends its links there", () => {
+  const api = fs.readFileSync(path.join(root, "app/api/fares/route.ts"), "utf8");
+  assert.match(api, /rankRouteOptions\(\{/);
+  assert.match(api, /ranking: rankingByKey\.get\(/);
+  assert.equal(fs.existsSync(path.join(root, "app/api/best-options/route.ts")), false);
+  assert.equal(fs.existsSync(path.join(root, "components/map/TripProgress.tsx")), false);
+
+  const ranked = fs.readFileSync(path.join(root, "app/(main)/ranked-options/page.tsx"), "utf8");
+  assert.match(ranked, /redirect\(`\/fares\?\$\{new URLSearchParams\(\{[^}]*sort: "best"/);
+});
+
+test("every usable option is ranked, not just the top three", () => {
+  // "Best overall" sorts the whole fare list; the old page showed three.
+  const ranked = rank(["A", "B", "C", "D", "E"].map((displayName, index) =>
+    option({ displayName, vehicleType: `type-${index}`, fare: { low: 40 + index * 10, mid: 50 + index * 10, high: 60 + index * 10 } })));
+  assert.equal(ranked.length, 5);
 });

@@ -29,9 +29,11 @@ import {
   WEATHER_SEVERITY_LIMITS,
 } from '@/lib/weather-reading'
 import { cn } from '@/lib/utils'
-import TripProgress from "@/components/map/TripProgress";
+import BackLink from "@/components/BackLink";
+import { buttonVariants } from "@/components/ui/button";
+import Chip from "@/components/ui/chip";
 import EstimateNotes from "@/components/EstimateNotes";
-import MapShell from '@/components/layout/MapShell'
+import MapShell, { MAP_OVERLAY_RESERVE } from '@/components/layout/MapShell'
 import ListRow from '@/components/ui/list-row'
 import Panel from '@/components/ui/panel'
 import Pill from '@/components/ui/pill'
@@ -41,7 +43,7 @@ import { SkeletonRows } from '@/components/ui/skeleton'
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-3xl bg-(--map-bg) text-sm text-[#c9c6c1]">
+    <div className="flex h-full w-full items-center justify-center bg-(--map-background) text-sm text-muted-foreground">
       Loading map…
     </div>
   ),
@@ -73,6 +75,24 @@ interface FareOption {
   fareSource?: 'pathao_api' | 'rate_card'
   fareSourceNote?: string | null
   fareAdjustment?: FareAdjustment | null
+  /** Its place in the "Best overall" order; null when it cannot be used. */
+  ranking?: FareRanking | null
+}
+
+type RiskBand = 'low' | 'moderate' | 'high'
+type RiskBasis = 'weather_and_traffic' | 'weather' | 'traffic' | 'none'
+type TravelPriority = 'time' | 'cost' | 'comfort'
+type ScoringWeights = Record<TravelPriority, number>
+
+interface FareRanking {
+  rank: number
+  score: number
+  adjustedDurationMin: number
+  riskBand: RiskBand
+  riskBasis: RiskBasis
+  bestFor: 'Speed' | 'Budget' | 'Comfort' | null
+  pros: string[]
+  cons: string[]
 }
 
 interface FareTripSummary {
@@ -125,6 +145,7 @@ interface FaresApiResponse {
   weatherUnavailable?: boolean
   trafficUnavailable?: boolean
   timeZone?: string
+  scoringWeights?: ScoringWeights
 }
 
 const ICONS: Record<string, string> = {
@@ -215,6 +236,67 @@ function getWeatherClassName(weather: FareWeather | null, unavailable: boolean) 
   return 'border-border bg-card text-muted-foreground'
 }
 
+const PRIORITY_LABELS: Array<{ value: TravelPriority; label: string }> = [
+  // The words the Profile priority uses, so the rule reads like the setting.
+  { value: 'time', label: 'time' },
+  { value: 'cost', label: 'cost' },
+  { value: 'comfort', label: 'comfort' },
+]
+
+/**
+ * The "Best overall" rule in one sentence: the share each measure carries,
+ * and which of weather and traffic counted against an option. It is the
+ * whole rule; there is nothing else behind the order.
+ *
+ * Travel time only differs between vehicles where live traffic gives each
+ * vehicle class its own speed. Where every option has the same time, the
+ * sentence says time did not change the order rather than claim a share
+ * that did nothing.
+ */
+function scoringRule(weights: ScoringWeights, basis: RiskBasis, timesDiffer: boolean) {
+  const shares = PRIORITY_LABELS
+    .map((priority) => ({ label: priority.label, percent: Math.round(weights[priority.value] * 100) }))
+    .sort((first, second) => second.percent - first.percent)
+  const split = `${shares.slice(0, -1).map((share) => `${share.percent}% on ${share.label}`).join(', ')} and ${shares.at(-1)?.percent}% on ${shares.at(-1)?.label}`
+  const risk =
+    basis === 'weather_and_traffic' ? ', less a small deduction for weather and traffic risk.'
+      : basis === 'weather' ? ', less a small deduction for weather risk. Traffic is unknown, so it is not counted.'
+        : basis === 'traffic' ? ', less a small deduction for traffic risk. Weather is unknown, so it is not counted.'
+          : '. Weather and traffic are unknown, so risk is not counted.'
+  const time = timesDiffer ? '' : ' Every option has the same travel time here, so time does not change the order.'
+
+  return `Ranked ${split}${risk}${time} Your travel priority in Profile sets the shares.`
+}
+
+function scoreLabel(score: number) {
+  if (!Number.isFinite(score)) return '0'
+  return String(Math.max(0, Math.min(100, Math.round(score * 100))))
+}
+
+// A band nothing was measured for gets no colour: green would read as "safe".
+function riskBadgeClass(band: RiskBand, basis: RiskBasis) {
+  if (basis === 'none') return 'border-border bg-muted text-muted-foreground'
+  if (band === 'high') return 'border-destructive/30 bg-destructive/10 text-destructive'
+  if (band === 'moderate') return 'border-primary/30 bg-primary/10 text-primary'
+  return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
+}
+
+// Named for what it was worked out from: without traffic it is a weather risk.
+function riskBadgeLabel(band: RiskBand, basis: RiskBasis) {
+  if (basis === 'none') return 'Risk not assessed'
+  const level = band === 'high' ? 'High' : band === 'moderate' ? 'Moderate' : 'Low'
+  if (basis === 'weather') return `${level} weather risk`
+  if (basis === 'traffic') return `${level} traffic risk`
+  return `${level} risk`
+}
+
+function bestForClass(tag: FareRanking['bestFor']) {
+  if (tag === 'Speed') return 'bg-sky-400/15 text-sky-400'
+  if (tag === 'Budget') return 'bg-emerald-400/15 text-emerald-400'
+  if (tag === 'Comfort') return 'bg-violet-400/15 text-violet-400'
+  return 'bg-secondary text-secondary-foreground'
+}
+
 function getFareAdjustmentLabel(adjustment: FareAdjustment | null | undefined) {
   if (!adjustment || adjustment.notes.length === 0) return null
 
@@ -224,8 +306,10 @@ function getFareAdjustmentLabel(adjustment: FareAdjustment | null | undefined) {
   return `Condition adjusted x${adjustment.multiplier.toFixed(2)}: ${notes}${more}`
 }
 
-export default function FareResults({ tripHistoryId, routeId }: {
+export default function FareResults({ tripHistoryId, routeId, initialSort = 'fare' }: {
   tripHistoryId: string; routeId: string
+  /** "best" when arriving from an old ranked-options link. */
+  initialSort?: FareSort
 }) {
   // The trip's country, from the API rather than from context: this page
   // prices a stored trip, which keeps the country it was planned in even after
@@ -242,10 +326,10 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [sort, setSort] = useState<FareSort>('default')
+  const [sort, setSort] = useState<FareSort>(initialSort)
+  const [scoringWeights, setScoringWeights] = useState<ScoringWeights | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
-  const [mapFitRequest, setMapFitRequest] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -270,6 +354,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
         setWeatherUnavailable(Boolean(d?.weatherUnavailable))
         setTimeZone(d?.timeZone ?? COUNTRY_CONFIG[d?.country ?? DEFAULT_COUNTRY].timeZone)
         setTrafficUnavailable(Boolean(d?.trafficUnavailable))
+        setScoringWeights(d?.scoringWeights ?? null)
         setError(null)
         setLoading(false)
       })
@@ -333,6 +418,10 @@ export default function FareResults({ tripHistoryId, routeId }: {
   const weatherTitle = getWeatherTitle(weather, weatherUnavailable, features)
   const weatherDescription = getWeatherDescription(weatherUnavailable)
   const selectedOption = available.find((v) => `${v.provider}-${v.vehicleType}` === selected) ?? null
+  // Scores and tags only mean something against another option.
+  const showRanking = sort === 'best' && available.length > 1
+  const rankedTimes = new Set(available.flatMap((v) => v.ranking ? [v.ranking.adjustedDurationMin] : []))
+  const rankingBasis = available.find((v) => v.ranking)?.ranking?.riskBasis ?? 'none'
 
   async function handleConfirm() {
     if (!selectedOption) return
@@ -370,11 +459,15 @@ export default function FareResults({ tripHistoryId, routeId }: {
     <main className="flex-1">
       <MapShell
         sidebar={<>
-          <TripProgress current="fares" tripHistoryId={tripHistoryId} routeId={routeId} canRank={Boolean(trip)} />
+          {/* Back to this trip's routes on the planner, with the route still
+              selected. */}
+          <BackLink href={`/?${new URLSearchParams({ tripHistoryId, routeId })}`} label="Back to route" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Fare estimates</h1>
-            {trip && <p className="mt-2 text-sm text-muted-foreground">
-              {trip.originLabel} → {trip.destinationLabel} · {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers === 1 ? '' : 's'}
+            {/* Place names only, like the planner: full search addresses ran
+                to five lines here. The full ones are in the tooltip. */}
+            {trip && <p className="mt-2 text-sm text-muted-foreground" title={`${trip.originLabel} → ${trip.destinationLabel}`}>
+              {trip.originLabel.split(',')[0].trim()} → {trip.destinationLabel.split(',')[0].trim()} · {trip.distanceKm} km · {trip.durationMin} min · {trip.passengers} passenger{trip.passengers === 1 ? '' : 's'}
             </p>}
             {!loading && results.length > 0 && <p className="mt-1 text-xs text-muted-foreground">
               {COUNTRY_CONFIG[country].label} · fares in {COUNTRY_CONFIG[country].currency}
@@ -408,13 +501,16 @@ export default function FareResults({ tripHistoryId, routeId }: {
             </details>}
 
             {available.length > 0 ? <>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{available.length} option{available.length === 1 ? '' : 's'}</h2>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">Sort
-                  <select value={sort} onChange={(event) => setSort(event.target.value as FareSort)} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs text-foreground">
-                    {FARE_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </label>
+              <div>
+                <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{available.length} option{available.length === 1 ? '' : 's'}</h2>
+                <div role="group" aria-label="Sort options" className="flex flex-wrap gap-2">
+                  {FARE_SORT_OPTIONS.map((option) => <Chip key={option.value} selected={sort === option.value} buttonProps={{ onClick: () => setSort(option.value) }}>{option.label}</Chip>)}
+                </div>
+                {sort === 'best' && <p className="mt-2 text-xs leading-snug text-muted-foreground">
+                  {showRanking && scoringWeights
+                    ? scoringRule(scoringWeights, rankingBasis, rankedTimes.size > 1)
+                    : 'Only one option fits this trip, so there is nothing to rank it against.'}
+                </p>}
               </div>
               <div className="space-y-2">
                 {available.map((v) => {
@@ -422,11 +518,18 @@ export default function FareResults({ tripHistoryId, routeId }: {
                   const isSelected = selected === key
                   const adjustmentLabel = getFareAdjustmentLabel(v.fareAdjustment)
                   return <ListRow key={key} selected={isSelected} disabled={confirming} onClick={() => { setSelected(isSelected ? null : key); setConfirmError(null) }}
-                    className={cn(!isSelected && 'border-border bg-card')}
                     leading={<span aria-hidden="true">{ICONS[key] ?? '🚘'}</span>}
                     title={v.displayName}
+                    pill={showRanking && v.ranking?.rank === 1 ? <Pill>#1</Pill> : undefined}
                     meta={<>
-                      <span className="block">{STARS(v.comfortScore)} · Capacity: {v.maxPassengers}</span>
+                      <span className="block">{STARS(v.comfortScore)} · Capacity: {v.maxPassengers}{showRanking && v.ranking ? ` · est. ${v.ranking.adjustedDurationMin} min` : ''}</span>
+                      {showRanking && v.ranking && <span className="mt-1 flex flex-wrap gap-1">
+                        <Pill className={cn('border text-[10px]', riskBadgeClass(v.ranking.riskBand, v.ranking.riskBasis))}>{riskBadgeLabel(v.ranking.riskBand, v.ranking.riskBasis)}</Pill>
+                        <Pill className="text-[10px]">Score {scoreLabel(v.ranking.score)}</Pill>
+                        {v.ranking.bestFor && <Pill className={cn('text-[10px]', bestForClass(v.ranking.bestFor))}>Best for {v.ranking.bestFor}</Pill>}
+                        {v.ranking.pros.map((pro) => <Pill key={`pro-${pro}`} className="bg-emerald-400/10 text-[10px] text-emerald-400">+ {pro}</Pill>)}
+                        {v.ranking.cons.map((con) => <Pill key={`con-${con}`} className="bg-destructive/10 text-[10px] text-destructive">− {con}</Pill>)}
+                      </span>}
                       {v.fareSourceNote && <span className="mt-1 block">{v.fareSourceNote}</span>}
                       {v.weatherRestricted && v.restrictionReason && <span className="mt-1 block text-primary">{v.restrictionReason}</span>}
                       {adjustmentLabel && <span className="mt-1 block text-primary">{adjustmentLabel}</span>}
@@ -441,7 +544,7 @@ export default function FareResults({ tripHistoryId, routeId }: {
               <h2 id="unavailable-heading" className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Unavailable</h2>
               {hasCapacityExclusion(unavailable) && <p className="mb-2 text-xs text-muted-foreground">Some vehicles are too small for {passengers} passenger{passengers === 1 ? '' : 's'}. <Link href={`/?${new URLSearchParams({ tripHistoryId, routeId })}`} className="font-medium text-primary hover:underline">Change the passenger count in the planner</Link>.</p>}
               <div className="space-y-2">
-                {unavailable.map((v) => <ListRow key={`${v.provider}-${v.vehicleType}`} disabled className="border-border bg-card opacity-60"
+                {unavailable.map((v) => <ListRow key={`${v.provider}-${v.vehicleType}`} disabled className="opacity-60"
                   leading={<span aria-hidden="true">{ICONS[`${v.provider}-${v.vehicleType}`] ?? '🚘'}</span>}
                   title={v.displayName} meta={describeUnavailable(v, passengers)}
                   trailing={<span className="text-sm font-semibold tabular-nums text-muted-foreground line-through">{formatFare(v.fare.low, v.fare.high, country)}</span>} />)}
@@ -449,16 +552,16 @@ export default function FareResults({ tripHistoryId, routeId }: {
             </section>}
           </>}
         </>}
-        map={canShowMap && map?.origin && map?.destination ? <RouteMap square choreographed country={country} origin={map.origin} destination={map.destination} stops={map.stops} routes={mapRoutes} activeRouteId={map.route.id} fitRequest={mapFitRequest} showFitControl={!selectedOption} /> : <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">{loading ? 'Loading map…' : 'Map unavailable for this trip.'}</div>}
+        map={canShowMap && map?.origin && map?.destination ? <RouteMap square choreographed country={country} origin={map.origin} destination={map.destination} stops={map.stops} routes={mapRoutes} activeRouteId={map.route.id} overlayReserve={selectedOption ? MAP_OVERLAY_RESERVE : null} /> : <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">{loading ? 'Loading map…' : 'Map unavailable for this trip.'}</div>}
         overlay={selectedOption && <section aria-label="Selected fare details" className="planner-fade-up">
           <Panel className="bg-card/95 shadow-lg backdrop-blur">
             <h2 className="text-base font-semibold text-foreground">{selectedOption.displayName}</h2>
             <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{formatFare(selectedOption.fare.low, selectedOption.fare.high, country)}</p>
             {getFareSourceLabel(selectedOption.fareSource) && <p className="mt-1 text-xs text-muted-foreground">{getFareSourceLabel(selectedOption.fareSource)}</p>}
+            {showRanking && selectedOption.ranking && <p className="mt-3 text-sm font-medium text-foreground">#{selectedOption.ranking.rank} overall · Score {scoreLabel(selectedOption.ranking.score)} / 100</p>}
             {confirmError && <p role="alert" className="mt-3 text-xs text-destructive">{confirmError}</p>}
-            <button type="button" onClick={handleConfirm} disabled={confirming} className="mt-4 flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">{confirming ? 'Saving…' : 'Save plan'}</button>
+            <button type="button" onClick={handleConfirm} disabled={confirming} className={buttonVariants({ size: 'form', className: 'mt-4' })}>{confirming ? 'Saving…' : 'Save plan'}</button>
             <p className="mt-2 text-center text-xs text-muted-foreground">This saves your choice. It does not book a ride.</p>
-            {canShowMap && <button type="button" onClick={() => setMapFitRequest((request) => request + 1)} className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">Fit route</button>}
           </Panel>
         </section>}
       />

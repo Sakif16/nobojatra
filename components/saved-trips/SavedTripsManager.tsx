@@ -2,7 +2,7 @@
 
 import { ArrowRight, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCountryConfig } from "@/components/country/CountryProvider";
 import type { SavedPlaceOption } from "@/components/map/PlaceAutocomplete";
 import { buttonVariants } from "@/components/ui/button";
@@ -18,6 +18,9 @@ import {
   type SavedTripSort,
 } from "@/lib/saved-trip-list";
 import StatusMessage from "@/components/ui/status-message";
+import EmptyState from "@/components/ui/empty-state";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { fieldClassName } from "@/components/ui/field-styles";
 
 /**
  * The saved-trips screen: keep the trips you repeat, and open any of them in
@@ -91,6 +94,22 @@ export default function SavedTripsManager({
     }
   }
 
+  // Opens the form and brings it into view once it has rendered.
+  const formRef = useRef<HTMLDivElement>(null);
+  const scrollToFormRef = useRef(false);
+
+  useEffect(() => {
+    if (!showForm || !scrollToFormRef.current) return;
+    scrollToFormRef.current = false;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    formRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }, [showForm, editingTrip]);
+
+  function openForm() {
+    scrollToFormRef.current = true;
+    setShowForm(true);
+  }
+
   const listFull = maxTrips !== null && trips.length >= maxTrips;
   const shownTrips = filterAndSortSavedTrips(trips, query, sort);
 
@@ -99,7 +118,7 @@ export default function SavedTripsManager({
       <PageHeader title="Saved trips" back={{ href: "/", label: "Back to planner" }} subtitle={`Your trips in ${serviceAreaName}. Open one in the planner with its places already filled in.`} actions={!showForm && (
           <button
             type="button"
-            onClick={() => { setEditingTrip(null); setShowForm(true); }}
+            onClick={() => { setEditingTrip(null); openForm(); }}
             disabled={listFull}
             className={buttonVariants({ size: "md" })}
           >
@@ -124,14 +143,14 @@ export default function SavedTripsManager({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by name or place"
             aria-label="Search saved trips"
-            className="min-w-0 flex-1 basis-56 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+            className={fieldClassName(false, "min-w-0 flex-1 basis-56")}
           />
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Sort
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as SavedTripSort)}
-              className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
+              className={fieldClassName(false, "w-auto py-2.5 pr-8")}
             >
               {SAVED_TRIP_SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -143,7 +162,9 @@ export default function SavedTripsManager({
         </div>
       )}
 
-      {showForm && (
+      {/* Scrolled to when it opens: editing a trip far down the list opened
+          the form up here, out of sight. */}
+      {showForm && <div ref={formRef} className="scroll-mt-(--app-header-height)">
         <SavedTripForm
           key={editingTrip?.id ?? "new"}
           initialTrip={editingTrip}
@@ -155,49 +176,41 @@ export default function SavedTripsManager({
             setShowForm(false);
           }}
         />
-      )}
+      </div>}
 
-      {loading && (
-        <StatusMessage tone="info" size="sm">
-          Loading saved trips…
-        </StatusMessage>
-      )}
+      {loading && <SkeletonRows label="Loading saved trips…" />}
 
       {error && !loading && <StatusMessage size="sm">{error}</StatusMessage>}
 
       {!loading && !error && trips.length === 0 && !showForm && (
-        <div className="rounded-2xl border border-dashed border-border px-6 py-10 text-center">
-          <MapPin className="mx-auto size-5 text-muted-foreground" aria-hidden />
-          <p className="mt-2 text-sm font-medium text-foreground">
-            No saved trips in {serviceAreaName} yet
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Save a trip you make often and plan it again in one tap. Trips
-            saved in another country stay there — switch back to see them.
-          </p>
-        </div>
+        <EmptyState
+          icon={<MapPin className="size-5" />}
+          title={`No saved trips in ${serviceAreaName} yet`}
+          description="Save a trip you make often and plan it again in one tap. Trips saved in another country stay there — switch back to see them."
+        />
       )}
 
       {trips.length > 0 && shownTrips.length === 0 && (
-        <p className="rounded-2xl border border-dashed border-border px-6 py-8 text-center text-xs text-muted-foreground">
-          No saved trip matches “{query.trim()}”.
-        </p>
+        <EmptyState title={`No saved trip matches “${query.trim()}”.`} />
       )}
 
+      {/* One panel of rows, like every other list, rather than a card per
+          trip. */}
+      {shownTrips.length > 0 && <Panel padding="sm"><ul className="space-y-1">
       {shownTrips.map((trip) => (
-        <article key={trip.id}><Panel padding="sm">
-          <ListRow staticRow className="flex-wrap p-1" leading={<MapPin className="size-4 text-primary" aria-hidden />} title={trip.name}
+        <li key={trip.id}>
+          <ListRow staticRow className="flex-wrap" leading={<MapPin className="size-4 text-primary" aria-hidden />} title={trip.name}
             meta={<><span className="block line-clamp-2">{trip.origin.label} → {trip.destination.label}</span><span className="block">{trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}{trip.stops.length > 0 && ` · ${trip.stops.length} stop${trip.stops.length === 1 ? "" : "s"}`}</span></>}
             trailing={<span className="flex flex-wrap items-center gap-1.5">
               <Link href={`/?savedTrip=${trip.id}`} className={buttonVariants({ variant: "outline_primary", size: "md" })}>Plan this trip <ArrowRight className="size-4" aria-hidden /></Link>
-              <button type="button" aria-label={`Edit ${trip.name}`} onClick={() => { setEditingTrip(trip); setShowForm(true); setConfirmingDeleteId(null); }} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="size-4" aria-hidden /></button>
+              <button type="button" aria-label={`Edit ${trip.name}`} onClick={() => { setEditingTrip(trip); openForm(); setConfirmingDeleteId(null); }} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="size-4" aria-hidden /></button>
               <button type="button" aria-label={`Delete ${trip.name}`} aria-expanded={confirmingDeleteId === trip.id} onClick={() => setConfirmingDeleteId((current) => current === trip.id ? null : trip.id)} className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="size-4" aria-hidden /></button>
             </span>} />
 
           {/* Deleting cannot be undone, so the bin only asks. The trip goes
               when this is confirmed. */}
           {confirmingDeleteId === trip.id && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
+            <div className="mx-3 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
               <p className="text-xs text-foreground">
                 Delete <span className="font-semibold">{trip.name}</span>? This cannot be undone.
               </p>
@@ -219,8 +232,9 @@ export default function SavedTripsManager({
               </div>
             </div>
           )}
-        </Panel></article>
+        </li>
       ))}
+      </ul></Panel>}
     </div>
   );
 }

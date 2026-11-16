@@ -646,6 +646,8 @@ export async function saveVehicleSelection({
 
 export type TripSummaryDetail = {
   id: string;
+  /** The route its fares were (or can be) worked out for; null for a record with no route. */
+  routeId: string | null;
   /** Country the trip was planned in — decides the currency it renders in. */
   country: CountryCode;
   originLabel: string;
@@ -733,6 +735,7 @@ export async function getTripSummary(
 
   return {
     id: String(record._id),
+    routeId: getScheduledTripRouteId(record),
     country: resolveCountry(record.country),
     originLabel: getLocationLabel(record.origin),
     destinationLabel: getLocationLabel(record.destination),

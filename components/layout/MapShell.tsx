@@ -7,6 +7,14 @@ type Props = {
   idleOverlay?: ReactNode;
 };
 
+/**
+ * The room the floating card takes in the map's bottom-right corner on wide
+ * screens: its 320px width plus the 16px right offset, and roughly its
+ * height plus the 40px bottom offset. Passed to RouteMap so a fitted route
+ * stays clear of the card.
+ */
+export const MAP_OVERLAY_RESERVE = { width: 336, height: 320 };
+
 /** Shared responsive layout for map-led pages. The caller owns its content. */
 export default function MapShell({ sidebar, map, overlay, idleOverlay }: Props) {
   return (

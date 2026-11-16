@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Maximize2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { RouteResult, TripTrafficResult } from "@/lib/routing";
 import { buttonVariants } from "@/components/ui/button";
 import Chip from "@/components/ui/chip";
@@ -15,15 +15,24 @@ type Props = {
   traffic: TripTrafficResult | null;
   trafficLoading: boolean;
   trafficError?: string | null;
+  /** Whether live traffic exists for this country on this server at all. */
+  liveTrafficAvailable: boolean;
   departure: string | null;
   accessNote?: string;
   canViewFares: boolean;
   onViewFares: () => void;
-  onFitRoute: () => void;
 };
 
-export default function RouteDetailCard({ route, origin, destination, passengers, traffic, trafficLoading, trafficError, departure, accessNote, canViewFares, onViewFares, onFitRoute }: Props) {
-  const trafficLabel = trafficLoading ? "Checking traffic…" : traffic ? `${traffic.totals.congestionLevel} traffic` : trafficError ? "Traffic unavailable" : "No live traffic";
+export default function RouteDetailCard({ route, origin, destination, passengers, traffic, trafficLoading, trafficError, liveTrafficAvailable, departure, accessNote, canViewFares, onViewFares }: Props) {
+  // "Unavailable" is kept for a lookup that failed. Where there is no live
+  // traffic to look up (Bangladesh, or no traffic key), it read as a failure.
+  const trafficLabel = trafficLoading
+    ? "Checking traffic…"
+    : traffic
+      ? `${traffic.totals.congestionLevel} traffic`
+      : liveTrafficAvailable && trafficError
+        ? "Traffic unavailable"
+        : "No live traffic";
   const facts = [`${route.distanceKm} km`, `${route.durationMin} min`, trafficLabel, `${passengers} ${passengers === 1 ? "passenger" : "passengers"}`];
 
   return (
@@ -43,9 +52,6 @@ export default function RouteDetailCard({ route, origin, destination, passengers
         View fare estimates <ArrowRight size={16} aria-hidden="true" />
       </button>
       {!canViewFares && <p className="mt-2 text-xs text-muted-foreground">Fare estimates require a saved trip.</p>}
-      <button type="button" onClick={onFitRoute} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-foreground hover:bg-muted">
-        <Maximize2 size={15} aria-hidden="true" /> Fit route
-      </button>
       </Panel>
     </section>
   );

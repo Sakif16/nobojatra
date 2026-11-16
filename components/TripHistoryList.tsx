@@ -6,10 +6,13 @@ import { COUNTRY_CONFIG, formatAmount, formatFare, type CountryCode } from '@/li
 import type { RecentTrip, TripHistoryActivityData } from '@/lib/trip-history'
 import { formatTripDateTime } from '@/lib/trip-time'
 import PageHeader from '@/components/ui/page-header'
+import PageContainer from '@/components/ui/page-container'
 import Panel from '@/components/ui/panel'
 import ListRow from '@/components/ui/list-row'
 import Chip from '@/components/ui/chip'
 import EmptyState from '@/components/ui/empty-state'
+import StatusMessage from '@/components/ui/status-message'
+import { SkeletonRows } from '@/components/ui/skeleton'
 
 interface HistoryVehicleOption {
   provider: string
@@ -101,15 +104,15 @@ function RouteLine({ from, to }: { from: string; to: string }) {
 
 function ActivityRows({ trips }: { trips: RecentTrip[] }) {
   return (
-    <ul className="space-y-2">
+    <Panel padding="sm"><ul className="space-y-1">
       {trips.map((trip) => (
         <li key={trip.id}>
-          <ListRow staticRow className="border-border bg-card" leading={trip.departureMode === 'scheduled' ? <CalendarClock className="size-4 text-primary" aria-hidden /> : <MapPin className="size-4 text-primary" aria-hidden />}
+          <ListRow staticRow leading={trip.departureMode === 'scheduled' ? <CalendarClock className="size-4 text-primary" aria-hidden /> : <MapPin className="size-4 text-primary" aria-hidden />}
             title={<RouteLine from={trip.originLabel} to={trip.destinationLabel} />}
             meta={<>{formatTripDateTime(trip.scheduledAt ?? trip.createdAt, trip.timeZone, { weekday: false })} · {formatActivityMetrics(trip)}</>} />
         </li>
       ))}
-    </ul>
+    </ul></Panel>
   )
 }
 
@@ -209,35 +212,22 @@ export default function TripHistoryList({ activityData }: Props) {
   }
 
   return (
-    <main className="flex-1">
-      <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+    <PageContainer>
         <div className="mb-6">
           <PageHeader title="Trip history" back={{ href: '/', label: 'Back to planner' }} subtitle={showingConfirmedTrips ? (loading ? 'Loading saved plans…' : `${summary?.tripCount ?? trips.length} saved plan${(summary?.tripCount ?? trips.length) === 1 ? '' : 's'}${hasFilters ? ' in these filters' : ''}`) : `${selectedActivityTrips.length} route search${selectedActivityTrips.length === 1 ? '' : 'es'} in ${selectedActivityLabel}`} />
         </div>
 
-        <div
-          role="tablist"
-          aria-label="Trip history"
-          className="mb-6 inline-flex overflow-hidden rounded-xl border border-border bg-secondary p-0.5"
-        >
+        {/* Two views of the same history, switched like every other filter in
+            the app. Pressed buttons rather than tabs: the tab role promised
+            arrow-key movement and linked panels that were never there. */}
+        <div role="group" aria-label="Show" className="mb-6 flex flex-wrap gap-2">
           {[
             { value: SAVED_PLANS_TAB, label: 'Saved plans' },
             { value: SEARCHES_TAB, label: 'Route searches' },
           ].map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={tab === option.value}
-              onClick={() => setTab(option.value)}
-              className={
-                tab === option.value
-                  ? 'rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground'
-                  : 'rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-              }
-            >
+            <Chip key={option.value} selected={tab === option.value} buttonProps={{ onClick: () => setTab(option.value) }}>
               {option.label}
-            </button>
+            </Chip>
           ))}
         </div>
 
@@ -249,8 +239,8 @@ export default function TripHistoryList({ activityData }: Props) {
             </p>
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-              <Chip selected={showingLastSevenDays} buttonProps={{ onClick: () => setSearchPeriod(LAST_SEVEN_DAYS_VIEW) }}>Last 7 days</Chip>
+              {/* One period control: "Last 7 days" used to be a chip and also
+                  the first entry of this list beside it. */}
               <label className="relative inline-flex items-center">
                 <span className="sr-only">Period</span>
                 <select
@@ -267,7 +257,6 @@ export default function TripHistoryList({ activityData }: Props) {
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 size-4 text-muted-foreground" />
               </label>
-              </div>
 
               <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                 {selectedActivityTrips.length} search{selectedActivityTrips.length === 1 ? '' : 'es'}
@@ -386,33 +375,28 @@ export default function TripHistoryList({ activityData }: Props) {
         )}
 
         {loading ? (
-          <p className="rounded-2xl border border-border bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
-            Loading trip history…
-          </p>
+          <SkeletonRows label="Loading trip history…" />
         ) : error ? (
-          <p role="alert" className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
+          <StatusMessage>{error}</StatusMessage>
         ) : trips.length === 0 ? (
           <EmptyState title="No saved plans" description={hasFilters
                 ? 'No trips match these filters.'
                 : 'Save a plan from the fare results page and it will show up here.'} />
         ) : (
-          <ul className="space-y-2">
+          <Panel padding="sm"><ul className="space-y-1">
             {trips.map((trip) => {
               const key = trip.vehicleProvider && trip.vehicleType ? `${trip.vehicleProvider}-${trip.vehicleType}` : ''
               return <li key={trip.id}>
-                <ListRow href={`/trip-summary?tripHistoryId=${trip.id}&source=history`} className="border-border bg-card"
+                <ListRow href={`/trip-summary?tripHistoryId=${trip.id}&source=history`}
                   leading={ICONS[key] ?? '🚘'} title={<RouteLine from={trip.originLabel} to={trip.destinationLabel} />}
                   meta={<>{formatTripDateTime(trip.selectedAt ?? trip.createdAt, trip.timeZone, { weekday: false })}{trip.vehicleDisplayName && ` · ${trip.vehicleDisplayName}`}{trip.distanceKm != null && ` · ${trip.distanceKm} km`}{trip.durationMin != null && ` · ${trip.durationMin} min`}</>}
                   trailing={<span className="flex items-center gap-2"><span className="text-sm font-semibold tabular-nums text-foreground">{trip.fareLow != null && trip.fareHigh != null ? formatFare(trip.fareLow, trip.fareHigh, trip.country) : '—'}</span><ChevronRight className="size-4 text-muted-foreground" aria-hidden /></span>} />
               </li>
             })}
-          </ul>
+          </ul></Panel>
         )}
           </>
         )}
-      </div>
-    </main>
+      </PageContainer>
   )
 }

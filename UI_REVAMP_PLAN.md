@@ -848,7 +848,14 @@ same step and say so in the step's summary.
 
 1. **Feature tiles (`SuggestionTiles`)**: kept below Plan Again on all screen
    sizes (placement updated at the user's request; step 5.6).
-2. **Map labels**: keep street names, so `dark_all` (decided 2026-11-08).
+2. **Map labels**: keep the dark theme and show clearer place labels (updated
+   at the user's request). CARTO uses a dark basemap with a brighter Voyager
+   label overlay at the map's current zoom, falling back to `dark_all` if the
+   overlay fails. Roads are brightened for a more legible dark map. This replaces
+   the enlarged lower-zoom labels so more local detail can appear; place coverage
+   remains dependent on CARTO's tiles. The idle map starts at zoom 14 and has
+   visible zoom controls. The previous enlarged-label view was checked on desktop;
+   the latest styling and street-level, route, and mobile views need visual checks.
 3. **Traffic vs route accent**: orange by default. Where TomTom (or Mapbox)
    traffic exists for the country, traffic layers are offered on top through
    the "Traffic" chip (decided 2026-11-08; step 3.4).
