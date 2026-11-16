@@ -6,6 +6,7 @@ import {
   TileLayer,
   Polyline,
   Marker,
+  Pane,
   Tooltip,
   useMap,
 } from "react-leaflet";
@@ -197,6 +198,7 @@ export default function RouteMap({
   trafficLoading,
 }: Props) {
   const [showTrafficTiles, setShowTrafficTiles] = useState(false);
+  const [labelLayerFailed, setLabelLayerFailed] = useState(false);
   const [fitRequest, setFitRequest] = useState(0);
   // Off where the country has no live traffic, and where this server has no
   // traffic key: the overlay would only load blank tiles.
@@ -259,7 +261,7 @@ export default function RouteMap({
         key={hasTrip ? "trip" : "empty"}
         center={origin && destination ? [origin.lat, origin.lng] : COUNTRY_CONFIG[country].defaultMapView.center}
         zoom={origin && destination ? 13 : COUNTRY_CONFIG[country].defaultMapView.zoom}
-        zoomControl={hasTrip}
+        zoomControl
         scrollWheelZoom
         ref={mapRef}
         style={{ height: "100%", width: "100%", borderRadius: square ? 0 : "1rem" }}
@@ -276,10 +278,18 @@ export default function RouteMap({
             MAPBOX_TOKEN
               ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
               : CARTO_API_KEY
-                ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
+                ? `https://{s}.basemaps.cartocdn.com/${labelLayerFailed ? "dark_all" : "dark_nolabels"}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
                 : "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           }
         />
+
+        {!MAPBOX_TOKEN && CARTO_API_KEY && !labelLayerFailed && <Pane name="place-labels" style={{ zIndex: 350, pointerEvents: "none" }}>
+          {/* Use the current zoom's labels so streets and points of interest
+              appear at the same level of detail as the underlying map. */}
+          <TileLayer className="route-place-labels" subdomains="abcd"
+            eventHandlers={{ tileerror: () => setLabelLayerFailed(true) }}
+            url={`https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`} />
+        </Pane>}
 
         {/* Traffic tile overlay (Mapbox or TomTom) */}
         {hasTrip && trafficAvailable && trafficTileUrl && showTrafficTiles && (
@@ -369,6 +379,7 @@ export default function RouteMap({
           fitRequest={fitRequest + externalFitRequest}
         /> : <DefaultMapView country={country} />}
       </MapContainer>
+
 
       {/* Once the user pans or zooms away there was no way back to the route
           short of searching again. */}

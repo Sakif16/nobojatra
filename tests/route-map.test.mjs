@@ -51,8 +51,16 @@ test("only the providers whose tiles are on screen are credited", () => {
   // The traffic overlay carries its own credit, shown only while it is on.
   assert.match(map, /attribution=\{MAPBOX_TOKEN \? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION\}/);
   assert.match(map, /tomtom\.com/);
-  assert.match(map, /https:\/\/\{s\}\.basemaps\.cartocdn\.com\/dark_all\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.match(map, /labelLayerFailed \? "dark_all" : "dark_nolabels"/);
   assert.match(map, /encodeURIComponent\(CARTO_API_KEY\)/);
   assert.match(map, /https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/);
   assert.match(map, /mapbox\/dark-v11/);
+});
+
+test("the dark CARTO map has a separate detailed label layer and visible zoom controls", () => {
+  assert.match(map, /zoomControl\s*\n/);
+  assert.match(map, /!MAPBOX_TOKEN && CARTO_API_KEY && !labelLayerFailed/);
+  assert.match(map, /voyager_only_labels\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.match(map, /pointerEvents: "none"/);
+  assert.match(map, /tileerror: \(\) => setLabelLayerFailed\(true\)/);
 });
