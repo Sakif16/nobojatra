@@ -77,7 +77,7 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `ORS_API_KEY` | Yes | OpenRouteService key for route search. The app will not start without it |
 | `OPENWEATHER_API_KEY` | Optional | Weather on fares and rankings. Without it, fares carry no weather adjustment and the screens say weather is not set up |
 | `TOMTOM_API_KEY` | Optional | Live traffic and the map's traffic overlay. Without it, times and fares use no traffic data and the screens say traffic is not set up |
-| `PATHAO_FARE_API` | Optional | Live Pathao pricing. Without it, fares come from the seeded rate card and are labelled as rate-card estimates |
+| `PATHAO_FARE_API` | Optional | Pathao's own fare estimates. Without it, fares come from the seeded rate card and are labelled as rate-card estimates |
 | `RESEND_API_KEY` | Optional | Sending password reset emails. Without it, the reset page says reset is not set up |
 | `RESEND_FROM_EMAIL` | Optional | Sender address. Must be on a domain verified in Resend. Without it, emails reach only the Resend account owner |
 | `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search is disabled and the planner explains why. Read at build time, so rebuild after changing it |
@@ -137,7 +137,7 @@ Server-side routing, place search, traffic, weather and live fare requests have 
 | Nominatim (OpenStreetMap) | Place search and naming a dropped pin | Search shows an error. Reverse geocoding falls back to a generic label, so map pins and current-location coordinates remain usable |
 | TomTom | Traffic delay and the traffic overlay | Times and fares use no traffic data, and the screens say so. Always the case in Bangladesh, where TomTom has no traffic data |
 | OpenWeatherMap | Current weather for trips leaving now; a forecast for scheduled trips | Fares carry no weather adjustment and no vehicle is held back for weather. The screens say so |
-| Pathao fare service | Live Pathao pricing | Pathao fares come from the rate card and are labelled "Rate-card estimate" |
+| Pathao fare service | Pathao estimates | Pathao fares come from the rate card and are labelled "Rate-card estimate" |
 | Resend | Password reset emails | The reset page says reset is not set up. Signed-in users are unaffected |
 | Teachable Machine model | Photo search | Photo search is disabled with a message; place search still works |
 | Live cams app | The embedded camera page | The camera page shows an empty frame. Nothing else depends on it |
@@ -154,7 +154,7 @@ The app ships with no account and no sample trips, so each demo starts from a ne
 
 1. Open `/signup` and register with any email address and a password of at least 8 characters that includes a number. The address is not verified, so it does not need to be real.
 2. **Keep the password.** Reset emails reach only the Resend account owner unless a verified sender is configured, so a forgotten demo password usually cannot be recovered.
-3. Open **Profile** and choose the country to demo. Bangladesh offers rate-card estimates and, if configured and reachable, live Pathao pricing. Traffic is unavailable there; UK and US traffic requires TomTom configuration and coverage.
+3. Open **Profile** and choose the country to demo. Bangladesh offers rate-card estimates and, if configured and reachable, Pathao's own estimates. Traffic is unavailable there; UK and US traffic requires TomTom configuration and coverage.
 4. Plan a trip, pick a route, open its fares and save the plan. That fills the dashboard, trip history and notifications.
 5. When finished, delete the account from **Profile**. This removes its trips, saved trips, saved places and notifications.
 

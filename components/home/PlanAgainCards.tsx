@@ -70,7 +70,6 @@ export default function PlanAgainCards({ trips, onPlanAgain }: Props) {
               // min-content width, so without this a long address label widens
               // its column past the viewport instead of being truncated.
               className="group flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted"
-              data-no-glow
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground"><Repeat2 size={17} aria-hidden="true" /></span>
               <span className="min-w-0 flex-1">

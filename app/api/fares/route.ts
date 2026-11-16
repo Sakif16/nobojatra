@@ -13,6 +13,14 @@ import {
   type VehicleRateDocument,
 } from "@/lib/fare-trip-context";
 import { getWeatherVehicleRestriction } from "@/lib/weather";
+import {
+  getPriorityWeights,
+  rankRouteOptions,
+  type ScorableOption,
+  type TravelPriority,
+} from "@/lib/route-scoring";
+import connectMongoDB from "@/lib/mongodb";
+import UserProfile from "@/models/UserProfile";
 import VehicleRate from "@/models/VehicleRate";
 import { Types } from "mongoose";
 import { NextRequest, NextResponse } from "next/server";
@@ -22,6 +30,14 @@ type FareRequestBody = {
   tripHistoryId?: unknown;
   routeId?: unknown;
 };
+
+const TRAVEL_PRIORITIES = new Set<TravelPriority>(["time", "cost", "comfort"]);
+
+function toTravelPriority(value: unknown): TravelPriority {
+  return typeof value === "string" && TRAVEL_PRIORITIES.has(value as TravelPriority)
+    ? (value as TravelPriority)
+    : "time";
+}
 
 async function handlePost(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -50,7 +66,13 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  const loaded = await loadFareTripContext(session.user.id, tripHistoryId, routeId);
+  await connectMongoDB();
+  const [loaded, profile] = await Promise.all([
+    loadFareTripContext(session.user.id, tripHistoryId, routeId),
+    UserProfile.findOne({ userId: session.user.id })
+      .select("defaultTravelPriority")
+      .lean() as Promise<{ defaultTravelPriority?: unknown } | null>,
+  ]);
   if (!loaded.ok) {
     return NextResponse.json(
       { success: false, message: loaded.message },
@@ -130,6 +152,45 @@ async function handlePost(req: NextRequest) {
     return a.fare.low - b.fare.low;
   });
 
+  // The "Best overall" order. It used to be a page of its own
+  // (/ranked-options) that priced the same options again; now it is worked
+  // out here from the same estimates and sent with them. The profile's
+  // travel priority sets the weights, and the scoring uses the live traffic
+  // time where there is one. Options that cannot be used are not ranked.
+  const scoringPriority = toTravelPriority(profile?.defaultTravelPriority);
+  const ranked = rankRouteOptions({
+    options: results satisfies ScorableOption[],
+    baseDurationMin: traffic
+      ? traffic.totals.durationInTrafficSec / 60 + dwellDurationMin
+      : durationMin,
+    baseTravelDurationMin: traffic
+      ? traffic.totals.durationInTrafficSec / 60
+      : travelDurationMin,
+    dwellDurationMin,
+    congestionLevel: traffic?.totals.congestionLevel ?? null,
+    weatherBand: weather?.severityBand ?? null,
+    priority: scoringPriority,
+  });
+  const rankingByKey = new Map(
+    ranked.map((option, index) => [
+      `${option.provider}-${option.vehicleType}`,
+      {
+        rank: index + 1,
+        score: option.score,
+        adjustedDurationMin: option.adjustedDurationMin,
+        riskBand: option.riskBand,
+        riskBasis: option.riskBasis,
+        bestFor: option.bestFor,
+        pros: option.pros,
+        cons: option.cons,
+      },
+    ]),
+  );
+  const rankedResults = results.map((result) => ({
+    ...result,
+    ranking: rankingByKey.get(`${result.provider}-${result.vehicleType}`) ?? null,
+  }));
+
   return NextResponse.json({
     success: true,
     // The country this trip was planned in — drives which currency the fare
@@ -178,7 +239,9 @@ async function handlePost(req: NextRequest) {
         }
       : null,
     trafficUnavailable,
-    results,
+    results: rankedResults,
+    scoringPriority,
+    scoringWeights: getPriorityWeights(scoringPriority),
   });
 }
 

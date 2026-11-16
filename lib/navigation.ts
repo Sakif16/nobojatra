@@ -7,7 +7,7 @@ export const PRIMARY_LINKS = [
   { href: "/scheduled-trips", label: "Scheduled" },
   { href: "/saved-trips", label: "Saved trips" },
   { href: "/trip-history", label: "History" },
-  { href: "/live-cams", label: "Live traffic" },
+  { href: "/live-cams", label: "Live cams" },
 ] as const;
 
 /** The planner owns "/" alone; every other link owns its path and what is under it. */

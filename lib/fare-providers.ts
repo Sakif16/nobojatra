@@ -1,8 +1,8 @@
 import { reportFailure } from "@/lib/error-reporting";
 // lib/fare-providers.ts
-// The single fare calculator for every vehicle the app prices. Both
-// /api/fares and /api/best-options call estimateFaresForRates() so the two
-// pages can no longer disagree about what a ride costs.
+// The single fare calculator for every vehicle the app prices. /api/fares
+// and /api/trip-input/select both call it, so the fare a plan is saved with
+// is the one the fares page showed.
 //
 // Fallback policy (deliberate, applies to every external provider here):
 // a provider failure NEVER fails the request and NEVER drops the option.
@@ -385,7 +385,7 @@ async function estimateOneFare(
     return {
       fare: rateCardFare,
       fareSource: "rate_card",
-      fareSourceNote: "Live Pathao pricing was unavailable; showing a rate-card estimate.",
+      fareSourceNote: "Pathao's estimate was unavailable; showing a rate-card estimate.",
       fareAdjustment: adjustment,
     };
   }

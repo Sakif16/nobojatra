@@ -14,6 +14,8 @@ import {
 import type { ScheduledTripListItem } from "@/lib/trip-history";
 import { formatTripDateTime } from "@/lib/trip-time";
 import PageHeader from "@/components/ui/page-header";
+import { buttonVariants } from "@/components/ui/button";
+import PageContainer from "@/components/ui/page-container";
 import Panel from "@/components/ui/panel";
 import Pill from "@/components/ui/pill";
 import Chip from "@/components/ui/chip";
@@ -69,9 +71,9 @@ function getPrimaryAction(trip: ScheduledTripListItem) {
 
 export default function ScheduledTripsList({ trips }: Props) {
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageContainer>
       <div className="mb-6"><PageHeader title="Scheduled trips" back={{ href: "/", label: "Back to planner" }} subtitle="Upcoming planned departures. These are plans, not bookings." /></div>
-      {trips.length === 0 ? <EmptyState icon={<CalendarClock className="size-8" />} title="No upcoming trips" description="Scheduled route searches will appear here once their departure time is in the future." action={<Link href="/" className="mt-2 inline-flex rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Plan a trip</Link>} /> : (
+      {trips.length === 0 ? <EmptyState icon={<CalendarClock className="size-8" />} title="No upcoming trips" description="Scheduled route searches will appear here once their departure time is in the future." action={<Link href="/" className={buttonVariants({ size: "md", className: "mt-2" })}>Plan a trip</Link>} /> : (
         <div className="space-y-4">
           {trips.map((trip) => {
             const action = getPrimaryAction(trip);
@@ -88,12 +90,12 @@ export default function ScheduledTripsList({ trips }: Props) {
                     </h2>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Chip label>{trip.passengerCount} passenger{trip.passengerCount === 1 ? "" : "s"}</Chip>
-                      <Chip label>{trip.vehicle?.displayName ?? "Ride not selected"}</Chip><Chip label>{formatTripFare(trip)}</Chip>
+                      <Chip label>{trip.vehicle?.displayName ?? "Ride not selected"}</Chip>{trip.vehicle && <Chip label>{formatTripFare(trip)}</Chip>}
                       <Chip label>{trip.distanceKm != null ? `${trip.distanceKm} km` : "Distance unavailable"}</Chip><Chip label>{formatMinutes(trip.durationMin)}</Chip>
                       <Chip label>{trip.stops.length} stop{trip.stops.length === 1 ? "" : "s"}</Chip>
                     </div>
                   </div>
-                  <Link href={action.href} className="inline-flex shrink-0 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">{action.label}</Link>
+                  <Link href={action.href} className={buttonVariants({ size: "md" })}>{action.label}</Link>
                 </div>
                 <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm text-muted-foreground">
                   <p className="flex items-start gap-2"><Clock3 className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden /><span>Arrival: {trip.estimatedArrivalAt ? formatTripDateTime(trip.estimatedArrivalAt, trip.timeZone) : "Not available"} · Travel: {formatMinutes(trip.travelDurationMin)} · Wait: {formatMinutes(trip.dwellDurationMin)}</span></p>
@@ -109,6 +111,6 @@ export default function ScheduledTripsList({ trips }: Props) {
           })}
         </div>
       )}
-    </main>
+    </PageContainer>
   );
 }

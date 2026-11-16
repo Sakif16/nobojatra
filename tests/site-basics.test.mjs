@@ -27,7 +27,6 @@ test("every page has a title of its own", () => {
   const titled = [
     "app/(main)/page.tsx",
     "app/(main)/fares/page.tsx",
-    "app/(main)/ranked-options/page.tsx",
     "app/(main)/trip-summary/page.tsx",
     "app/(main)/trip-history/page.tsx",
     "app/(main)/scheduled-trips/page.tsx",

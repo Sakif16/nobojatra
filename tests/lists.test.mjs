@@ -24,7 +24,15 @@ test("fares can be ordered by fare, comfort or seats without reshuffling ties", 
   assert.deepEqual(names(sortFareOptions(OPTIONS, "seats")), ["Car", "Premium", "CNG", "Bike"]);
   // The list handed in is left alone.
   assert.deepEqual(names(OPTIONS), ["Car", "Bike", "CNG", "Premium"]);
-  assert.deepEqual(FARE_SORT_OPTIONS.map((entry) => entry.value), ["default", "fare", "comfort", "seats"]);
+  assert.deepEqual(FARE_SORT_OPTIONS.map((entry) => entry.value), ["fare", "comfort", "seats", "best"]);
+  // "Best overall" follows the ranking; an unranked option goes last.
+  const ranked = [
+    { ...OPTIONS[0], ranking: { rank: 2 } },
+    { ...OPTIONS[1], ranking: null },
+    { ...OPTIONS[2], ranking: { rank: 1 } },
+    { ...OPTIONS[3], ranking: { rank: 3 } },
+  ];
+  assert.deepEqual(names(sortFareOptions(ranked, "best")), ["CNG", "Car", "Premium", "Bike"]);
 });
 
 test("an excluded option says why and what would bring it back", () => {

@@ -1,11 +1,9 @@
-import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import BestOptionsResults from "@/components/BestOptionsResults";
 import { getRequestSession } from "@/lib/request-context";
 
-export const metadata: Metadata = { title: "Ranked options" };
-
-// searchParams is a Promise in Next.js 15 — must be awaited before reading
+// Ranked options are now the "Best overall" order on the fares page, which
+// lists the same vehicles at the same prices. This address is kept so older
+// links and bookmarks still land on the trip.
 interface Props {
   searchParams: Promise<{ tripHistoryId?: string; routeId?: string }>;
 }
@@ -15,13 +13,9 @@ export default async function RankedOptionsPage({ searchParams }: Props) {
 
   if (!session) redirect("/signin");
 
-  const params = await searchParams;
+  const { tripHistoryId, routeId } = await searchParams;
 
-  const tripHistoryId = params.tripHistoryId?.trim();
-  const routeId = params.routeId?.trim();
+  if (!tripHistoryId?.trim() || !routeId?.trim()) redirect("/");
 
-  // Guards against someone navigating here directly without a valid trip
-  if (!tripHistoryId || !routeId) redirect("/");
-
-  return <BestOptionsResults tripHistoryId={tripHistoryId} routeId={routeId} />;
+  redirect(`/fares?${new URLSearchParams({ tripHistoryId: tripHistoryId.trim(), routeId: routeId.trim(), sort: "best" })}`);
 }

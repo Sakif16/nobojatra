@@ -14,7 +14,9 @@ export type FareSource = "pathao_api" | "rate_card";
 
 const FARE_SOURCE_LABELS: Record<FareSource, string> = {
   rate_card: "Rate-card estimate",
-  pathao_api: "Live Pathao pricing",
+  // Pathao's own figure is still an estimate of what the ride will cost,
+  // not a quote, so it is not called "live pricing".
+  pathao_api: "Pathao estimate",
 };
 
 /**

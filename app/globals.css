@@ -224,18 +224,10 @@
   }
 }
 
-@layer components {
-  @media (hover: hover) {
-    button:not(:disabled):not([aria-disabled="true"]):not([data-no-glow]):hover {
-      border-color: color-mix(in oklch, var(--primary), var(--border) 45%);
-      box-shadow: 0 0 22px color-mix(in oklch, var(--primary), transparent 76%);
-    }
-
-    button:not(:disabled):not([aria-disabled="true"]):not([data-no-glow]):focus-visible {
-      box-shadow: 0 0 22px color-mix(in oklch, var(--primary), transparent 78%);
-    }
-  }
-}
+/* Hover glow lives on primary buttons only, in components/ui/button.tsx.
+   It used to be a rule on every <button> that each list, chip and map
+   control had to opt out of with data-no-glow, so hover looked different
+   from one control to the next. */
 
 @keyframes notification-toast-in {
   from {
@@ -337,15 +329,59 @@
   .planner-route { stroke-dashoffset: 0; }
 }
 
-/* Scoped until the redesigned map opts in with .planner-map. */
-.route-base-tiles .leaflet-tile {
-  filter: brightness(1.35) sepia(0.12) saturate(0.9);
+/* Leaflet paints an empty map light grey (#ddd), which flashed through
+   whenever tiles were still loading: on first render, while zooming, and
+   whenever the view moved. This is close to the dark basemap's land colour,
+   so a tile that has not arrived yet is barely visible. */
+:root {
+  --map-background: #121110;
 }
 
-/* Voyager's labels are dark ink on transparent tiles; invert them for the
-   dark basemap while leaving the underlying streets and water untouched. */
+.planner-map .leaflet-container {
+  background: var(--map-background);
+}
+
+/* The dark basemap, lifted a little so streets read against the brown app,
+   with a slight warm tint. Only applied to the dark basemaps (see RouteMap):
+   the light OpenStreetMap fallback would wash out. */
+.route-base-tiles .leaflet-tile {
+  filter: brightness(1.2) sepia(0.12) saturate(0.9);
+}
+
+/* CARTO's dark-map labels are light text on a dark halo; brightening them
+   makes street and area names stand out without inverting anything. */
 .route-place-labels .leaflet-tile {
-  filter: invert(1) hue-rotate(180deg) brightness(1.3) drop-shadow(0 0 1px var(--background));
+  filter: brightness(1.5);
+}
+
+/* Fit route and Traffic sit in Leaflet's control corner under the zoom
+   buttons, styled to match them. */
+.planner-map .planner-map-control button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;
+  background: var(--card);
+  color: var(--card-foreground);
+  cursor: pointer;
+}
+
+.planner-map .planner-map-control button:hover {
+  background: var(--muted);
+}
+
+.planner-map .planner-map-control button.planner-map-control-label {
+  width: auto;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.planner-map .planner-map-control button[aria-pressed="true"] {
+  color: var(--primary);
 }
 
 .planner-map .leaflet-container .leaflet-control-attribution {

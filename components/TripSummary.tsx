@@ -25,6 +25,7 @@ import { buildPlanSummary } from '@/lib/plan-summary'
 import { formatTripDateTime } from '@/lib/trip-time'
 import { getWeatherReadingLabel } from '@/lib/weather-reading'
 import PageHeader from '@/components/ui/page-header'
+import PageContainer from '@/components/ui/page-container'
 import Panel from '@/components/ui/panel'
 import Chip from '@/components/ui/chip'
 import ListRow from '@/components/ui/list-row'
@@ -76,6 +77,7 @@ interface SummaryItineraryLeg {
 
 interface TripSummaryDetail {
   id: string
+  routeId: string | null
   country: CountryCode
   originLabel: string
   destinationLabel: string
@@ -109,6 +111,21 @@ const ICONS: Record<string, string> = {
   'pathao-car': '🚕',
   'cng-auto': '🛺',
   'uber-xl': '🚐',
+}
+
+/**
+ * One place on the route timeline. The connecting line is its own centred
+ * bar, running from under this marker to the next one; it used to be the left
+ * border of the marker column, which ran 12px left of the dots.
+ */
+function TimelineStop({ marker, last = false, children }: { marker: '●' | '■'; last?: boolean; children: React.ReactNode }) {
+  return (
+    <li className="relative flex gap-3">
+      {!last && <span aria-hidden="true" className="absolute top-5 bottom-0 left-3 w-0.5 -translate-x-1/2 bg-border" />}
+      <span aria-hidden="true" className="flex h-5 w-6 shrink-0 items-center justify-center text-primary">{marker}</span>
+      <span className={`min-w-0 text-sm text-foreground ${last ? '' : 'pb-4'}`}>{children}</span>
+    </li>
+  )
 }
 
 function formatMinutes(min: number | null) {
@@ -181,21 +198,17 @@ export default function TripSummary({
 
   if (loading) {
     return (
-      <main className="flex-1">
-        <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
+      <PageContainer width="narrow">
           <SkeletonRows label="Loading trip summary…" />
-        </div>
-      </main>
+        </PageContainer>
     )
   }
 
   if (error || !trip) {
     return (
-      <main className="flex-1">
-        <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
+      <PageContainer width="narrow">
           <div role="alert"><EmptyState title="Trip not found" description={error ?? 'Trip not found.'} action={<Link href="/" className="text-sm font-medium text-primary hover:underline">Back to planner</Link>} /></div>
-        </div>
-      </main>
+        </PageContainer>
     )
   }
 
@@ -233,20 +246,19 @@ export default function TripSummary({
   }
 
   return (
-    <main className="flex-1">
-      <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
+    <PageContainer width="narrow">
         <div className="mb-6"><PageHeader title={title} back={{ href: '/', label: 'Back to planner' }} subtitle={trip.vehicle ? 'A saved plan is not a booking. No ride provider has been contacted.' : 'Route details from your trip history.'} /></div>
         <div className="flex flex-col gap-4">
           <Panel>
             <h2 className="text-sm font-semibold text-foreground">Route</h2>
             <ol className="mt-3 space-y-0">
-              <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center border-l-2 border-border text-primary">●</span><span className="min-w-0 pb-4 text-sm text-foreground">{trip.originLabel}</span></li>
+              <TimelineStop marker="●">{trip.originLabel}</TimelineStop>
               {trip.itinerary ? trip.itinerary.legs.map((leg, index) => {
                 const last = index === trip.itinerary!.legs.length - 1
-                return <li key={`${leg.fromLabel}-${leg.toLabel}-${index}`} className="flex gap-3"><span aria-hidden="true" className={`flex w-6 shrink-0 justify-center text-primary ${last ? '' : 'border-l-2 border-border'}`}>{last ? '■' : '●'}</span><span className={`min-w-0 text-sm text-foreground ${last ? '' : 'pb-4'}`}><span className="block">{leg.toLabel}</span><span className="block text-xs text-muted-foreground">{leg.distanceKm} km · {formatMinutes(leg.durationMin)}{leg.dwellAfterMin > 0 ? ` · ${formatMinutes(leg.dwellAfterMin)} wait` : ''}</span></span></li>
+                return <TimelineStop key={`${leg.fromLabel}-${leg.toLabel}-${index}`} marker={last ? '■' : '●'} last={last}><span className="block">{leg.toLabel}</span><span className="block text-xs text-muted-foreground">{leg.distanceKm} km · {formatMinutes(leg.durationMin)}{leg.dwellAfterMin > 0 ? ` · ${formatMinutes(leg.dwellAfterMin)} wait` : ''}</span></TimelineStop>
               }) : <>
-                {trip.stopCount > 0 && <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center border-l-2 border-border text-primary">●</span><span className="pb-4 text-sm text-muted-foreground">{trip.stopCount} stop{trip.stopCount === 1 ? '' : 's'} · details unavailable</span></li>}
-                <li className="flex gap-3"><span aria-hidden="true" className="flex w-6 shrink-0 justify-center text-primary">■</span><span className="text-sm text-foreground">{trip.destinationLabel}</span></li>
+                {trip.stopCount > 0 && <TimelineStop marker="●"><span className="text-muted-foreground">{trip.stopCount} stop{trip.stopCount === 1 ? '' : 's'} · details unavailable</span></TimelineStop>}
+                <TimelineStop marker="■" last>{trip.destinationLabel}</TimelineStop>
               </>}
             </ol>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -267,7 +279,7 @@ export default function TripSummary({
                 <button type="button" onClick={() => void copyPlan()} className={buttonVariants({ variant: 'outline', size: 'md' })}><Copy className="size-4" /> Copy plan</button>
               </div>
               {copyStatus && <p role="status" className="mt-2 text-xs text-muted-foreground">{copyStatus}</p>}
-            </> : <div className="mt-4"><EmptyState title="No vehicle chosen yet" description="Go back to the fare results and pick a ride to see a summary here." /></div>}
+            </> : <div className="mt-4"><EmptyState title="No vehicle chosen yet" description="Pick a ride on the fare estimates to see a summary here." action={trip.routeId ? <Link href={`/fares?${new URLSearchParams({ tripHistoryId: trip.id, routeId: trip.routeId })}`} className={buttonVariants({ size: 'md', className: 'mt-2' })}>View fare estimates</Link> : undefined} /></div>}
           </Panel>
           {trip.vehicle && <>
             {/* Weather/traffic snapshot — explicitly a point-in-time reading */}
@@ -345,7 +357,6 @@ export default function TripSummary({
 
           </>}
         </div>
-      </div>
-    </main>
+      </PageContainer>
   )
 }

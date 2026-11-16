@@ -57,8 +57,11 @@ test("errors are announced as alerts and progress as status, from one component"
   ]) {
     assert.match(read(file), /<StatusMessage/, file);
   }
+  // The profile's save error comes from the shared component (an alert);
+  // the delete dialog keeps its own.
   const profile = read("app/(main)/profile/profile-form.tsx");
-  assert.equal((profile.match(/role="alert"/g) ?? []).length >= 2, true);
+  assert.match(profile, /<StatusMessage>\{errorMessage\}<\/StatusMessage>/);
+  assert.equal((profile.match(/role="alert"/g) ?? []).length >= 1, true);
 });
 
 test("a plan copies as plain text that carries the same caveat as the screen", () => {

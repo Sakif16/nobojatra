@@ -70,7 +70,7 @@ export const OPTIONAL_VARIABLES: OptionalVariable[] = [
   },
   {
     name: "PATHAO_FARE_API",
-    effect: "live Pathao pricing is off; Pathao fares come from the rate card",
+    effect: "Pathao's own estimates are off; Pathao fares come from the rate card",
   },
   {
     name: "RESEND_API_KEY",

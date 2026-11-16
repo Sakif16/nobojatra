@@ -88,7 +88,6 @@ function NotificationToast({
       </div>
       <button
         type="button"
-        data-no-glow
         aria-label="Hide notification"
         onClick={() => onClose(alert.id)}
         className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

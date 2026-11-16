@@ -18,14 +18,15 @@ const productLinks = [
   { href: "/scheduled-trips", label: "Scheduled trips" },
   { href: "/saved-trips", label: "Saved trips" },
   { href: "/trip-history", label: "Trip history" },
-  { href: "/live-cams", label: "Live traffic" },
+  { href: "/live-cams", label: "Live cams" },
   { href: "/profile", label: "Profile" },
 ];
 
 export default function Footer() {
   return (
     <footer className="mt-auto border-t border-border bg-card/40">
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      {/* Full width like the navbar, so both line up with the map sidebar. */}
+      <div className="w-full px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="font-semibold text-foreground">NoboJatra</p>
           <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">

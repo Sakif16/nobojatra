@@ -6,6 +6,7 @@ import test from "node:test";
 import { load, root } from "./support/load.mjs";
 
 const map = fs.readFileSync(path.join(root, "components/map/RouteMap.tsx"), "utf8");
+const css = fs.readFileSync(path.join(root, "app/globals.css"), "utf8");
 
 test("text placed in Leaflet's HTML cannot become markup", () => {
   const { escapeHtml } = load("lib/escape-html.ts");
@@ -51,16 +52,45 @@ test("only the providers whose tiles are on screen are credited", () => {
   // The traffic overlay carries its own credit, shown only while it is on.
   assert.match(map, /attribution=\{MAPBOX_TOKEN \? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION\}/);
   assert.match(map, /tomtom\.com/);
-  assert.match(map, /labelLayerFailed \? "dark_all" : "dark_nolabels"/);
+  assert.match(map, /basemaps\.cartocdn\.com\/dark_nolabels\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
   assert.match(map, /encodeURIComponent\(CARTO_API_KEY\)/);
   assert.match(map, /https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/);
   assert.match(map, /mapbox\/dark-v11/);
 });
 
-test("the dark CARTO map has a separate detailed label layer and visible zoom controls", () => {
+test("the dark CARTO map has dark-map labels and visible zoom controls", () => {
   assert.match(map, /zoomControl\s*\n/);
-  assert.match(map, /!MAPBOX_TOKEN && CARTO_API_KEY && !labelLayerFailed/);
-  assert.match(map, /voyager_only_labels\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.match(map, /!MAPBOX_TOKEN && CARTO_API_KEY && <Pane/);
+  // CARTO's labels made for dark maps, not the light map's labels inverted:
+  // inverting turned their white halos black.
+  assert.match(map, /dark_only_labels\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
+  assert.doesNotMatch(map, /voyager_only_labels/);
+  assert.doesNotMatch(css, /invert\(/);
   assert.match(map, /pointerEvents: "none"/);
-  assert.match(map, /tileerror: \(\) => setLabelLayerFailed\(true\)/);
+  // `{r}` already serves high-density tiles; detectRetina on top loaded them
+  // a zoom level too deep.
+  assert.doesNotMatch(map, /\bdetectRetina(\s*=|[ \t]*\n)/);
+});
+
+test("the map is not rebuilt between searches and never flashes light grey", () => {
+  // A key on the map container destroyed and rebuilt it on every search.
+  assert.doesNotMatch(map, /<MapContainer\s+key=/);
+  // Leaflet's own empty-map colour is #ddd; the planner map overrides it.
+  assert.match(css, /\.planner-map \.leaflet-container \{\s*background: var\(--map-background\);/);
+});
+
+test("the map stays on the trip's country", () => {
+  assert.match(map, /COUNTRY_CONFIG\[country\]\.bounds/);
+  assert.match(map, /map\.setMaxBounds\(bounds\)/);
+  assert.match(map, /map\.setMinZoom\(/);
+  assert.match(map, /maxBoundsViscosity=\{1\}/);
+  assert.match(map, /noWrap/);
+});
+
+test("a fitted route stays clear of the floating card", () => {
+  assert.match(map, /paddingBottomRight/);
+  for (const page of ["components/map/MapDashboardSection.tsx", "components/FareResults.tsx"]) {
+    const source = fs.readFileSync(path.join(root, page), "utf8");
+    assert.match(source, /overlayReserve=\{/, page);
+  }
 });

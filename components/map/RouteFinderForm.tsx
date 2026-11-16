@@ -30,6 +30,8 @@ import { formatLocalDateTime } from "@/lib/trip-time";
 import { useCountry } from "@/components/country/CountryProvider";
 import { buttonVariants } from "@/components/ui/button";
 import Chip from "@/components/ui/chip";
+import StatusMessage from "@/components/ui/status-message";
+import { fieldClassName } from "@/components/ui/field-styles";
 import { isConfigured } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +85,11 @@ type Props = {
   savedPlaces?: SavedPlaceOption[];
   collapsed?: boolean;
   onEdit?: () => void;
+  /**
+   * Given while the form was opened with Edit and nothing has changed yet:
+   * shows a Done button that folds it back into the summary.
+   */
+  onDoneEditing?: () => void;
 };
 
 const MIN_PASSENGERS = 1;
@@ -131,6 +138,7 @@ export default function RouteFinderForm({
   savedPlaces,
   collapsed = false,
   onEdit,
+  onDoneEditing,
 }: Props) {
   const country = useCountry();
   // Public model URLs are frozen into the client bundle at build time.
@@ -360,6 +368,18 @@ export default function RouteFinderForm({
     }
   }, [origin, destination, stops, passengers, mode, scheduledTime]);
 
+  // Edit and Done each hide the button that was pressed, which would drop
+  // keyboard focus to the page. Focus moves to the button that replaces it.
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const doneButtonRef = useRef<HTMLButtonElement>(null);
+  const moveFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (!moveFocusRef.current) return;
+    moveFocusRef.current = false;
+    (collapsed ? editButtonRef : doneButtonRef).current?.focus();
+  }, [collapsed]);
+
   const hasIncompleteStops = stops.some((stop) => stop.place === null);
   const canSubmit =
     origin !== null &&
@@ -420,10 +440,16 @@ export default function RouteFinderForm({
             <span className="block truncate font-medium">{originLabel.split(",")[0]} → {destinationLabel.split(",")[0]}</span>
             <span className="text-xs text-muted-foreground">{passengers} passenger{passengers === 1 ? "" : "s"} · {mode === "now" ? "Now" : "Scheduled"}{stops.length > 0 ? ` · ${stops.length} stop${stops.length === 1 ? "" : "s"}` : ""}</span>
           </p>
-          <button type="button" onClick={onEdit} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted">Edit</button>
+          <button ref={editButtonRef} type="button" onClick={() => { moveFocusRef.current = true; onEdit?.(); }} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted">Edit</button>
         </div>
       )}
       <div hidden={collapsed} className="space-y-4">
+      {onDoneEditing && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-foreground">Edit trip</p>
+          <button ref={doneButtonRef} type="button" onClick={() => { moveFocusRef.current = true; onDoneEditing(); }} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted">Done</button>
+        </div>
+      )}
       {/* Origin and destination sit on a shared rail, echoing a dot-to-square
           pickup/dropoff pair. */}
       <div className="relative space-y-2">
@@ -509,7 +535,6 @@ export default function RouteFinderForm({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <button
           type="button"
-          data-no-glow
           onClick={useCurrentLocation}
           disabled={locating}
           className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
@@ -520,7 +545,6 @@ export default function RouteFinderForm({
         {/* The return journey: the same two places the other way round. */}
         <button
           type="button"
-          data-no-glow
           onClick={swapEnds}
           disabled={!origin && !destination && !originLabel && !destinationLabel}
           className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
@@ -576,7 +600,7 @@ export default function RouteFinderForm({
             onFocus={() => setClock(Date.now())}
             min={scheduleBounds.min}
             max={scheduleBounds.max}
-            className="w-full rounded-xl border border-input bg-secondary/60 px-4 py-2.5 text-sm text-foreground outline-none focus:border-ring"
+            className={fieldClassName(false, "scheme-dark")}
           />
           <p id="schedule-zone-hint" className="px-1 text-xs text-muted-foreground">
             {scheduleZoneHint}
@@ -668,11 +692,7 @@ export default function RouteFinderForm({
         </div>
       </div>
 
-      {formError && (
-        <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {formError}
-        </p>
-      )}
+      {formError && <StatusMessage>{formError}</StatusMessage>}
 
       <button
         type="button"

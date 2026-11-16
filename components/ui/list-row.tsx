@@ -27,5 +27,5 @@ export default function ListRow({ leading, title, pill, meta, trailing, selected
     <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">{title}{pill}</div>{meta && <div className="text-xs text-muted-foreground">{meta}</div>}</div>
     {trailing && <div className="shrink-0">{trailing}</div>}
   </div>;
-  return <button {...props} type={type} aria-pressed={selected} data-no-glow className={classes}>{content}</button>;
+  return <button {...props} type={type} aria-pressed={selected} className={classes}>{content}</button>;
 }
