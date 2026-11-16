@@ -207,7 +207,8 @@ function FitBounds({
     ];
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, fitPadding(map, reserveRef.current));
+    // Capped so a very short trip is not shown at street-corner zoom.
+    map.fitBounds(bounds, { ...fitPadding(map, reserveRef.current), maxZoom: 16 });
     // Re-run whenever the route set or any waypoint changes, and when the user
     // asks for the route back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -363,10 +364,16 @@ export default function RouteMap({
             MAPBOX_TOKEN ? `${MAPBOX_ATTRIBUTION} ${OSM_ATTRIBUTION}` : CARTO_API_KEY ? `${OSM_ATTRIBUTION} ${CARTO_ATTRIBUTION}` : OSM_ATTRIBUTION
           }
           // The warm tint is for the dark basemaps. The OpenStreetMap
-          // fallback is a light map, which the brightening would wash out.
-          className={MAPBOX_TOKEN || CARTO_API_KEY ? "route-base-tiles" : undefined}
+          // fallback is a light map, darkened by its own filter instead so it
+          // neither flashes white nor clashes with the dark app.
+          className={MAPBOX_TOKEN || CARTO_API_KEY ? "route-base-tiles" : "route-base-tiles-osm"}
           subdomains="abcd"
           noWrap
+          // Keep a ring of loaded tiles around the view, and load new ones
+          // once a zoom settles rather than at every step of it: fewer empty
+          // tiles to show through while moving.
+          keepBuffer={6}
+          updateWhenZooming={false}
           url={
             MAPBOX_TOKEN
               ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
@@ -381,7 +388,7 @@ export default function RouteMap({
             version inverted the light map's labels, which turned their white
             halos black — black blotches on the brightened roads. */}
         {!MAPBOX_TOKEN && CARTO_API_KEY && <Pane name="place-labels" style={{ zIndex: 350, pointerEvents: "none" }}>
-          <TileLayer className="route-place-labels" subdomains="abcd" noWrap
+          <TileLayer className="route-place-labels" subdomains="abcd" noWrap keepBuffer={6} updateWhenZooming={false}
             url={`https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`} />
         </Pane>}
 

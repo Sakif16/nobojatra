@@ -1,8 +1,9 @@
-import { isConfigured } from "@/lib/env";
+import { isEmailConfigured, isEmailVerificationRequired, sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { MongoClient } from "mongodb";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { isConfigured } from "@/lib/env";
 import { deleteAccountData } from "@/lib/account-cleanup";
 import { MONGODB_DB } from "@/lib/mongodb";
 
@@ -10,117 +11,6 @@ import { createAuthAttemptLimiter, getAuthSecurityOptions, isValidPassword, PASS
 import { reportFailure } from "@/lib/error-reporting";
 const DUPLICATE_EMAIL_MESSAGE = "An account with this email already exists.";
 const RESET_PASSWORD_TOKEN_TTL_SECONDS = 60 * 60;
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-async function sendPasswordResetEmail({
-  email,
-  name,
-  url,
-}: {
-  email: string;
-  name: string;
-  url: string;
-}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL ?? "NoboJatra <onboarding@resend.dev>";
-
-  if (!isConfigured(apiKey)) {
-    throw new Error("RESEND_API_KEY is not set");
-  }
-
-  const safeName = escapeHtml(name || "there");
-  const safeUrl = escapeHtml(url);
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: email,
-      subject: "Reset your NoboJatra password",
-      html: `
-        <p>Hi ${safeName},</p>
-        <p>We received a request to reset your NoboJatra password.</p>
-        <p><a href="${safeUrl}">Reset your password</a></p>
-        <p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>
-      `,
-      text: `Hi ${name || "there"},
-
-We received a request to reset your NoboJatra password.
-
-Reset your password: ${url}
-
-This link expires in 1 hour. If you did not request this, you can ignore this email.`,
-    }),
-  });
-
-  if (!response.ok) {
-    reportFailure("password_reset_email", "resend", { statusCode: response.status });
-    throw new Error("Password reset email delivery failed.");
-  }
-}
-
-async function sendEmailVerificationEmail({
-  email,
-  name,
-  url,
-}: {
-  email: string;
-  name: string;
-  url: string;
-}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL ?? "NoboJatra <onboarding@resend.dev>";
-
-  if (!isConfigured(apiKey)) {
-    throw new Error("RESEND_API_KEY is not set");
-  }
-
-  const safeName = escapeHtml(name || "there");
-  const safeUrl = escapeHtml(url);
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: email,
-      subject: "Verify your NoboJatra email",
-      html: `
-        <p>Hi ${safeName},</p>
-        <p>Please verify this email address for your NoboJatra account.</p>
-        <p><a href="${safeUrl}">Verify email</a></p>
-        <p>If you did not request this, you can ignore this email.</p>
-      `,
-      text: `Hi ${name || "there"},
-
-Please verify this email address for your NoboJatra account.
-
-Verify email: ${url}
-
-If you did not request this, you can ignore this email.`,
-    }),
-  });
-
-  if (!response.ok) {
-    reportFailure("verification_email", "resend", { statusCode: response.status });
-    throw new Error("Verification email delivery failed.");
-  }
-}
 
 const uri = process.env.MONGODB_URI;
 if (!uri) {
@@ -132,6 +22,8 @@ export const authMongoClient = new MongoClient(uri);
 // driver falls back to `test`, which would hide every existing account.
 export const authDb = authMongoClient.db(MONGODB_DB);
 
+const googleConfigured = isConfigured(process.env.GOOGLE_CLIENT_ID) && isConfigured(process.env.GOOGLE_CLIENT_SECRET);
+
 const checkAuthAttempt = createAuthAttemptLimiter(process.env.BETTER_AUTH_SECRET ?? "");
 
 export const auth = betterAuth({
@@ -139,6 +31,9 @@ export const auth = betterAuth({
   database: mongodbAdapter(authDb, { client: authMongoClient }),
   emailAndPassword: {
     enabled: true,
+    // Users cannot sign in until their email is verified. Off until Mailjet is
+    // fully set up (see isEmailVerificationRequired).
+    requireEmailVerification: isEmailVerificationRequired(),
     minPasswordLength: 8,
     resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
     revokeSessionsOnPasswordReset: true,
@@ -151,13 +46,47 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
+    // Send the verification email right after sign-up, and again whenever an
+    // unverified user tries to sign in.
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    // Once they click the link, log them straight in.
+    autoSignInAfterVerification: true,
+    expiresIn: 60 * 60,
+    // Fire-and-forget, so response time does not reveal whether an address has
+    // an account. Failures are already reported by sendEmail().
     sendVerificationEmail: async ({ user, url }) => {
-      await sendEmailVerificationEmail({
+      if (!isEmailConfigured()) {
+        reportFailure("verification_email", "mailjet", new Error("Mailjet is not set up"));
+        return;
+      }
+      void sendVerificationEmail({
         email: user.email,
         name: user.name,
         url,
-      });
+      }).catch(() => {});
     },
+  },
+  // Google sign-in is only registered when both credentials are set, so a
+  // server without them behaves exactly as before.
+  socialProviders: googleConfigured
+    ? {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID as string,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+          // Always show the account chooser instead of silently reusing
+          // whichever Google account the browser is signed in to.
+          prompt: "select_account" as const,
+        },
+      }
+    : {},
+  account: {
+    // A Google sign-in joins an existing account with the same email only when
+    // Google vouches for the address AND that account's email is verified here
+    // (Better Auth's requireLocalEmailVerified default). An unverified
+    // password account cannot be taken over by someone who merely registered
+    // the address first.
+    accountLinking: { enabled: true },
   },
   user: {
     changeEmail: {
@@ -209,8 +138,14 @@ export const auth = betterAuth({
       }
       // Both deletion entry points require the current password, even if the
       // built-in endpoint would otherwise accept a fresh session alone.
+      // A Google-only account has no password to enter. It is confirmed by a
+      // fresh session instead: Better Auth refuses the deletion unless the user
+      // signed in within the last 15 minutes.
       if (ctx.path === "/delete-user" && (typeof body?.password !== "string" || !body.password)) {
-        throw new APIError("BAD_REQUEST", { code: "PASSWORD_REQUIRED", message: "Enter your password to confirm account deletion." });
+        const accounts = identity ? await ctx.context.internalAdapter.findAccounts(identity) : [];
+        if (accounts.some((account) => account.providerId === "credential")) {
+          throw new APIError("BAD_REQUEST", { code: "PASSWORD_REQUIRED", message: "Enter your password to confirm account deletion." });
+        }
       }
       const passwordPaths = ["/sign-up/email", "/reset-password", "/change-password", "/set-password"];
       if (!passwordPaths.includes(ctx.path)) return;
@@ -236,3 +171,10 @@ export const auth = betterAuth({
     }),
   },
 });
+
+/** False for accounts created through Google only, which have no password. */
+export async function userHasPassword(userId: string) {
+  const { internalAdapter } = await auth.$context;
+  const accounts = await internalAdapter.findAccounts(userId);
+  return accounts.some((account) => account.providerId === "credential");
+}

@@ -36,12 +36,14 @@ test("account limits normalize email addresses and expire without trusting calle
   assert.equal(check("/sign-up/email", "demo@example.com", 600_000).allowed, true);
 });
 
-function loadAuth() {
+function loadAuth(extraEnv = {}) {
   class APIError extends Error {
     constructor(status, body) { super(body.message); this.status = status; this.code = body.code; }
   }
   const previous = process.env.MONGODB_URI;
+  const previousExtra = Object.fromEntries(Object.keys(extraEnv).map((name) => [name, process.env[name]]));
   process.env.MONGODB_URI = "mongodb://localhost:27017";
+  Object.assign(process.env, extraEnv);
   try {
     return load("lib/auth.ts", {
       "better-auth": { betterAuth: (options) => options },
@@ -58,6 +60,10 @@ function loadAuth() {
   } finally {
     if (previous === undefined) delete process.env.MONGODB_URI;
     else process.env.MONGODB_URI = previous;
+    for (const [name, value] of Object.entries(previousExtra)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   }
 }
 
@@ -68,7 +74,10 @@ test("the actual auth hook validates changes and resets, and throttles before du
     path, body,
     setHeader() {},
     testSession: { user: { id: "owner-a" } },
-    context: { internalAdapter: { findUserByEmail: async () => { lookups++; return { user: { id: "existing" } }; } } },
+    context: { internalAdapter: {
+      findUserByEmail: async () => { lookups++; return { user: { id: "existing" } }; },
+      findAccounts: async () => [{ providerId: "credential" }],
+    } },
   });
   for (const path of ["/sign-up/email", "/reset-password", "/change-password", "/set-password"]) {
     const ctx = makeContext(path, { password: "weak", newPassword: "weak" });
@@ -84,4 +93,38 @@ test("the actual auth hook validates changes and resets, and throttles before du
   assert.equal(lookups, 5);
   await assert.rejects(auth.hooks.before(makeContext("/delete-user", {})), /password to confirm/);
   assert.equal(auth.emailAndPassword.revokeSessionsOnPasswordReset, true);
+});
+
+test("Google sign-in is only registered when both credentials are set", () => {
+  assert.deepEqual(loadAuth({ GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "" }).socialProviders, {});
+  assert.deepEqual(loadAuth({ GOOGLE_CLIENT_ID: "id-only", GOOGLE_CLIENT_SECRET: "" }).socialProviders, {});
+  assert.deepEqual(loadAuth({ GOOGLE_CLIENT_ID: "your_google_client_id", GOOGLE_CLIENT_SECRET: "your_google_client_secret" }).socialProviders, {});
+  const google = loadAuth({ GOOGLE_CLIENT_ID: "client-id", GOOGLE_CLIENT_SECRET: "client-secret" }).socialProviders.google;
+  assert.equal(google.clientId, "client-id");
+  assert.equal(google.clientSecret, "client-secret");
+  assert.equal(google.prompt, "select_account");
+});
+
+test("a Google login cannot be linked into an unverified password account", () => {
+  const auth = loadAuth({ GOOGLE_CLIENT_ID: "client-id", GOOGLE_CLIENT_SECRET: "client-secret" });
+  assert.equal(auth.account.accountLinking.enabled, true);
+  // These two switches are what keeps Better Auth refusing to link into an
+  // account whose email was never verified here.
+  assert.notEqual(auth.account.accountLinking.requireLocalEmailVerified, false);
+  assert.ok(!auth.account.accountLinking.trustedProviders);
+});
+
+test("an account with no password confirms deletion by session freshness, one with a password still needs it", async () => {
+  const auth = loadAuth();
+  const makeContext = (accounts) => ({
+    path: "/delete-user", body: {}, setHeader() {},
+    testSession: { user: { id: "google-only-user" } },
+    context: { internalAdapter: { findAccounts: async () => accounts } },
+  });
+  await auth.hooks.before(makeContext([{ providerId: "google" }]));
+  await assert.rejects(auth.hooks.before(makeContext([{ providerId: "google" }, { providerId: "credential" }])), /password to confirm/);
+});
+
+test("social sign-in is rate limited like the other sign-in routes", () => {
+  assert.deepEqual(security.getAuthSecurityOptions({}).rateLimit.customRules["/sign-in/social"], { window: 60, max: 10 });
 });

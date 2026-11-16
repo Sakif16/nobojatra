@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { userHasPassword } from "@/lib/auth";
 import { DEFAULT_COUNTRY, resolveCountry } from "@/lib/country-config";
 import { getRequestProfile, getRequestSession } from "@/lib/request-context";
 import { redirect } from "next/navigation";
@@ -19,6 +20,7 @@ export default async function ProfilePage() {
   }
 
   const profile = await getRequestProfile(session.user.id);
+  const hasPassword = await userHasPassword(session.user.id);
 
   const savedPlaces: SavedPlaceDoc[] = Array.isArray(profile?.savedPlaces)
     ? profile.savedPlaces.map((sp: SavedPlaceDoc) => ({
@@ -34,6 +36,7 @@ export default async function ProfilePage() {
         email: session.user.email,
         emailVerified: session.user.emailVerified,
         createdAt: new Date(session.user.createdAt).toISOString(),
+        hasPassword,
       }}
       initialProfile={{
         country: resolveCountry(profile?.country ?? DEFAULT_COUNTRY),

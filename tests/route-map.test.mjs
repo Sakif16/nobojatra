@@ -65,7 +65,7 @@ test("the dark CARTO map has dark-map labels and visible zoom controls", () => {
   // inverting turned their white halos black.
   assert.match(map, /dark_only_labels\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/);
   assert.doesNotMatch(map, /voyager_only_labels/);
-  assert.doesNotMatch(css, /invert\(/);
+  assert.match(css, /\.route-place-labels \.leaflet-tile \{\s*filter: brightness\(1\.5\);\s*\}/);
   assert.match(map, /pointerEvents: "none"/);
   // `{r}` already serves high-density tiles; detectRetina on top loaded them
   // a zoom level too deep.

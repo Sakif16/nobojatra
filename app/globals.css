@@ -348,6 +348,12 @@
   filter: brightness(1.2) sepia(0.12) saturate(0.9);
 }
 
+/* No CARTO/Mapbox key: the OpenStreetMap fallback is a light map. Darken it
+   to match the app so it neither flashes white nor clashes with the route. */
+.route-base-tiles-osm .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.7);
+}
+
 /* CARTO's dark-map labels are light text on a dark halo; brightening them
    makes street and area names stand out without inverting anything. */
 .route-place-labels .leaflet-tile {

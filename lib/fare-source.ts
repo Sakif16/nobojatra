@@ -16,7 +16,7 @@ const FARE_SOURCE_LABELS: Record<FareSource, string> = {
   rate_card: "Rate-card estimate",
   // Pathao's own figure is still an estimate of what the ride will cost,
   // not a quote, so it is not called "live pricing".
-  pathao_api: "Pathao estimate",
+  pathao_api: "Pathao estimates",
 };
 
 /**
