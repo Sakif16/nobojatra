@@ -56,6 +56,13 @@ function AnimatedRoute({ positions, layer, delay, duration }: { positions: Route
   return <Polyline ref={line} positions={positions} pathOptions={{ ...options[layer], lineCap: "round", lineJoin: "round", className: `planner-route planner-route-${layer}`, interactive: false }} />;
 }
 
+// The map used to have no zoom floor and no bounds, so a scroll wheel could
+// zoom out forever and repeat the world. Clamp it to something that still
+// shows a whole country, and keep panning inside one copy of the world.
+const MIN_ZOOM = 3;
+const MAX_ZOOM = 18;
+const WORLD_BOUNDS = L.latLngBounds([-85, -180], [85, 180]);
+
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY?.trim();
 
@@ -162,7 +169,7 @@ function FitBounds({
     ];
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds, { padding: [48, 48] });
+    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 16 });
     // Re-run whenever the route set or any waypoint changes, and when the user
     // asks for the route back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -254,12 +261,17 @@ export default function RouteMap({
      * Isolating here rather than at each call site keeps the guarantee with the
      * component that owns the Leaflet instance: every map gets it for free.
      */
-    <div className="planner-map relative isolate h-full w-full">
+    <div className="planner-map relative isolate h-full w-full bg-(--map-bg)">
       <MapContainer
         key={hasTrip ? "trip" : "empty"}
         center={origin && destination ? [origin.lat, origin.lng] : COUNTRY_CONFIG[country].defaultMapView.center}
         zoom={origin && destination ? 13 : COUNTRY_CONFIG[country].defaultMapView.zoom}
         zoomControl={hasTrip}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
+        maxBounds={WORLD_BOUNDS}
+        maxBoundsViscosity={1}
+        worldCopyJump={false}
         scrollWheelZoom
         ref={mapRef}
         style={{ height: "100%", width: "100%", borderRadius: square ? 0 : "1rem" }}
@@ -269,8 +281,12 @@ export default function RouteMap({
           attribution={
             MAPBOX_TOKEN ? `${MAPBOX_ATTRIBUTION} ${OSM_ATTRIBUTION}` : CARTO_API_KEY ? `${OSM_ATTRIBUTION} ${CARTO_ATTRIBUTION}` : OSM_ATTRIBUTION
           }
-          className="route-base-tiles"
+          className={MAPBOX_TOKEN || CARTO_API_KEY ? "route-base-tiles" : "route-base-tiles route-base-tiles-osm"}
           subdomains="abcd"
+          noWrap
+          bounds={WORLD_BOUNDS}
+          keepBuffer={6}
+          updateWhenZooming={false}
           detectRetina
           url={
             MAPBOX_TOKEN
@@ -286,6 +302,9 @@ export default function RouteMap({
           <TileLayer
             attribution={MAPBOX_TOKEN ? MAPBOX_ATTRIBUTION : TOMTOM_ATTRIBUTION}
             url={trafficTileUrl}
+            noWrap
+            bounds={WORLD_BOUNDS}
+            keepBuffer={4}
             opacity={0.9}
           />
         )}

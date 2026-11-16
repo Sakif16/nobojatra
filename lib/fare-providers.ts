@@ -385,7 +385,7 @@ async function estimateOneFare(
     return {
       fare: rateCardFare,
       fareSource: "rate_card",
-      fareSourceNote: "Live Pathao pricing was unavailable; showing a rate-card estimate.",
+      fareSourceNote: "Pathao estimates were unavailable; showing a rate-card estimate.",
       fareAdjustment: adjustment,
     };
   }

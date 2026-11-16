@@ -11,7 +11,7 @@ test("each source has a label, and an unrecorded one has none", () => {
   const { getFareSourceLabel } = load("lib/fare-source.ts");
 
   assert.equal(getFareSourceLabel("rate_card"), "Rate-card estimate");
-  assert.equal(getFareSourceLabel("pathao_api"), "Live Pathao pricing");
+  assert.equal(getFareSourceLabel("pathao_api"), "Pathao estimates");
   for (const missing of [undefined, null, "", "something_else"]) {
     assert.equal(getFareSourceLabel(missing), null);
   }

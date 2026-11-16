@@ -35,7 +35,7 @@ import { SkeletonRows } from "@/components/ui/skeleton";
 const RouteMap = dynamic(() => import("@/components/map/RouteMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-3xl bg-muted text-sm text-muted-foreground">
+    <div className="flex h-full w-full items-center justify-center rounded-3xl bg-(--map-bg) text-sm text-[#c9c6c1]">
       Loading map…
     </div>
   ),
