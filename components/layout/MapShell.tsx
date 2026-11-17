@@ -10,10 +10,10 @@ type Props = {
 /**
  * The room the floating card takes in the map's bottom-right corner on wide
  * screens: its 320px width plus the 16px right offset, and roughly its
- * height plus the 40px bottom offset. Passed to RouteMap so a fitted route
+ * height plus the 96px bottom offset. Passed to RouteMap so a fitted route
  * stays clear of the card.
  */
-export const MAP_OVERLAY_RESERVE = { width: 336, height: 320 };
+export const MAP_OVERLAY_RESERVE = { width: 336, height: 380 };
 
 /** Shared responsive layout for map-led pages. The caller owns its content. */
 export default function MapShell({ sidebar, map, overlay, idleOverlay }: Props) {
@@ -31,8 +31,10 @@ export default function MapShell({ sidebar, map, overlay, idleOverlay }: Props) 
             <div className="w-full lg:pointer-events-auto lg:max-w-[640px]">{idleOverlay}</div>
           </div>
         )}
+        {/* 96px up: the trip assistant's chat button sits in the corner
+            below it. */}
         {overlay && (
-          <div className="mt-4 lg:absolute lg:right-4 lg:bottom-10 lg:z-1000 lg:mt-0 lg:w-[320px] lg:max-w-[calc(100%-2rem)]">
+          <div className="mt-4 lg:absolute lg:right-4 lg:bottom-24 lg:z-1000 lg:mt-0 lg:w-[320px] lg:max-w-[calc(100%-2rem)]">
             {overlay}
           </div>
         )}

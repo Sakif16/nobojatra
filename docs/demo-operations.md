@@ -58,7 +58,7 @@ The CLI uses the app's development-only public-DNS workaround for Atlas SRV reso
 
 ## Account deletion and legacy data
 
-Better Auth owns auth-account deletion. Its shared `beforeDelete` hook removes user-owned alerts, saved trips, profile, places, trip history and route-linked traffic, plus legacy `tripinputrequests` and user-linked verification records. Owner routes are deleted last, after all dependent work has settled successfully, so a failed cleanup can still find traffic records on retry. An explicitly foreign-owned trip history record is never deleted just because its route reference matches.
+Better Auth owns auth-account deletion. Its shared `beforeDelete` hook removes user-owned alerts, saved trips, profile, places, trip history, trip-assistant chats and route-linked traffic, plus legacy `tripinputrequests` and user-linked verification records. Owner routes are deleted last, after all dependent work has settled successfully, so a failed cleanup can still find traffic records on retry. An explicitly foreign-owned trip history record is never deleted just because its route reference matches.
 
 Cleanup is idempotent but not a transaction across both database adapters: a failure may remove some application records while retaining the auth account for retry. Back up before bulk cleanup. Do not drop legacy collections or indexes just because a model is unused; inventory their records and references first. No live collection, index or schema was changed in this work.
 
@@ -69,3 +69,15 @@ Offline tests cover failure retries, deletion requiring a password, and foreign-
 Core planner responses include a server-generated `X-Request-ID`; unexpected failures return a generic error and that ID. Structured `feature_failure` logs identify the feature, provider, category and safe HTTP status. Logs never serialize request bodies, error messages/stacks, URLs, email addresses, credentials or upstream response text. Search host logs by the request ID.
 
 Weather and traffic degradation and Pathao rate-card fallbacks log through the same reporter. Camera loading stops waiting after one minute, offers retry/external access, and reports only an allowlisted event to a signed-in endpoint capped at six reports per minute per account. Browser camera diagnostics describe an observed load failure, not proof that the provider is offline. An iframe load event cannot prove its videos work.
+
+## Trip assistant (chat button)
+
+The chat button appears only when `OLLAMA_API_KEY` is set; removing the key hides it and `/api/assistant` answers 503. The planner never depends on it.
+
+- **Cost.** Ollama Cloud bills per token (glm-5.3-flash: about $0.15 per million input and $0.50 per million output). Measured on 2026-11-16: 78 messages, 131 model calls, about $0.022 in total, or $0.0003 per message.
+- **Caps.** At most 400 model calls a day for the whole app (`DEMO_BUDGET_OLLAMA`, counted in the database like the other provider budgets), 6 messages a minute and 40 a day per account (per process), at most 4 model calls per message, and 600 output tokens per call. At the measured rate, using the whole daily cap costs well under $0.10 a day.
+- **Usage log.** Each message logs one `assistant_usage` line with model calls, token counts and the estimated cost. Messages and places are never logged.
+- **What leaves the server.** The user's messages, the place names and numbers from the app's own results, and saved-place labels go to Ollama Cloud. Names, emails, account ids and saved-place addresses do not. The panel says messages are processed by Ollama Cloud.
+- **Saved chats.** Chats are stored in the `assistantconversations` collection against the account and the country they were started in, so they survive a reload and follow the account to other devices. History is always on. A chat is deleted 30 days after its last message (TTL index on `updatedAt`), a user keeps at most 20 chats (the oldest goes first) and a chat holds at most 50 messages. Only text and the cards shown are stored; failed and stopped turns are kept for display but never sent to the model. Chats are removed with the account and included in demo backups. The panel says chats are saved for 30 days.
+- **Streaming and Stop.** Replies are streamed word by word. Stop (or closing the tab) cancels the model call and the app's internal route and fare calls; the stopped turn is stored as "Stopped." A turn has a 45-second overall deadline.
+- **Writes.** The model has no write tools. Planning a trip records it in trip history exactly as a planner search does (a future departure appears under Scheduled trips); saving a vehicle or a saved trip happens only on the card's buttons.

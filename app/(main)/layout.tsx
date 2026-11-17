@@ -1,5 +1,6 @@
 import Footer from "@/components/Footer";
 import Navbar from "@/components/navbar";
+import AssistantLauncher from "@/components/assistant/AssistantLauncher";
 import { CountryProvider } from "@/components/country/CountryProvider";
 import { FeatureProvider } from "@/components/features/FeatureProvider";
 import { DEFAULT_COUNTRY } from "@/lib/country-config";
@@ -31,6 +32,9 @@ export default async function MainLayout({
         <Navbar />
         {children}
         <Footer />
+        {/* The trip assistant's chat button, on every signed-in page. It
+            renders nothing when OLLAMA_API_KEY is not set. */}
+        {session && <AssistantLauncher />}
       </FeatureProvider>
     </CountryProvider>
   );

@@ -81,6 +81,7 @@ The app checks these when it starts. If a required variable is missing it stops 
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional | Turns on the "Continue with Google" button. See [Google sign-in](#google-sign-in). Without them the button is hidden |
 | `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` | Optional | Sending password reset and verification emails through Mailjet. Without them, the reset page says reset is not set up |
 | `MAIL_FROM` | Optional | Sender address, verified in Mailjet. All three variables together also make sign-in require a verified email |
+| `OLLAMA_API_KEY` | Optional | The trip assistant behind the chat button (Ollama Cloud, paid per token). Chats are saved to the account for 30 days. Without it the button is hidden. `OLLAMA_CHAT_MODEL` (default `glm-5.3-flash`), `OLLAMA_BASE_URL` (default `https://ollama.com/api`) and `OLLAMA_THINK` tune it; `DEMO_BUDGET_OLLAMA` caps model calls per day (default 400) |
 | `NEXT_PUBLIC_TM_MODEL_URL` | Optional | Image model used by photo search. Without it, photo search is disabled and the planner explains why. Read at build time, so rebuild after changing it |
 | `MONGODB_DB` | Optional | Database for app and auth data. Defaults to `nobojatra`. Changing it on an existing database hides every existing account |
 | `NOMINATIM_USER_AGENT` | Optional | Identifies the app to the place-search service. Defaults to the app name and this repository's URL. Set it only to add a contact email |

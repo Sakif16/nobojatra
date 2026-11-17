@@ -35,13 +35,13 @@ test("copied placeholders and whitespace never enable optional features", () => 
     assert.equal(env.isConfigured(value), false);
     assert.deepEqual(env.getServerFeatures({
       TOMTOM_API_KEY: value, OPENWEATHER_API_KEY: value, MAILJET_API_KEY: value, MAILJET_SECRET_KEY: value, MAIL_FROM: value,
-      GOOGLE_CLIENT_ID: value, GOOGLE_CLIENT_SECRET: value,
-    }), { liveTraffic: false, weather: false, passwordResetEmail: false, googleSignIn: false });
+      GOOGLE_CLIENT_ID: value, GOOGLE_CLIENT_SECRET: value, OLLAMA_API_KEY: value,
+    }), { liveTraffic: false, weather: false, passwordResetEmail: false, googleSignIn: false, assistant: false });
   }
-  assert.equal(env.checkEnvironment(valid).unavailable.length, 6);
+  assert.equal(env.checkEnvironment(valid).unavailable.length, 7);
   assert.deepEqual(env.getServerFeatures({
     TOMTOM_API_KEY: "traffic-key", OPENWEATHER_API_KEY: "weather-key", MAILJET_API_KEY: "email-key", MAILJET_SECRET_KEY: "email-secret", MAIL_FROM: "NoboJatra <hi@example.com>",
-    GOOGLE_CLIENT_ID: "google-id", GOOGLE_CLIENT_SECRET: "google-secret",
+    GOOGLE_CLIENT_ID: "google-id", GOOGLE_CLIENT_SECRET: "google-secret", OLLAMA_API_KEY: "ollama-key",
   }), env.ALL_FEATURES_ON);
 });
 

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  AttributionControl,
   MapContainer,
   TileLayer,
   Polyline,
@@ -351,6 +352,9 @@ export default function RouteMap({
         center={origin && destination ? [origin.lat, origin.lng] : COUNTRY_CONFIG[country].defaultMapView.center}
         zoom={origin && destination ? 13 : COUNTRY_CONFIG[country].defaultMapView.zoom}
         zoomControl
+        // Placed bottom-left below, so the chat button in the bottom-right
+        // corner never covers the map credits the tile providers require.
+        attributionControl={false}
         scrollWheelZoom
         maxBoundsViscosity={1}
         style={{ height: "100%", width: "100%", borderRadius: square ? 0 : "1rem" }}
@@ -473,6 +477,7 @@ export default function RouteMap({
           </Marker>
         )}
 
+        <AttributionControl position="bottomleft" />
         <CountryLimits country={country} />
         {origin && destination && <FitBounds
           origin={origin}
