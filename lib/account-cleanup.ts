@@ -26,6 +26,7 @@ import type { Db } from "mongodb";
 import mongoose from "mongoose";
 import dbConnect from "@/lib/mongodb";
 import Alert from "@/models/Alert";
+import AssistantConversation from "@/models/AssistantConversation";
 import Route from "@/models/Map_route";
 import Place from "@/models/Place";
 import SavedTrip from "@/models/SavedTrip";
@@ -41,6 +42,7 @@ export type AccountCleanupSummary = {
   routes: number;
   places: number;
   profile: number;
+  assistantChats: number;
   tripInputRequests: number;
   verification: number;
 };
@@ -92,12 +94,13 @@ export async function deleteAccountData(
     }),
     Place.deleteMany({ userId }),
     UserProfile.deleteOne({ userId }),
+    AssistantConversation.deleteMany({ userId }),
     ...LEGACY_USER_COLLECTIONS.map((name) => appDb.collection(name).deleteMany({ userId })),
   ]);
   const failed = results.find((result) => result.status === "rejected");
   if (failed?.status === "rejected") throw failed.reason;
   const counts = results.map((result) => result.status === "fulfilled" ? result.value.deletedCount : 0);
-  const [alerts, savedTrips, trafficData, tripHistory, places, profile, ...legacyCounts] = counts;
+  const [alerts, savedTrips, trafficData, tripHistory, places, profile, assistantChats, ...legacyCounts] = counts;
 
   // Better Auth's internal delete covers `session`, `account`, and `user`, but
   // never `verification`. Both row types that reference a user — reset-password
@@ -120,6 +123,7 @@ export async function deleteAccountData(
     routes: routesDeleted.deletedCount,
     places,
     profile,
+    assistantChats,
     tripInputRequests: legacyCounts.reduce((sum, count) => sum + count, 0),
     verification: verification.deletedCount,
   };

@@ -14,7 +14,7 @@ function matches(record, filter) {
 }
 
 function fixture() {
-  const stores = Object.fromEntries(["Alert", "SavedTrip", "TripHistory", "Place", "UserProfile", "Map_route", "tripinputrequests", "verification"].map((name) => [name, [
+  const stores = Object.fromEntries(["Alert", "SavedTrip", "TripHistory", "Place", "UserProfile", "Map_route", "AssistantConversation", "tripinputrequests", "verification"].map((name) => [name, [
     { _id: `${name}-a`, userId: "a", value: "a" },
     { _id: `${name}-b`, userId: "b", value: "b" },
   ]]));
@@ -38,7 +38,7 @@ function fixture() {
   });
   const db = { collection: model };
   const mocks = { mongoose: { connection: { db } }, "@/lib/mongodb": async () => {} };
-  for (const name of ["Alert", "SavedTrip", "TrafficData", "TripHistory", "Place", "UserProfile", "Map_route"]) mocks[`@/models/${name}`] = model(name);
+  for (const name of ["Alert", "SavedTrip", "TrafficData", "TripHistory", "Place", "UserProfile", "Map_route", "AssistantConversation"]) mocks[`@/models/${name}`] = model(name);
   return { stores, calls, db, cleanup: load("lib/account-cleanup.ts", mocks).deleteAccountData,
     failTraffic: (value) => { failTraffic = value; }, failVerification: (value) => { failVerification = value; } };
 }
@@ -53,7 +53,9 @@ test("account cleanup removes owned and legacy data without touching another use
   assert.equal(f.stores.TrafficData[0].routeId, "Map_route-b");
   assert.ok(f.stores.TripHistory.some((row) => row._id === "foreign"));
   assert.equal(f.calls.at(-1), "Map_route");
-  for (const name of ["Alert", "SavedTrip", "Place", "UserProfile", "Map_route", "tripinputrequests", "verification"]) assert.equal(f.stores[name][0].userId, "b");
+  // Trip-assistant chats go with the account.
+  assert.equal(counts.assistantChats, 1);
+  for (const name of ["Alert", "SavedTrip", "Place", "UserProfile", "Map_route", "AssistantConversation", "tripinputrequests", "verification"]) assert.equal(f.stores[name][0].userId, "b");
   assert.ok(Object.values(await f.cleanup("a", f.db)).every((count) => count === 0));
 });
 

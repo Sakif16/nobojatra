@@ -126,8 +126,15 @@ const RouteMap = dynamic(() => import("./RouteMap"), {
  */
 export default function MapDashboardSection(props: Props) {
   const country = useCountry();
+  // A link to another stored trip (the assistant's "Open in planner", for
+  // one) can arrive while the planner is already on screen. Its state is
+  // only read from the restored trip when it mounts, so a new trip starts a
+  // new planner too.
+  const restoring = props.initialResults
+    ? `${props.initialResults.tripHistoryId}:${props.initialResults.selectedRouteId}`
+    : props.restoreError ? "restore-error" : "";
 
-  return <Planner key={country} {...props} />;
+  return <Planner key={`${country}:${restoring}`} {...props} />;
 }
 
 function Planner({

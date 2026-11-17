@@ -84,6 +84,10 @@ export const OPTIONAL_VARIABLES: OptionalVariable[] = [
     name: "NEXT_PUBLIC_TM_MODEL_URL",
     effect: "photo search is disabled; places can still be searched by name",
   },
+  {
+    name: "OLLAMA_API_KEY",
+    effect: "the trip assistant (chat button) is hidden; the planner works as before",
+  },
 ];
 
 /**
@@ -195,6 +199,8 @@ export type ServerFeatures = {
   weather: boolean;
   passwordResetEmail: boolean;
   googleSignIn: boolean;
+  /** The AI trip assistant, behind the chat button. */
+  assistant: boolean;
 };
 
 export const ALL_FEATURES_ON: ServerFeatures = {
@@ -202,6 +208,7 @@ export const ALL_FEATURES_ON: ServerFeatures = {
   weather: true,
   passwordResetEmail: true,
   googleSignIn: true,
+  assistant: true,
 };
 
 export function getServerFeatures(env: Env): ServerFeatures {
@@ -213,6 +220,7 @@ export function getServerFeatures(env: Env): ServerFeatures {
       isConfigured(env.MAILJET_SECRET_KEY) &&
       isConfigured(env.MAIL_FROM),
     googleSignIn: isConfigured(env.GOOGLE_CLIENT_ID) && isConfigured(env.GOOGLE_CLIENT_SECRET),
+    assistant: isConfigured(env.OLLAMA_API_KEY),
   };
 }
 

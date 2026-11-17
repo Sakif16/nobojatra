@@ -27,6 +27,11 @@ export const PROVIDER_DAILY_BUDGETS = {
   tomtom_tiles: 20000,
   openweather: 800,
   pathao: 1000,
+  // Model calls for the trip assistant, which are paid per token. 400 calls
+  // is about 240 assistant messages; at the rate measured with glm-5.3-flash
+  // (about $0.00017 a call) that is under $0.10 a day. See
+  // docs/AI_ASSISTANT_PLAN.md.
+  ollama: 400,
 } as const;
 
 export type Provider = keyof typeof PROVIDER_DAILY_BUDGETS;
